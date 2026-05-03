@@ -1,0 +1,70 @@
+[package]
+name = "vexa"
+version = "1.0.0"
+edition = "2021"
+description = "VEXA AgentWall — local-first sidecar proxy enforcing deterministic security policies for AI agents over MCP"
+license = "Apache-2.0"
+
+[[bin]]
+name = "agentwall"
+path = "src/main.rs"
+
+[lib]
+name = "vexa"
+path = "src/lib.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+bytes = "1"
+
+# Crypto
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
+# Regex
+regex = "1"
+
+# UUID
+uuid = { version = "1", features = ["v4"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Random
+rand = "0.8"
+
+# Reqwest for forwarding
+reqwest = { version = "0.12", features = ["json"] }
+
+# Tracing (structured stderr)
+# We roll our own JSON stderr logger for exact event control
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3"
+tokio-test = "0.4"
+assert_cmd = "2"
+predicates = "3"
+
+[[bench]]
+name = "policy_eval"
+harness = false
+
+[[bench]]
+name = "proxy_overhead"
+harness = false

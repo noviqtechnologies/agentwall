@@ -1,0 +1,28 @@
+/target
+docs/
+
+# Audit Logs and Backups (FR-104, FR-109)
+*.log
+*.bak
+
+# IDEs and OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Compiled artifacts in root
+vexa
+vexa.exe
+agentwall
+agentwall.exe
+*.pdb
+*.zip
+vexa-mvp1/
+agentwall-pkg/
+
+# Manual test runs
+manual_test/
+tests/tmp_*
