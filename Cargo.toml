@@ -49,7 +49,7 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 
 # Reqwest for forwarding
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # Tracing (structured stderr)
 # We roll our own JSON stderr logger for exact event control
