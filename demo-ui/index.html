@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VEXA AgentWall | AI Security Proxy</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0e14;
+            --sidebar-bg: #11141b;
+            --card-bg: #1c2128;
+            --card-hover: #22272e;
+            --border-color: #30363d;
+            --text-main: #adbac7;
+            --text-bright: #cdd9e5;
+            --text-muted: #768390;
+            --accent: #539bf5;
+            --green: #3fb950;
+            --red: #f85149;
+            --amber: #d29922;
+            --font-sans: 'Inter', -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.15);
+            --radius: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Sidebar Styling */
+        .sidebar {
+            width: 260px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+        }
+
+        .logo-area {
+            padding: 32px 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+
+        .logo-vexa {
+            color: var(--accent);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            letter-spacing: 2px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .logo-agentwall {
+            color: var(--text-bright);
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-tagline {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 12px;
+            line-height: 1.5;
+        }
+
+        .nav-items {
+            flex: 1;
+            padding: 24px 0;
+        }
+
+        .nav-item {
+            padding: 12px 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            color: var(--text-bright);
+            background-color: rgba(255,255,255,0.02);
+        }
+
+        .nav-item.active {
+            color: var(--accent);
+            background-color: rgba(83, 155, 245, 0.05);
+            border-left-color: var(--accent);
+        }
+
+        .nav-icon {
+            font-family: var(--font-mono);
+            margin-right: 16px;
+            font-size: 0.8rem;
+            opacity: 0.6;
+        }
+
+        .sidebar-footer {
+            padding: 24px;
+            border-top: 1px solid rgba(255,255,255,0.03);
+            display: flex;
+            align-items: center;
+            font-size: 0.8rem;
+            font-family: var(--font-mono);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 0 8px currentColor;
+        }
+        .status-dot.stopped { background-color: #484f58; color: #484f58; }
+        .status-dot.running { background-color: var(--green); color: var(--green); }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .panel-container {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .panel { display: none; max-width: 1100px; margin: 0 auto; }
+        .panel.active { display: block; animation: fadeIn 0.3s ease-out; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        h2 {
+            color: var(--text-bright);
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* UI Components */
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-sm);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .card:hover {
+            border-color: #444c56;
+        }
+
+        h3 {
+            font-size: 0.95rem;
+            color: var(--text-bright);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid var(--border-color);
+            background-color: var(--card-bg);
+            color: var(--text-bright);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            user-select: none;
+        }
+
+        .btn:hover:not(:disabled) {
+            background-color: #30363d;
+            border-color: #8b949e;
+        }
+
+        .btn-primary {
+            background-color: var(--accent);
+            color: #fff;
+            border: none;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background-color: #5fb0ff;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(83, 155, 245, 0.3);
+        }
+
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+
+        .input, .select, textarea {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-bright);
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .input:focus, .select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(83, 155, 245, 0.15);
+        }
+
+        .badge {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 1px solid transparent;
+        }
+
+        .badge.green { background: rgba(63, 185, 80, 0.1); color: var(--green); border-color: rgba(63, 185, 80, 0.2); }
+        .badge.red { background: rgba(248, 81, 73, 0.1); color: var(--red); border-color: rgba(248, 81, 73, 0.2); }
+        .badge.amber { background: rgba(210, 153, 34, 0.1); color: var(--amber); border-color: rgba(210, 153, 34, 0.2); }
+        .badge.muted { background: rgba(118, 131, 144, 0.1); color: var(--text-muted); border-color: rgba(118, 131, 144, 0.2); }
+
+        .log-container {
+            height: 350px;
+            background-color: #0d1117;
+            border-radius: var(--radius);
+            padding: 16px;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .log-row {
+            padding: 6px 0;
+            display: flex;
+            gap: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.02);
+            align-items: flex-start;
+        }
+
+        .log-ts { color: var(--text-muted); min-width: 85px; }
+        .log-event { font-weight: 600; min-width: 100px; }
+        .log-tool { color: var(--accent); min-width: 120px; }
+        .log-msg { color: var(--text-main); flex: 1; word-break: break-all; }
+
+        .result-box {
+            margin-top: 20px;
+            background-color: #0d1117;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 20px;
+            display: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes flash-green {
+            0% { background-color: rgba(63, 185, 80, 0.1); border-color: var(--green); transform: scale(1.01); }
+            100% { background-color: #0d1117; border-color: var(--border-color); transform: scale(1); }
+        }
+        @keyframes flash-red {
+            0% { background-color: rgba(248, 81, 73, 0.1); border-color: var(--red); transform: scale(1.01); }
+            100% { background-color: #0d1117; border-color: var(--border-color); transform: scale(1); }
+        }
+        .flash-green { animation: flash-green 0.8s ease-out; border-left: 4px solid var(--green) !important; }
+        .flash-red { animation: flash-red 0.8s ease-out; border-left: 4px solid var(--red) !important; }
+
+        .stats-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-item {
+            flex: 1;
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        .stat-value { font-size: 1.6rem; font-weight: 700; color: var(--text-bright); margin-top: 8px; display: block; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 12px 16px; font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
+        td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.9rem; }
+
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: none;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-banner {
+            background-color: rgba(248, 81, 73, 0.1);
+            color: var(--red);
+            padding: 12px 20px;
+            border-radius: var(--radius);
+            border: 1px solid rgba(248, 81, 73, 0.2);
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .code-editor {
+            height: 400px;
+            background-color: #0d1117;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            position: relative;
+        }
+
+        .code-editor textarea {
+            background: transparent;
+            border: none;
+            height: 100%;
+            width: 100%;
+            padding: 20px;
+            resize: none;
+            font-family: var(--font-mono);
+            line-height: 1.6;
+            color: #d1d5db;
+        }
+        .code-editor textarea:focus { outline: none; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="logo-area">
+        <div class="logo-vexa">VEXA</div>
+        <div class="logo-agentwall">AgentWall</div>
+        <p class="logo-tagline">Watch tool calls in real-time.<br>Block the dangerous ones.</p>
+    </div>
+    <div class="nav-items">
+        <div class="nav-item active" data-target="panel-1">
+            <span class="nav-icon">01</span> Policy Editor
+        </div>
+        <div class="nav-item" data-target="panel-2">
+            <span class="nav-icon">02</span> Session Monitor
+        </div>
+        <div class="nav-item" data-target="panel-3">
+            <span class="nav-icon">03</span> Audit Logs
+        </div>
+        <div class="nav-item" data-target="panel-4">
+            <span class="nav-icon">04</span> Session Report
+        </div>
+    </div>
+    <div class="sidebar-footer">
+        <span id="sb-status-dot" class="status-dot stopped"></span>
+        <span id="sb-status-text">STOPPED</span>
+    </div>
+</div>
+
+<div class="main-content">
+    <div id="bridge-banner" class="error-banner" style="position: sticky; top: 0; z-index: 100;">
+        ⚠ Bridge server disconnected. Check terminal and refresh page.
+    </div>
+    
+    <div class="panel-container">
+        <!-- Panel 1: Policy -->
+        <div id="panel-1" class="panel active">
+            <h2>Policy Management</h2>
+            <div class="card">
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg> YAML Policy Configuration</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Define rules to intercept and filter tool calls from your AI agent.</p>
+                <div class="code-editor">
+                    <textarea id="policy-editor" spellcheck="false">version: "1"
+default_action: deny
+session:
+  max_calls_per_second: 5
+
+tools:
+  # Allow reading files in specific safe directories
+  - name: "read_file"
+    action: allow
+    parameters:
+      - name: "path"
+        type: string
+        pattern: "^/workspace/(src|docs|tests)/.*$"
+        required: true
+
+  # Allow listing directory contents within the workspace
+  - name: "list_directory"
+    action: allow
+    parameters:
+      - name: "path"
+        type: string
+        pattern: "^/workspace/.*"
+        required: true
+
+  # Restrict file writing to a specific output directory
+  - name: "write_file"
+    action: allow
+    parameters:
+      - name: "path"
+        type: string
+        pattern: "^/workspace/output/.*"
+        required: true
+
+  # Only allow specific safe shell commands
+  - name: "exec_shell"
+    action: allow
+    parameters:
+      - name: "command"
+        type: string
+        pattern: "^(ls|git status|npm test)$"
+        required: true</textarea>
+                </div>
+                <div id="lint-chips" style="margin-top: 16px; display: flex; gap: 10px;"></div>
+                
+                <div style="margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 24px; display: flex; justify-content: flex-end; gap: 16px;">
+                    <button id="btn-check" class="btn">
+                        <div class="spinner"></div> Run vexa check
+                    </button>
+                    <button id="btn-save-policy" class="btn btn-primary">
+                        <div class="spinner"></div> <span class="btn-text">Save Policy</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="check-results-card" class="card" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 0;">Validation Results</h3>
+                    <div id="check-exit-badge"></div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table id="check-results-table">
+                        <thead>
+                            <tr>
+                                <th>Tool</th>
+                                <th>Parameters</th>
+                                <th>Verdict</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel 2: Monitor -->
+        <div id="panel-2" class="panel">
+            <h2>Session Monitor</h2>
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+                    <div>
+                        <h3 style="margin-bottom: 8px;">Proxy Control</h3>
+                        <div id="p2-status-badge" class="badge muted">○ STOPPED</div>
+                        <div id="p2-ready-badge" class="badge" style="display: none; margin-left: 8px;"></div>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button id="btn-proxy-start" class="btn btn-primary">
+                            <div class="spinner"></div> Start Proxy
+                        </button>
+                        <button id="btn-proxy-stop" class="btn" style="display: none;">
+                            <div class="spinner"></div> Stop Proxy
+                        </button>
+                    </div>
+                </div>
+                <div id="proxy-error" class="error-banner"></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: end;">
+                    <div>
+                        <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">Listen Address</label>
+                        <input type="text" id="cfg-listen" class="input" value="127.0.0.1:8080">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">Kill Mode</label>
+                        <select id="cfg-kill" class="select">
+                            <option value="both">Both (Connection + Process)</option>
+                            <option value="connection">Connection Only</option>
+                            <option value="process">Process Only</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 0;">Live Stream</h3>
+                    <div id="sse-indicator" style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted);">○ DISCONNECTED</div>
+                </div>
+                <div id="log-container" class="log-container"></div>
+            </div>
+
+            <div class="card">
+                <h3>Simulate Tool Call</h3>
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('read_file', '{\x22path\x22: \x22/workspace/src/main.py\x22}')">Safe Read</button>
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('read_file', '{\x22path\x22: \x22/workspace/.env\x22}')">Block Secrets</button>
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('exec_shell', '{\x22command\x22: \x22ls\x22}')">Allowed Shell</button>
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('exec_shell', '{\x22command\x22: \x22rm -rf /\x22}')">Blocked Shell</button>
+                </div>
+                <div style="display: grid; grid-template-columns: 200px 1fr auto; gap: 12px;">
+                    <input type="text" id="call-tool" class="input" placeholder="Tool Name">
+                    <textarea id="call-params" rows="1" class="input" style="min-height: 40px; padding-top: 10px;">{}</textarea>
+                    <button id="btn-call" class="btn btn-primary">Send</button>
+                </div>
+                <div id="call-error" class="error-banner" style="margin-top: 12px;"></div>
+                <div id="call-result" class="result-box"></div>
+            </div>
+        </div>
+
+        <!-- Panel 3: Logs -->
+        <div id="panel-3" class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+                <h2 style="margin-bottom: 0;">Audit History</h2>
+                <button id="btn-log-refresh" class="btn">
+                    <div class="spinner"></div> Refresh Logs
+                </button>
+            </div>
+            <div class="stats-bar">
+                <div class="stat-item"><span class="stat-label">Total Calls</span><span id="stat-total" class="stat-value">0</span></div>
+                <div class="stat-item"><span class="stat-label">Allowed</span><span id="stat-allowed" class="stat-value" style="color: var(--green)">0</span></div>
+                <div class="stat-item"><span class="stat-label">Denied</span><span id="stat-denied" class="stat-value" style="color: var(--red)">0</span></div>
+                <div class="stat-item"><span class="stat-label">p95 Latency</span><span id="stat-lat" class="stat-value">0ms</span></div>
+            </div>
+            <div class="card">
+                <div style="overflow-x: auto;">
+                    <table id="audit-table">
+                        <thead><tr><th>Time</th><th>Event</th><th>Tool</th><th>Lat</th><th>Result</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel 4: Report -->
+        <div id="panel-4" class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+                <h2 style="margin-bottom: 0;">Session Report</h2>
+                <button id="btn-report-refresh" class="btn btn-primary">Refresh Report</button>
+            </div>
+            <div id="report-empty" style="text-align: center; padding: 64px; border: 1px dashed var(--border-color); border-radius: var(--radius); color: var(--text-muted);">
+                <p>No active session data found.</p>
+            </div>
+            <div id="report-content" style="display: none;">
+                <div class="card" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;">
+                    <div><span class="stat-label">Session ID</span><div id="rep-sid" style="font-family: var(--font-mono); font-size: 0.8rem; margin-top: 8px;"></div></div>
+                    <div><span class="stat-label">Started</span><div id="rep-start" style="font-size: 0.9rem; margin-top: 8px;"></div></div>
+                    <div><span class="stat-label">Ended</span><div id="rep-end" style="font-size: 0.9rem; margin-top: 8px;"></div></div>
+                </div>
+                <div class="stats-bar">
+                    <div class="stat-item"><span class="stat-label">Total</span><span id="rep-total" class="stat-value">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Allowed</span><span id="rep-allowed" class="stat-value" style="color: var(--green)">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Denied</span><span id="rep-denied" class="stat-value" style="color: var(--red)">0</span></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px;">
+                    <div class="card">
+                        <h3>Blocked Incidents</h3>
+                        <table id="rep-denied-table">
+                            <thead><tr><th>Time</th><th>Tool</th><th>Reason</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="card">
+                        <h3>Tool Usage</h3>
+                        <table id="rep-tools-table">
+                            <thead><tr><th>Tool</th><th>Calls</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const BRIDGE_URL = 'http://127.0.0.1:5173';
+let isBridgeReachable = false;
+let isProxyRunning = false;
+const el = id => document.getElementById(id);
+
+const setBtnLoading = (btn, loading) => {
+    const spinner = btn.querySelector('.spinner');
+    if (loading) { btn.disabled = true; if(spinner) spinner.style.display = 'inline-block'; }
+    else { btn.disabled = false; if(spinner) spinner.style.display = 'none'; }
+};
+
+const fetchAPI = async (path, opts = {}) => {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 10000);
+    try {
+        const res = await fetch(`${BRIDGE_URL}${path}`, {
+            ...opts,
+            signal: ctrl.signal,
+            headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+        });
+        clearTimeout(tid);
+        const isJson = res.headers.get('content-type')?.includes('application/json');
+        const data = isJson ? await res.json() : await res.text();
+        if (!res.ok) {
+            const msg = data.error || data || `Server error: ${res.status}`;
+            throw new Error(msg);
+        }
+        return { ok: res.ok, status: res.status, data };
+    } catch (e) { clearTimeout(tid); throw e; }
+};
+
+const checkStatus = async () => {
+    try {
+        const h = await fetchAPI('/healthz');
+        isBridgeReachable = true;
+        
+        const s = await fetchAPI('/proxy/status');
+        isProxyRunning = s.data.running;
+        el('sb-status-dot').className = `status-dot ${isProxyRunning ? 'running' : 'stopped'}`;
+        el('sb-status-text').textContent = isProxyRunning ? 'RUNNING' : 'STOPPED';
+        el('p2-status-badge').className = `badge ${isProxyRunning ? 'green' : 'muted'}`;
+        el('p2-status-badge').textContent = isProxyRunning ? '● RUNNING' : '○ STOPPED';
+        el('btn-proxy-start').style.display = isProxyRunning ? 'none' : 'inline-flex';
+        el('btn-proxy-stop').style.display = isProxyRunning ? 'inline-flex' : 'none';
+        
+        [el('cfg-listen'), el('cfg-kill')].forEach(i => i.disabled = isProxyRunning);
+        
+        if (isProxyRunning) {
+            try {
+                const r = await fetchAPI('/proxy/readyz');
+                const rb = el('p2-ready-badge');
+                rb.style.display = 'inline-block';
+                rb.className = `badge ${r.data.ready ? 'green' : 'amber'}`;
+                rb.textContent = r.data.ready ? 'READY' : 'INITIALIZING';
+            } catch (err) {
+                // Ignore readyz errors
+            }
+        } else {
+            el('p2-ready-badge').style.display = 'none';
+        }
+    } catch {
+        isBridgeReachable = false;
+        el('p2-ready-badge').style.display = 'none';
+    }
+    el('bridge-banner').style.display = isBridgeReachable ? 'none' : 'block';
+};
+setInterval(checkStatus, 2000);
+checkStatus();
+
+document.querySelectorAll('.nav-item').forEach(it => {
+    it.addEventListener('click', () => {
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        it.classList.add('active');
+        const target = it.getAttribute('data-target');
+        el(target).classList.add('active');
+        if (target === 'panel-3') loadAuditLog();
+        if (target === 'panel-4') loadReport();
+    });
+});
+
+// Proxy Controls
+el('btn-proxy-start').onclick = async () => {
+    const btn = el('btn-proxy-start');
+    setBtnLoading(btn, true);
+    el('proxy-error').style.display = 'none';
+    try {
+        const res = await fetchAPI('/proxy/start', {
+            method: 'POST',
+            body: JSON.stringify({ 
+                listen: el('cfg-listen').value, 
+                kill_mode: el('cfg-kill').value
+            })
+        });
+        if (!res.ok) throw new Error(res.data.error || 'Failed to start proxy');
+        setTimeout(checkStatus, 1000);
+    } catch (e) {
+        el('proxy-error').textContent = e.message;
+        el('proxy-error').style.display = 'block';
+    } finally { setBtnLoading(btn, false); }
+};
+
+el('btn-proxy-stop').onclick = async () => {
+    const btn = el('btn-proxy-stop');
+    setBtnLoading(btn, true);
+    try {
+        await fetchAPI('/proxy/stop', { method: 'POST' });
+        setTimeout(checkStatus, 500);
+    } catch (e) { alert(e.message); }
+    finally { setBtnLoading(btn, false); }
+};
+
+// Simulation
+function quickFill(tool, params) {
+    el('call-tool').value = tool;
+    el('call-params').value = params;
+}
+
+el('btn-call').onclick = async () => {
+    const btn = el('btn-call');
+    const resEl = el('call-result');
+    setBtnLoading(btn, true);
+    el('call-error').style.display = 'none';
+    resEl.style.display = 'none';
+    resEl.className = 'result-box';
+
+    try {
+        const res = await fetchAPI('/proxy/call', {
+            method: 'POST',
+            body: JSON.stringify({ tool: el('call-tool').value, params: JSON.parse(el('call-params').value) })
+        });
+        
+        resEl.style.display = 'block';
+        const body = res.data.body || res.data;
+        const isViolation = (body.error && body.error.code === -32001);
+        const isDenied = (res.status === 403) || isViolation;
+        const isAllowed = !isDenied && (res.status === 200 || res.status === 503);
+        
+        let verdict = '';
+        if (isAllowed) {
+            verdict = `<div style="color:var(--green);font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> ALLOWED BY POLICY</div>`;
+            resEl.classList.add('flash-green');
+        } else if (isDenied) {
+            verdict = `<div style="color:var(--red);font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg> DENIED BY POLICY</div><div style="font-size:0.85rem;margin-bottom:12px;opacity:0.8;border-bottom:1px solid var(--border-color);padding-bottom:10px;">${body.error?.message || 'Violation detected'}</div>`;
+            resEl.classList.add('flash-red');
+        }
+        
+        resEl.innerHTML = verdict + `<pre style="font-size:0.8rem;opacity:0.7;max-height:300px;overflow:auto;">${JSON.stringify(body, null, 2)}</pre>`;
+    } catch (e) {
+        el('call-error').textContent = e.message;
+        el('call-error').style.display = 'block';
+    } finally { setBtnLoading(btn, false); }
+};
+
+// SSE
+let eventSource = null;
+const setupSSE = () => {
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource(`${BRIDGE_URL}/log/stream`);
+    const ind = el('sse-indicator');
+    
+    eventSource.onopen = () => { ind.textContent = '● CONNECTED'; ind.style.color = 'var(--green)'; };
+    eventSource.onerror = () => { ind.textContent = '○ DISCONNECTED'; ind.style.color = 'var(--text-muted)'; };
+    eventSource.onmessage = (e) => {
+        try {
+            const log = JSON.parse(e.data);
+            const row = document.createElement('div');
+            row.className = 'log-row';
+            
+            const ts = (log.ts || '').split('T')[1]?.split('.')[0] || '-';
+            const event = log.event || 'UNKNOWN';
+            const tool = log.tool_name || '-';
+            const msg = log.reason || (log.params ? JSON.stringify(log.params) : '');
+            
+            row.innerHTML = `<span class="log-ts">${ts}</span><span class="log-event">${event.toUpperCase()}</span><span class="log-tool">${tool}</span><span class="log-msg">${msg}</span>`;
+            const container = el('log-container');
+            container.prepend(row);
+            if (container.children.length > 100) container.lastChild.remove();
+        } catch(err) { console.error("SSE Parse Error:", err); }
+    };
+};
+setupSSE();
+
+// Audit Log
+async function loadAuditLog() {
+    const btn = el('btn-log-refresh');
+    setBtnLoading(btn, true);
+    try {
+        const res = await fetchAPI('/log/entries?limit=100');
+        const logs = res.data.entries || [];
+        
+        let allowed = 0, denied = 0, totalLat = 0, latCount = 0;
+        logs.forEach(l => {
+            if (l.event === 'tool_allow') allowed++;
+            if (l.event === 'tool_deny') denied++;
+            if (l.latency_ms) { totalLat += l.latency_ms; latCount++; }
+        });
+
+        el('stat-total').textContent = res.data.total || logs.length;
+        el('stat-allowed').textContent = allowed;
+        el('stat-denied').textContent = denied;
+        el('stat-lat').textContent = latCount ? `${Math.round(totalLat/latCount)}ms` : '0ms';
+        
+        const tbody = el('audit-table').querySelector('tbody');
+        tbody.innerHTML = logs.reverse().map(l => {
+            const event = l.event || 'UNKNOWN';
+            const isAllowed = event === 'tool_allow';
+            const tool = l.tool_name || '-';
+            // Display full UTC date and time (YYYY-MM-DD HH:MM:SS)
+            const ts = l.ts ? l.ts.replace('T', ' ').split('.')[0] : '-';
+            return `
+                <tr>
+                    <td style="color:var(--text-muted)">${ts}</td>
+                    <td><span class="badge ${l.level === 'error' || event === 'tool_deny' ? 'red' : 'muted'}">${event.toUpperCase()}</span></td>
+                    <td style="font-family:var(--font-mono)">${tool}</td>
+                    <td>${l.latency_ms ? Math.round(l.latency_ms) : 0}ms</td>
+                    <td><span class="badge ${isAllowed ? 'green' : 'red'}">${isAllowed ? 'ALLOW' : 'BLOCK'}</span></td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) { console.error(e); }
+    finally { setBtnLoading(btn, false); }
+}
+
+// Report
+async function loadReport() {
+    const btn = el('btn-report-refresh');
+    setBtnLoading(btn, true);
+    try {
+        const res = await fetchAPI('/report', { 
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        if (res.ok && res.data.session_id) {
+            el('report-empty').style.display = 'none';
+            el('report-content').style.display = 'block';
+            const d = res.data;
+            el('rep-sid').textContent = d.session_id;
+            el('rep-start').textContent = d.started_at ? new Date(d.started_at).toLocaleString() : '-';
+            el('rep-end').textContent = d.ended_at ? new Date(d.ended_at).toLocaleString() : 'Active';
+            
+            const sum = d.summary || {};
+            el('rep-total').textContent = sum.total_calls || 0;
+            el('rep-allowed').textContent = sum.allowed || 0;
+            el('rep-denied').textContent = sum.denied || 0;
+            
+            el('rep-denied-table').querySelector('tbody').innerHTML = (d.denied_calls || []).map(i => `
+                <tr><td>${(i.ts || '').split('T')[1]?.split('.')[0] || '-'}</td><td>${i.tool || '-'}</td><td>${i.reason || '-'}</td></tr>
+            `).join('');
+            
+            el('rep-tools-table').querySelector('tbody').innerHTML = (d.tools_used || []).map(t => `
+                <tr><td>${t.name}</td><td>${t.call_count}</td></tr>
+            `).join('');
+        } else {
+            el('report-empty').style.display = 'block';
+            el('report-content').style.display = 'none';
+            if (!res.ok) throw new Error(res.data?.error || 'Failed to fetch report');
+        }
+    } catch (e) {
+        alert("Report error: " + e.message);
+        el('report-empty').style.display = 'block';
+        el('report-content').style.display = 'none';
+        el('report-empty').textContent = 'Error: ' + e.message;
+    } finally {
+        setBtnLoading(btn, false);
+    }
+}
+
+const bind = (id, evt, fn) => {
+    const e = el(id);
+    if (e) e.addEventListener(evt, fn);
+};
+
+bind('btn-log-refresh', 'click', loadAuditLog);
+bind('btn-report-refresh', 'click', loadReport);
+
+bind('btn-verify', 'click', async () => {
+    const btn = el('btn-verify');
+    setBtnLoading(btn, true);
+    try {
+        const res = await fetchAPI('/verify-log', { method: 'POST' });
+        const ban = el('verify-banner');
+        if (!ban) return;
+        ban.style.display = 'block';
+        
+        if (res.ok && res.data.intact) {
+            ban.style.backgroundColor = 'rgba(63, 185, 80, 0.1)';
+            ban.style.color = 'var(--green)';
+            ban.style.border = '1px solid rgba(63, 185, 80, 0.2)';
+            ban.textContent = '✓ Log integrity verified successfully. No tampering detected.';
+        } else {
+            ban.style.backgroundColor = 'rgba(248, 81, 73, 0.1)';
+            ban.style.color = 'var(--red)';
+            ban.style.border = '1px solid rgba(248, 81, 73, 0.2)';
+            const reason = res.data?.output || res.data?.error || 'Verification check failed.';
+            ban.textContent = `⚠ Log verification failed! ${reason}`;
+        }
+    } catch (e) { alert(e.message); }
+    finally { setBtnLoading(btn, false); }
+});
+
+bind('btn-check', 'click', async () => {
+    const btn = el('btn-check');
+    setBtnLoading(btn, true);
+    try {
+        const res = await fetchAPI('/check', {
+            method: 'POST',
+            body: JSON.stringify({ 
+                policy: el('policy-editor').value,
+                fixture: [
+                    {"tool": "read_file",      "params": {"path": "/workspace/src/main.py"}},
+                    {"tool": "list_directory", "params": {"path": "/workspace/src"}},
+                    {"tool": "read_file",      "params": {"path": "/etc/passwd"}},
+                    {"tool": "exec_shell",     "params": {"command": "ls"}},
+                    {"tool": "exec_shell",     "params": {"command": "rm -rf /"}}
+                ]
+            })
+        });
+        
+        const card = el('check-results-card');
+        if (card) card.style.display = 'block';
+        const badge = el('check-exit-badge');
+        const code = res.data.exit_code;
+        
+        if (badge) {
+            if (code === 0) {
+                badge.className = 'badge green';
+                badge.textContent = 'ALL ALLOWED';
+            } else if (code === 1) {
+                badge.className = 'badge amber';
+                badge.textContent = 'POLICY ENFORCED';
+            } else {
+                badge.className = 'badge red';
+                badge.textContent = 'CHECK ERROR';
+            }
+        }
+
+        const lines = (res.data.stdout || res.data.stderr || "").split('\n').filter(l => l.trim());
+        const table = el('check-results-table');
+        if (table) {
+            const tbody = table.querySelector('tbody');
+            if (code > 1) {
+                // If it's a real error (not just a denial), show the raw output as an error row
+                tbody.innerHTML = `<tr><td colspan="4" style="color:var(--red); padding: 20px; text-align: center;">${res.data.output || 'Internal verification error'}</td></tr>`;
+            } else {
+                tbody.innerHTML = lines.map(line => {
+                    const parts = line.split(' ');
+                    const verdict = parts[0] || 'UNKNOWN';
+                    const tool = parts[1] || '-';
+                    const rest = parts.slice(2).join(' ');
+                    
+                    let params = '-';
+                    let reason = '-';
+                    if (verdict === 'ALLOW') {
+                        params = rest;
+                    } else {
+                        reason = rest;
+                    }
+                    
+                    return `
+                        <tr>
+                            <td style="font-family:var(--font-mono)">${tool}</td>
+                            <td style="font-size:0.8rem; opacity:0.8">${params}</td>
+                            <td><span class="badge ${verdict === 'ALLOW' ? 'green' : 'red'}">${verdict}</span></td>
+                            <td style="font-size:0.8rem; opacity:0.8; color: ${verdict === 'ALLOW' ? 'inherit' : 'var(--red)'}">${reason}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+            
+            table.style.display = 'table';
+            if (table.nextElementSibling?.tagName === 'PRE') {
+                table.nextElementSibling.remove();
+            }
+        }
+
+    } catch (e) { alert(e.message); }
+    finally { setBtnLoading(btn, false); }
+});
+
+bind('btn-save-policy', 'click', async () => {
+    const btn = el('btn-save-policy');
+    setBtnLoading(btn, true);
+    try {
+        const res = await fetchAPI('/policy/save', {
+            method: 'POST',
+            body: JSON.stringify({ policy: el('policy-editor').value })
+        });
+        if (res.ok) {
+            const span = btn.querySelector('.btn-text');
+            if (span) {
+                const originalText = span.textContent;
+                span.textContent = '✓ Saved';
+                btn.classList.add('green');
+                setTimeout(() => {
+                    span.textContent = originalText;
+                    btn.classList.remove('green');
+                }, 2000);
+            }
+        } else {
+            throw new Error(res.data.error || 'Failed to save');
+        }
+    } catch (e) { alert(e.message); }
+    finally { setBtnLoading(btn, false); }
+});
+</script>
+</body>
+</html>
