@@ -1,52 +1,298 @@
-# VEXA AgentWall Demo UI
+# VEXA AgentWall — Demo UI
 
-This is a professional, local-first single-page application (SPA) to demonstrate Phase 1 of the VEXA AgentWall security proxy. It connects to the `vexa` CLI tool running on your system to process actual commands and interact with its logic.
+A **local-first, zero-build** interactive dashboard for exploring VEXA AgentWall. It connects to the `agentwall` binary running on your machine via a lightweight Python bridge server, giving you a full GUI to edit policies, start/stop the proxy, simulate tool calls, and inspect the audit trail — all without touching the command line after the initial setup.
+
+---
+
+## Contents
+
+```
+demo-ui/
+├── index.html      # Single-page dashboard — open directly in your browser
+├── bridge.py       # Python bridge server (Flask + flask-cors)
+├── policy.yaml     # Default demo policy loaded into the editor on first launch
+└── README.md       # This file
+```
+
+---
+
+## How It Works
+
+```
+Browser (index.html)
+       │  fetch() / EventSource
+       ▼
+bridge.py  ← Flask HTTP server on localhost:5173
+       │  subprocess.run() / subprocess.Popen()
+       ▼
+agentwall.exe  ← the compiled Rust binary
+       │  HMAC-chained JSON audit log
+       ▼
+audit.log
+```
+
+- `index.html` is a pure HTML + Vanilla JS SPA. It makes REST calls to the bridge on `http://127.0.0.1:5173`.
+- `bridge.py` wraps `agentwall` subcommands, manages the proxy process lifetime, tails the audit log, and streams new entries to the browser via **Server-Sent Events (SSE)**.
+- No npm, no build step, no bundler. Open `index.html` directly.
+
+---
 
 ## Prerequisites
 
-1. **Python 3.x**: Make sure you have Python installed. You can check by running `python --version` in your terminal.
-2. **VEXA CLI Binary**: You need a compiled version of the `vexa` binary. Since you are on Windows, this is usually located in the `target/debug` or `target/release` folder after running `cargo build`.
+| Requirement | Notes |
+|---|---|
+| **Python 3.8+** | Verify with `python --version` |
+| **agentwall binary** | Build from root: `cargo build --release` → `target\release\agentwall.exe` |
+| **Flask & flask-cors** | Install once: `pip install flask flask-cors` |
+| **Modern browser** | Chrome, Edge, or Firefox (Safari works but SSE reconnect may vary) |
+
+---
 
 ## Setup & Installation
 
-The bridge server requires a couple of standard Python packages (`flask` and `flask-cors`) to handle HTTP requests from the demo UI to the VEXA binary. 
+### 1. Build the Binary
 
-Open your terminal, navigate to this `demo-ui` folder, and run:
+From the repository root:
+
+```powershell
+cargo build --release
+```
+
+The binary will be at `target\release\agentwall.exe`.
+
+### 2. Install Python Dependencies
 
 ```powershell
 pip install flask flask-cors
 ```
 
+---
+
 ## Running the Demo
 
-### Step 1: Start the Bridge Server
+### Step 1 — Start the Bridge Server
 
-The Python bridge server acts as a middleman between the web browser UI and your local VEXA binary. 
-
-From inside the `demo-ui` folder, run the following command. Note that you need to point `--vexa-bin` to where your compiled `vexa.exe` is located. Assuming it's one folder up in the debug build path, you would run:
+Navigate to the `demo-ui` folder and start the bridge, pointing `--vexa-bin` at your compiled binary:
 
 ```powershell
-python bridge.py --vexa-bin ..\target\debug\vexa.exe
+cd demo-ui
+python bridge.py --vexa-bin ..\target\release\agentwall.exe
 ```
 
-*(If your binary is somewhere else, just change the path after `--vexa-bin`)*
+You should see:
 
-**Optional configuration flags:**
-- `--policy`: Path to the policy YAML file (default: `./policy.yaml`)
-- `--log-path`: Path where the audit log will be written/tailed (default: `./audit.log`)
-- `--port`: The port the bridge server runs on (default: `5173`)
+```
+============================================================
+ VEXA AGENTWALL - BRIDGE SERVER
+ Status:        RUNNING
+ Bridge URL:   http://127.0.0.1:5173
+ Vexa Binary:  ..\target\release\agentwall.exe
+ Policy File:  C:\...\demo-ui\policy.yaml
+------------------------------------------------------------
+ Press Ctrl+C to shutdown.
+============================================================
+```
 
-### Step 2: Open the Web UI
+#### All Bridge Options
 
-Once the bridge server is running and says "VEXA AgentWall Bridge Server", you can start the UI. 
+| Flag | Default | Description |
+|---|---|---|
+| `--vexa-bin` | `./vexa` | Path to the `agentwall` / `vexa` binary |
+| `--policy` | `./policy.yaml` | Default policy YAML file used by the proxy and editor |
+| `--log-path` | `./audit.log` | Audit log file to write and tail |
+| `--listen` | `127.0.0.1:8080` | Address the proxy will listen on |
+| `--report-path` | `./session-report.json` | Where the proxy writes the session report on shutdown |
+| `--port` | `5173` | Port the bridge HTTP server listens on |
 
-Simply double-click the `index.html` file in your File Explorer to open it in your default web browser.
+**Example with custom paths:**
 
-## How to Use the Demo
+```powershell
+python bridge.py `
+  --vexa-bin   ..\target\release\agentwall.exe `
+  --policy     .\my-policy.yaml `
+  --log-path   .\my-session.log `
+  --listen     127.0.0.1:9090 `
+  --port       5173
+```
 
-The UI is divided into 4 main sections that you can navigate through the sidebar:
+### Step 2 — Open the UI
 
-- **Policy Editor ([P])**: A pre-loaded testing policy where you can simulate and validate rules. Click "Run vexa check" to simulate pre-flight validation against built-in sample tool calls.
-- **Session Monitor ([S])**: Click "Start Proxy" to run the local proxy. You can watch live log streams and manually simulate JSON-RPC tool calls to see how the proxy allows or denies them in real-time based on your policy.
-- **Audit Log ([A])**: A historical view of all tool calls made during your session. You can click "Run vexa verify-log" to verify the log's cryptographic integrity.
-- **Session Report ([R])**: Generates a high-level summary of the session using the `vexa report` command, displaying allowed vs. denied calls and other useful proxy statistics. You can view this formatted nicely or as raw JSON.
+Simply double-click `index.html` in File Explorer, or drag it into your browser. It will automatically connect to the bridge on `http://127.0.0.1:5173`.
+
+> **Bridge Banner:** If a red warning banner appears at the top ("Bridge server disconnected"), the bridge is not running or is on a different port. Check your terminal.
+
+---
+
+## UI Panels
+
+### 01 — Policy Editor
+
+Edit your YAML security policy live in the browser.
+
+| Action | What Happens |
+|---|---|
+| **Edit the YAML** | Modify the policy directly in the code editor |
+| **Save Policy** | Writes the YAML to the `--policy` file on disk via `POST /policy/save` |
+| **Run vexa check** | Runs `agentwall check` against a built-in set of sample tool calls and shows a pass/fail table |
+
+The built-in check fixtures test:
+- `read_file` with a safe path → **ALLOW**
+- `read_file` with a secrets path → **DENY**
+- `write_file` to the output dir → **ALLOW**
+- `exec_shell` with an allowed command → **ALLOW**
+- `exec_shell` with `rm -rf /` → **DENY**
+
+> **Tip:** Edit the policy, save it, then re-run `vexa check` to immediately see how your changes affect enforcement — without starting the proxy.
+
+---
+
+### 02 — Session Monitor
+
+Start and stop the `agentwall` proxy and watch it enforce policy in real time.
+
+#### Proxy Controls
+
+| Field | Description |
+|---|---|
+| **Listen Address** | The `host:port` the proxy binds to (e.g., `127.0.0.1:8080`) |
+| **Kill Mode** | `both` (default), `connection`, or `process` — action taken on a policy violation |
+| **Start Proxy** | Calls `POST /proxy/start` → spawns `agentwall start` as a subprocess |
+| **Stop Proxy** | Calls `POST /proxy/stop` → gracefully terminates the process |
+
+The sidebar status dot and badge update every 2 seconds to reflect the current proxy state (`STOPPED` / `RUNNING` / `READY` / `INITIALIZING`).
+
+#### Live Log Stream
+
+The bridge tails `audit.log` and pushes new entries to the browser via **Server-Sent Events**. The SSE indicator in the top-right of the card shows `● CONNECTED` when the stream is live.
+
+Each row shows:
+- **Time** — HH:MM:SS from the log entry timestamp
+- **Event** — e.g., `TOOL_ALLOW`, `TOOL_DENY`, `RATE_LIMIT_DENY`, `DRY_RUN_DENY`
+- **Tool** — the MCP tool name
+- **Message** — the reason or parameter snapshot
+
+#### Simulate Tool Call
+
+Send a JSON-RPC tool call directly to the running proxy to see it be allowed or denied in real time.
+
+**Quick-fill presets:**
+
+| Button | Tool | Path/Command | Expected |
+|---|---|---|---|
+| Safe Read | `read_file` | `/workspace/src/main.py` | ✅ ALLOW |
+| Block Secrets | `read_file` | `/workspace/.env` | 🚫 DENY |
+| Allowed Shell | `exec_shell` | `ls` | ✅ ALLOW |
+| Blocked Shell | `exec_shell` | `rm -rf /` | 🚫 DENY |
+
+Or enter any tool name and JSON parameters manually and click **Send**. The result card animates green for `ALLOWED` and red for `DENIED`.
+
+---
+
+### 03 — Audit History
+
+A historical view of the entire `audit.log` file, refreshed on demand.
+
+**Stats bar** (top of panel):
+
+| Stat | Source |
+|---|---|
+| Total Calls | Count of all log entries |
+| Allowed | Entries with `event: tool_allow` |
+| Denied | Entries with `event: tool_deny` or `rate_limit_deny` |
+| p95 Latency | 95th percentile of `latency_ms` across all entries |
+
+**Actions:**
+- **Refresh Logs** — reloads up to the last 100 entries from `GET /log/entries?limit=100`
+- **Run vexa verify-log** — calls `agentwall verify-log` on the current log file and displays whether the HMAC chain is intact (`✓ Chain intact`) or broken (`✗ Tampered`)
+
+---
+
+### 04 — Session Report
+
+Generates a high-level analytics report from the audit log using `agentwall report`.
+
+Displays:
+- **Session ID**, **Started**, **Ended** timestamps
+- **Total / Allowed / Denied** call counts
+- **Blocked Incidents** table — tool name, time, and denial reason for every blocked call
+- **Tool Usage** table — per-tool call counts across the session
+
+Click **Refresh Report** to re-run the report command against the current log.
+
+---
+
+## Bridge API Reference
+
+The bridge exposes a simple REST API on `http://127.0.0.1:5173`:
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/healthz` | Bridge health check — returns `{"bridge": "ok"}` |
+| `POST` | `/proxy/start` | Spawn the `agentwall start` subprocess |
+| `POST` | `/proxy/stop` | Terminate the running proxy |
+| `GET` | `/proxy/status` | Returns `{"running": bool, "pid": int\|null}` |
+| `GET` | `/proxy/readyz` | Polls the proxy's `/readyz` endpoint |
+| `POST` | `/proxy/call` | Forward a simulated tool call to the running proxy |
+| `POST` | `/check` | Run `agentwall check` with a policy string and fixture array |
+| `POST` | `/policy/save` | Write policy content to the configured policy file |
+| `POST` | `/verify-log` | Run `agentwall verify-log` on the audit log |
+| `POST` | `/report` | Run `agentwall report --format json` and return the parsed result |
+| `GET` | `/log/entries` | Return last N log entries from the audit log (query: `?limit=N`) |
+| `GET` | `/log/stream` | Server-Sent Events stream of new log lines as they are written |
+
+---
+
+## Troubleshooting
+
+### "Bridge server disconnected" banner
+
+- The bridge is not running, or it's on a different port.
+- Check your terminal for errors.
+- Make sure you started `bridge.py` before opening `index.html`.
+
+### "Binary not found" error on Start Proxy
+
+- The `--vexa-bin` path is wrong.
+- Build first: `cargo build --release` from the repo root.
+- Use the full path if needed: `--vexa-bin C:\path\to\agentwall.exe`
+
+### Proxy fails to start with stderr output
+
+- Another process may already be listening on the same port. Change `--listen` or kill the other process.
+- Check that the policy file path is correct and readable.
+
+### SSE shows "○ DISCONNECTED"
+
+- The bridge is running but SSE failed. This can happen if the browser blocked the connection.
+- Try refreshing the page. The bridge auto-reconnects SSE clients.
+
+### Log stream shows no entries
+
+- Start the proxy first (Session Monitor panel), then simulate a tool call.
+- The log tailer starts from the *end* of the file on first open, so pre-existing entries won't be streamed — use the **Audit History** panel to view those.
+
+### Verify-log shows "Tampered"
+
+- The audit log was modified externally (e.g., edited in a text editor, truncated).
+- This is expected if you manually edited `audit.log`. Delete it and start a fresh session to get a clean chain.
+
+---
+
+## Resetting a Session
+
+To start fresh:
+
+```powershell
+# Stop the bridge (Ctrl+C in its terminal), then:
+Remove-Item .\audit.log -ErrorAction SilentlyContinue
+Remove-Item .\session-report.json -ErrorAction SilentlyContinue
+
+# Restart the bridge
+python bridge.py --vexa-bin ..\target\release\agentwall.exe
+```
+
+---
+
+## License
+
+Apache-2.0 © NoviqTech — see [LICENSE](../LICENSE) for details.
