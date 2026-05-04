@@ -1,7 +1,7 @@
 use std::io::Write;
 use tempfile::NamedTempFile;
-use vexa::audit::logger::{AuditLogger, ZERO_HMAC};
-use vexa::audit::verifier::{verify_chain, verify_chain_with_secret, VerifyResult};
+use agentwall::audit::logger::{AuditLogger, ZERO_HMAC};
+use agentwall::audit::verifier::{verify_chain, verify_chain_with_secret, VerifyResult};
 
 #[test]
 fn test_hmac_chain() {

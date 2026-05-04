@@ -1,4 +1,4 @@
-//! Audit log HMAC chain verification (vexa verify-log)
+//! Audit log HMAC chain verification (agentwall verify-log)
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -41,24 +41,39 @@ pub fn verify_chain(log_path: &Path) -> VerifyResult {
             }
         };
 
-        if line.trim().is_empty() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
             continue;
         }
 
-        let entry: AuditEntry = match serde_json::from_str(&line) {
+        let entry: AuditEntry = match serde_json::from_str(trimmed) {
             Ok(e) => e,
-            Err(e) => {
-                return VerifyResult::Error(format!(
-                    "Malformed JSON at line {}: {}",
-                    line_num + 1,
+            Err(_) => {
+                let mut stream = serde_json::Deserializer::from_str(trimmed).into_iter::<AuditEntry>();
+                if let Some(Ok(e)) = stream.next() {
                     e
-                ))
+                } else {
+                    return VerifyResult::Error(format!(
+                        "Malformed JSON at line {}: {}",
+                        line_num + 1,
+                        line
+                    ));
+                }
             }
         };
 
-        // Handle FR-109 log rotation seed
-        if count == 0 && entry.event == "log_rotation_seed" {
-            prev_hmac = entry.prev_hmac.clone();
+        // Debug trace
+        println!("[DEBUG] Verifier processing line {}: entry_index={}, event={}", line_num + 1, entry.entry_index, entry.event);
+
+        // Handle Session Reset (FR-109)
+        // If we see entry_index 0, we treat it as a new valid chain start
+        if entry.entry_index == 0 {
+            count = 0;
+            prev_hmac = ZERO_HMAC.to_string();
+            // If this is a rotation seed, it carries its own prev_hmac
+            if entry.event == "log_rotation_seed" {
+                prev_hmac = entry.prev_hmac.clone();
+            }
         }
 
         // Verify entry_index matches expected sequence
@@ -113,14 +128,19 @@ pub fn verify_chain_with_secret(log_path: &Path, session_secret: &[u8]) -> Verif
             continue;
         }
 
-        let entry: AuditEntry = match serde_json::from_str(&line) {
+        let entry: AuditEntry = match serde_json::from_str(line.trim()) {
             Ok(e) => e,
-            Err(e) => {
-                return VerifyResult::Error(format!(
-                    "Malformed JSON at line {}: {}",
-                    line_num + 1,
+            Err(_) => {
+                let mut stream = serde_json::Deserializer::from_str(line.trim()).into_iter::<AuditEntry>();
+                if let Some(Ok(e)) = stream.next() {
                     e
-                ))
+                } else {
+                    return VerifyResult::Error(format!(
+                        "Malformed JSON at line {}: {}",
+                        line_num + 1,
+                        line
+                    ));
+                }
             }
         };
 

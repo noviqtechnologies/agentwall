@@ -1,4 +1,4 @@
-//! `vexa check` subcommand — pre-flight policy check (FR-108)
+//! `agentwall check` subcommand — pre-flight policy check (FR-108)
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;

@@ -9,30 +9,43 @@ import urllib.request
 import urllib.error
 import tempfile
 import atexit
-from flask import Flask, request, jsonify, Response, stream_with_context, cli
+import signal
+from flask import Flask, request, jsonify, Response, stream_with_context, cli, send_from_directory
 from flask_cors import CORS
 import logging
 
-def cleanup():
+def cleanup(signum=None, frame=None):
     global proxy_process
-    with proxy_lock:
-        if proxy_process is not None and proxy_process.poll() is None:
-            print("[INFO] Cleaning up: Stopping proxy...")
-            proxy_process.terminate()
-            try:
-                proxy_process.wait(timeout=2)
-            except:
-                proxy_process.kill()
+    try:
+        with proxy_lock:
+            if proxy_process is not None and proxy_process.poll() is None:
+                print("\n[INFO] Shutdown signal received. Stopping proxy...")
+                proxy_process.terminate()
+                try:
+                    proxy_process.wait(timeout=2)
+                except:
+                    proxy_process.kill()
+    except:
+        pass
+    if signum:
+        os._exit(0)
 
+# Register for both standard exit and Ctrl+C
 atexit.register(cleanup)
+signal.signal(signal.SIGINT, cleanup)
+signal.signal(signal.SIGTERM, cleanup)
 
 # Suppress Flask development server banner and logs
 cli.show_server_banner = lambda *args: None
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.')
 CORS(app)
+
+@app.route('/')
+def index():
+    return send_from_directory('.', 'index.html')
 
 cfg = {}
 
@@ -43,45 +56,52 @@ log_subscribers = []
 subscribers_lock = threading.Lock()
 
 def log_tailer_daemon():
-    last_ino = -1
+    last_size = -1
+    
     while True:
         try:
             if not os.path.exists(cfg['log_path']):
-                last_ino = -1
-                time.sleep(0.5)
+                last_size = -1
+                time.sleep(1)
                 continue
                 
-            st = os.stat(cfg['log_path'])
-            if st.st_ino != last_ino:
-                f = open(cfg['log_path'], 'r')
-                if last_ino == -1:
-                    f.seek(0, 2)  # Seek to end on first open
-                last_ino = st.st_ino
-                
-                with f:
+            curr_size = os.path.getsize(cfg['log_path'])
+            
+            # First run: start at current end
+            if last_size == -1:
+                last_size = curr_size
+                time.sleep(0.5)
+                continue
+
+            # If file shrunk (rotated), reset
+            if curr_size < last_size:
+                last_size = 0
+
+            # If file grew, read the new data
+            if curr_size > last_size:
+                # We open and close quickly to avoid lock conflicts
+                with open(cfg['log_path'], 'r', encoding='utf-8', errors='replace') as f:
+                    f.seek(last_size)
                     while True:
                         line = f.readline()
                         if not line:
-                            # Check if file was replaced or truncated
-                            try:
-                                st_now = os.stat(cfg['log_path'])
-                                if st_now.st_ino != last_ino or st_now.st_size < f.tell():
-                                    break # Re-open
-                            except FileNotFoundError:
-                                break
-                            time.sleep(0.05)
-                            continue
+                            break
                         
-                        with subscribers_lock:
-                            for q in log_subscribers:
-                                try:
-                                    q.put_nowait(line.strip())
-                                except queue.Full:
-                                    pass
-            else:
-                time.sleep(0.1)
+                        clean_line = line.strip()
+                        if clean_line:
+                            with subscribers_lock:
+                                for sub in log_subscribers:
+                                    try:
+                                        sub.put_nowait(clean_line)
+                                    except:
+                                        pass
+                last_size = curr_size
+            
+            time.sleep(0.3)
+
         except Exception as e:
-            time.sleep(0.5)
+            # Silent retry
+            time.sleep(1)
 
 @app.route('/healthz', methods=['GET'])
 def healthz():
@@ -228,23 +248,45 @@ def save_policy():
 
 @app.route('/verify-log', methods=['POST'])
 def verify_log():
-    data = request.json or {}
-    log_path = data.get('log_path', cfg['log_path'])
-    
     try:
-        cmd = [cfg['vexa_bin'], 'verify-log', log_path]
+        # Be lenient with JSON parsing
+        try:
+            data = request.get_json(silent=True) or {}
+        except:
+            data = {}
+            
+        log_path = os.path.abspath(data.get('log_path', cfg.get('log_path', 'audit.log')))
+        bin_path = os.path.abspath(cfg.get('vexa_bin', 'agentwall.exe'))
+        
+        print(f"[DEBUG] Verifying log: {log_path} using {bin_path}")
+        
+        if not os.path.exists(bin_path):
+            return jsonify({"error": f"Binary not found at {bin_path}"}), 404
+
+        cmd = [bin_path, "verify-log", log_path]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        print(f"[DEBUG] Verify exit_code: {proc.returncode}")
+        if proc.stdout: print(f"[DEBUG] Verify stdout: {proc.stdout.strip()}")
+        if proc.stderr: print(f"[DEBUG] Verify stderr: {proc.stderr.strip()}")
+        
+        # Handle the "Empty log file" case gracefully for the UI
+        if proc.returncode != 0 and "Empty log file" in proc.stderr:
+            return jsonify({
+                "exit_code": 0,
+                "stdout": "Log is empty. Start a session to generate entries.",
+                "stderr": "",
+                "is_empty": True
+            })
+
         return jsonify({
             "exit_code": proc.returncode,
             "stdout": proc.stdout,
-            "stderr": proc.stderr,
-            "intact": proc.returncode == 0,
-            "output": (proc.stdout + "\n" + proc.stderr).strip()
+            "stderr": proc.stderr
         })
-    except FileNotFoundError:
-        return jsonify({"error": f"Binary not found: {cfg['vexa_bin']}"}), 500
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Command timed out"}), 500
+    except Exception as e:
+        print(f"[ERROR] Verification failed: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/report', methods=['POST'])
 def report():
@@ -303,6 +345,17 @@ def log_stream():
         with subscribers_lock:
             log_subscribers.append(q)
             
+        # Pre-populate with last 10 lines for context
+        try:
+            if os.path.exists(cfg['log_path']):
+                with open(cfg['log_path'], 'r') as f:
+                    lines = f.readlines()
+                    for line in lines[-10:]:
+                        if line.strip():
+                            q.put(line.strip())
+        except:
+            pass
+
         try:
             while True:
                 try:

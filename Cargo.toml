@@ -1,5 +1,5 @@
 [package]
-name = "vexa"
+name = "agentwall"
 version = "1.0.3"
 edition = "2021"
 description = "VEXA AgentWall — local-first sidecar proxy enforcing deterministic security policies for AI agents over MCP"
@@ -10,7 +10,7 @@ name = "agentwall"
 path = "src/main.rs"
 
 [lib]
-name = "vexa"
+name = "agentwall"
 path = "src/lib.rs"
 
 [dependencies]
@@ -24,6 +24,7 @@ serde_yaml = "0.9"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+socket2 = { version = "0.5", features = ["all"] }
 
 # HTTP
 hyper = { version = "1", features = ["full"] }

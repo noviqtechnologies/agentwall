@@ -7,6 +7,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -21,7 +22,19 @@ pub async fn run_server(
     listen_addr: SocketAddr,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let listener = TcpListener::bind(listen_addr).await?;
+    // Enable SO_REUSEADDR to handle TIME_WAIT on Windows (FR-101)
+    let domain = if listen_addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
+    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
+    
+    socket.set_reuse_address(true)?;
+    // On Unix we'd use set_reuse_port(true) too, but on Windows reuse_address is enough
+    
+    socket.bind(&listen_addr.into())?;
+    socket.listen(128)?;
+    
+    let std_listener: std::net::TcpListener = socket.into();
+    std_listener.set_nonblocking(true)?;
+    let listener = TcpListener::from_std(std_listener)?;
 
     loop {
         tokio::select! {

@@ -629,7 +629,9 @@ tools:
 </div>
 
 <script>
-const BRIDGE_URL = window.location.origin;
+const BRIDGE_URL = (window.location.origin && window.location.origin !== 'null' && window.location.protocol.startsWith('http')) 
+    ? window.location.origin 
+    : 'http://127.0.0.1:5173';
 let isBridgeReachable = false;
 let isProxyRunning = false;
 const el = id => document.getElementById(id);
@@ -798,7 +800,7 @@ const setupSSE = () => {
     eventSource = new EventSource(`${BRIDGE_URL}/log/stream`);
     const ind = el('sse-indicator');
     
-    eventSource.onopen = () => { ind.textContent = '● CONNECTED'; ind.style.color = 'var(--green)'; el('log-container').innerHTML = ''; };
+    eventSource.onopen = () => { ind.textContent = '● CONNECTED'; ind.style.color = 'var(--green)'; };
     eventSource.onerror = () => { ind.textContent = '○ DISCONNECTED'; ind.style.color = 'var(--text-muted)'; };
     eventSource.onmessage = (e) => {
         try {
@@ -922,16 +924,24 @@ bind('btn-verify', 'click', async () => {
         if (!ban) return;
         ban.style.display = 'block';
         
-        if (res.ok && res.data.intact) {
-            ban.style.backgroundColor = 'rgba(63, 185, 80, 0.1)';
-            ban.style.color = 'var(--green)';
-            ban.style.border = '1px solid rgba(63, 185, 80, 0.2)';
-            ban.textContent = '✓ Log integrity verified successfully. No tampering detected.';
+        const data = res.data || {};
+        if (res.ok && data.exit_code === 0) {
+            if (data.is_empty) {
+                ban.style.backgroundColor = 'rgba(100, 100, 100, 0.1)';
+                ban.style.color = 'var(--text-muted)';
+                ban.style.border = '1px solid rgba(100, 100, 100, 0.2)';
+                ban.textContent = 'ℹ️ ' + (data.stdout || 'Log is empty. Start a session to generate entries.');
+            } else {
+                ban.style.backgroundColor = 'rgba(63, 185, 80, 0.1)';
+                ban.style.color = 'var(--green)';
+                ban.style.border = '1px solid rgba(63, 185, 80, 0.2)';
+                ban.textContent = '✓ Log integrity verified successfully. No tampering detected.';
+            }
         } else {
             ban.style.backgroundColor = 'rgba(248, 81, 73, 0.1)';
             ban.style.color = 'var(--red)';
             ban.style.border = '1px solid rgba(248, 81, 73, 0.2)';
-            const reason = res.data?.output || res.data?.error || 'Verification check failed.';
+            const reason = data.stderr || data.error || 'Verification check failed.';
             ban.textContent = `⚠ Log verification failed! ${reason}`;
         }
     } catch (e) { alert(e.message); }

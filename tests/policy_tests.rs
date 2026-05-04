@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde_json::json;
-use vexa::policy::engine::{CompiledParam, CompiledPolicy, CompiledTool, EvalResult};
-use vexa::policy::schema::ParamType;
+use agentwall::policy::engine::{CompiledParam, CompiledPolicy, CompiledTool, EvalResult};
+use agentwall::policy::schema::ParamType;
 
 #[test]
 fn test_allowlist_evaluation() {

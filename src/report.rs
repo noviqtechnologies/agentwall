@@ -67,11 +67,25 @@ pub fn generate_report(
     let mut raw_lines = Vec::new();
     for (i, line) in reader.lines().enumerate() {
         let line = line.map_err(|e| format!("Read error at line {}: {}", i + 1, e))?;
-        if line.trim().is_empty() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
             continue;
         }
-        let entry: crate::audit::logger::AuditEntry =
-            serde_json::from_str(&line).map_err(|e| format!("Invalid JSON at line {}: {}", i + 1, e))?;
+        
+        // Use from_str but catch trailing characters by allowing partial parse if needed
+        // though normally serde_json::from_str is strict.
+        let entry: crate::audit::logger::AuditEntry = match serde_json::from_str(trimmed) {
+            Ok(e) => e,
+            Err(_) => {
+                // Fallback: Try to parse just the first object in case of trailing junk
+                let mut stream = serde_json::Deserializer::from_str(trimmed).into_iter::<crate::audit::logger::AuditEntry>();
+                if let Some(Ok(e)) = stream.next() {
+                    e
+                } else {
+                    return Err(format!("Invalid JSON at line {}: {}", i + 1, line));
+                }
+            }
+        };
         raw_lines.push(entry);
     }
 
@@ -170,7 +184,7 @@ pub fn generate_report(
 
 pub fn format_text_report(report: &SessionReport) -> String {
     let mut out = String::new();
-    out.push_str("VEXA AgentWall Session Report\n");
+    out.push_str("AgentWall Session Report\n");
     out.push_str("──────────────────────────────\n");
     out.push_str(&format!("Session:     {}\n", report.session_id));
     let hash_disp = if report.policy_hash.len() > 19 {

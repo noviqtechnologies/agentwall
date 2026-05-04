@@ -1,13 +1,13 @@
-//! VEXA AgentWall — main entry point
+//! AgentWall — main entry point
 
-use vexa::audit;
-use vexa::check;
-use vexa::cli;
-use vexa::kill;
-use vexa::policy;
-use vexa::proxy;
-use vexa::report;
-use vexa::{log_error, log_info, log_warn};
+use agentwall::audit;
+use agentwall::check;
+use agentwall::cli;
+use agentwall::kill;
+use agentwall::policy;
+use agentwall::proxy;
+use agentwall::report;
+use agentwall::{log_error, log_info, log_warn};
 
 use clap::Parser;
 use std::net::SocketAddr;
@@ -131,7 +131,7 @@ async fn run_start(
         return 1;
     }
     // Write test byte
-    let test_path = log_dir.join(".vexa_write_test");
+    let test_path = log_dir.join(".agentwall_write_test");
     match std::fs::write(&test_path, b"t") {
         Ok(_) => {
             let _ = std::fs::remove_file(&test_path);

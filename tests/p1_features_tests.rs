@@ -1,7 +1,7 @@
 use std::time::Duration;
-use vexa::audit::logger::AuditLogger;
-use vexa::proxy::handler::RateLimiter;
-use vexa::report::generate_report;
+use agentwall::audit::logger::AuditLogger;
+use agentwall::proxy::handler::RateLimiter;
+use agentwall::report::generate_report;
 
 
 #[test]

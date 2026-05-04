@@ -14,27 +14,27 @@ pub enum Commands {
     /// Run the proxy server
     Start {
         /// YAML policy file path
-        #[arg(long, env = "VEXA_POLICY_PATH")]
+        #[arg(long, env = "AGENTWALL_POLICY_PATH")]
         policy: Option<String>,
 
         /// Proxy listen address
-        #[arg(long, env = "VEXA_LISTEN", default_value = "127.0.0.1:8080")]
+        #[arg(long, env = "AGENTWALL_LISTEN", default_value = "127.0.0.1:8080")]
         listen: String,
 
         /// Audit log output path
-        #[arg(long, env = "VEXA_LOG_PATH", default_value = "audit.log")]
+        #[arg(long, env = "AGENTWALL_LOG_PATH", default_value = "audit.log")]
         log_path: String,
 
         /// Upstream MCP server URL
-        #[arg(long, env = "VEXA_MCP_URL", default_value = "http://127.0.0.1:3000")]
+        #[arg(long, env = "AGENTWALL_MCP_URL", default_value = "http://127.0.0.1:3000")]
         mcp_url: String,
 
         /// Agent PID for kill switch
-        #[arg(long, env = "VEXA_AGENT_PID")]
+        #[arg(long, env = "AGENTWALL_AGENT_PID")]
         agent_pid: Option<u32>,
 
         /// Read agent PID from file
-        #[arg(long, env = "VEXA_AGENT_PID_FILE")]
+        #[arg(long, env = "AGENTWALL_AGENT_PID_FILE")]
         agent_pid_file: Option<String>,
 
         /// Kill mode: connection, process, both
@@ -47,7 +47,7 @@ pub enum Commands {
         log_max_bytes: u64,
 
         /// Dry-run mode: log violations but allow calls
-        #[arg(long, env = "VEXA_DRY_RUN", default_value_t = false)]
+        #[arg(long, env = "AGENTWALL_DRY_RUN", default_value_t = false)]
         dry_run: bool,
 
         /// Max tool calls per second (overrides policy)
@@ -55,7 +55,7 @@ pub enum Commands {
         rate_limit: Option<u32>,
 
         /// Write session report on shutdown
-        #[arg(long, env = "VEXA_REPORT_PATH")]
+        #[arg(long, env = "AGENTWALL_REPORT_PATH")]
         report_path: Option<String>,
     },
 

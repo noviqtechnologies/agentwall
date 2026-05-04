@@ -1,0 +1,47 @@
+{
+  "schema_version": "1",
+  "proxy_version": "1.0.3",
+  "policy_version": "1",
+  "policy_hash": "sha256:9f209dc56139d34e7da42f1902ab46bed1bd8fba58d41d22c6b8b9d5876eb863",
+  "session_id": "740be7d1-63e8-4acb-b2b0-19e4faa72111",
+  "dry_run": false,
+  "started_at": "2026-05-04T12:41:14.951681+00:00",
+  "ended_at": "2026-05-04T12:47:39.298128600+00:00",
+  "kill_mode": "both",
+  "summary": {
+    "total_calls": 4,
+    "allowed": 1,
+    "denied": 3,
+    "dry_run_denied": 0,
+    "rate_limited": 0
+  },
+  "denied_calls": [
+    {
+      "ts": "2026-05-04T12:41:14.951681+00:00",
+      "tool": "",
+      "reason": "reason=not_in_policy",
+      "params_redacted": true
+    },
+    {
+      "ts": "2026-05-04T12:41:17.758485900+00:00",
+      "tool": "exec_shell",
+      "reason": "reason=param_pattern_mismatch param=command value=rm -rf / pattern=^(?:^(ls|git status|npm test)$)$",
+      "params_redacted": true
+    },
+    {
+      "ts": "2026-05-04T12:44:00.005384500+00:00",
+      "tool": "exec_shell",
+      "reason": "reason=param_pattern_mismatch param=command value=rm -rf / pattern=^(?:^(ls|git status|npm test)$)$",
+      "params_redacted": true
+    }
+  ],
+  "tools_used": [
+    {
+      "name": "exec_shell",
+      "call_count": 1,
+      "first_called": "2026-05-04T12:43:56.717758500+00:00"
+    }
+  ],
+  "object_param_blind_passthrough": false,
+  "object_param_tools": []
+}
