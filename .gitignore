@@ -24,5 +24,7 @@ vexa-mvp1/
 agentwall-pkg/
 
 # Manual test runs
-manual_test/
+# Manual test examples
+manual_test/*.log
+manual_test/*.bak
 tests/tmp_*

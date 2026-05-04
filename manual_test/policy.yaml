@@ -1,0 +1,14 @@
+version: "1"
+default_action: deny
+session:
+  max_calls_per_second: 2
+tools:
+  - name: "read_file"
+    action: allow
+    parameters:
+      - name: "path"
+        type: string
+        pattern: "/workspace/.*"
+        required: true
+  - name: "exec_shell"
+    action: deny

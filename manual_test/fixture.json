@@ -1,0 +1,14 @@
+[
+  {
+    "tool": "read_file",
+    "params": { "path": "/workspace/config.json" }
+  },
+  {
+    "tool": "exec_shell",
+    "params": { "command": "rm -rf /" }
+  },
+  {
+    "tool": "read_file",
+    "params": { "path": "/etc/shadow" }
+  }
+]
