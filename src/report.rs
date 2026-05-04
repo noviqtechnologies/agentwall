@@ -64,17 +64,14 @@ pub fn generate_report(
     let file = std::fs::File::open(log_path).map_err(|e| format!("Cannot open log: {}", e))?;
 
     let reader = BufReader::new(file);
-    let mut entries: Vec<crate::audit::logger::AuditEntry> = Vec::new();
     let mut raw_lines = Vec::new();
-
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("Read error: {}", e))?;
+    for (i, line) in reader.lines().enumerate() {
+        let line = line.map_err(|e| format!("Read error at line {}: {}", i + 1, e))?;
         if line.trim().is_empty() {
             continue;
         }
         let entry: crate::audit::logger::AuditEntry =
-            serde_json::from_str(&line).map_err(|e| format!("Invalid JSON: {}", e))?;
-        entries.push(serde_json::from_str(&line).unwrap());
+            serde_json::from_str(&line).map_err(|e| format!("Invalid JSON at line {}: {}", i + 1, e))?;
         raw_lines.push(entry);
     }
 

@@ -396,6 +396,21 @@
     <div id="bridge-banner" class="error-banner" style="position: sticky; top: 0; z-index: 100;">
         ⚠ Bridge server disconnected. Check terminal and refresh page.
     </div>
+
+    <div id="quick-start-card" class="card" style="margin: 20px; border-left: 4px solid var(--accent);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h3 style="margin-top: 0; color: var(--accent);">🚀 Quick Start</h3>
+                <ol style="margin: 10px 0; padding-left: 20px; line-height: 1.6;">
+                    <li><strong>Start the Bridge:</strong> Ensure <code>python bridge.py</code> is running in your terminal.</li>
+                    <li><strong>Go to Session Monitor:</strong> Click the "Session Monitor" tab in the sidebar.</li>
+                    <li><strong>Start Proxy:</strong> Click the <span class="badge green">▶ START PROXY</span> button to begin interception.</li>
+                    <li><strong>Try Simulation:</strong> Use the "Simulate Tool Call" buttons to see policies in action.</li>
+                </ol>
+            </div>
+            <button onclick="this.parentElement.parentElement.remove()" class="btn muted" style="padding: 4px 8px;">✕ Close</button>
+        </div>
+    </div>
     
     <div class="panel-container">
         <!-- Panel 1: Policy -->
@@ -614,7 +629,7 @@ tools:
 </div>
 
 <script>
-const BRIDGE_URL = 'http://127.0.0.1:5173';
+const BRIDGE_URL = window.location.origin;
 let isBridgeReachable = false;
 let isProxyRunning = false;
 const el = id => document.getElementById(id);
