@@ -44,7 +44,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           mkdir ${{ matrix.name }}
-          cp target/${{ matrix.target }}/release/vexa ${{ matrix.name }}/agentwall
+          cp target/${{ matrix.target }}/release/agentwall ${{ matrix.name }}/agentwall
           cp README.md ${{ matrix.name }}/
           cp -r manual_test ${{ matrix.name }}/
           zip -r ${{ matrix.name }}.zip ${{ matrix.name }}
@@ -54,7 +54,7 @@ jobs:
         shell: pwsh
         run: |
           mkdir ${{ matrix.name }}
-          cp target/${{ matrix.target }}/release/vexa.exe ${{ matrix.name }}/agentwall.exe
+          cp target/${{ matrix.target }}/release/agentwall.exe ${{ matrix.name }}/agentwall.exe
           cp README.md ${{ matrix.name }}/
           cp -r manual_test ${{ matrix.name }}/
           Compress-Archive -Path ${{ matrix.name }}/* -DestinationPath ${{ matrix.name }}.zip
