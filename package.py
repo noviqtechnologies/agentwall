@@ -5,7 +5,7 @@ import zipfile
 import platform
 
 def package():
-    version = "1.0.3"
+    version = "1.0.4"
     dist_dir = f"agentwall-v{version}"
     
     print(f"[*] Starting packaging for VEXA AgentWall v{version}...")

@@ -1,6 +1,6 @@
 [package]
 name = "agentwall"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2021"
 description = "VEXA AgentWall — local-first sidecar proxy enforcing deterministic security policies for AI agents over MCP"
 license = "Apache-2.0"

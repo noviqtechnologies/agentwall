@@ -1,0 +1,41 @@
+version: "1"
+default_action: deny
+session:
+  max_calls_per_second: 5
+
+tools:
+  # Allow reading files in specific safe directories
+  - name: "read_file"
+    action: allow
+    parameters:
+      - name: "path"
+        type: string
+        pattern: "^/workspace/(src|docs|tests)/.*$"
+        required: true
+
+  # Allow listing directory contents within the workspace
+  - name: "list_directory"
+    action: allow
+    parameters:
+      - name: "path"
+        type: string
+        pattern: "^/workspace/.*"
+        required: true
+
+  # Restrict file writing to a specific output directory
+  - name: "write_file"
+    action: allow
+    parameters:
+      - name: "path"
+        type: string
+        pattern: "^/workspace/output/.*"
+        required: true
+
+  # Only allow specific safe shell commands
+  - name: "exec_shell"
+    action: allow
+    parameters:
+      - name: "command"
+        type: string
+        pattern: "^(ls|git status|npm test)$"
+        required: true
