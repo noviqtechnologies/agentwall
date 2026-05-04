@@ -8,9 +8,23 @@ import os
 import urllib.request
 import urllib.error
 import tempfile
+import atexit
 from flask import Flask, request, jsonify, Response, stream_with_context, cli
 from flask_cors import CORS
 import logging
+
+def cleanup():
+    global proxy_process
+    with proxy_lock:
+        if proxy_process is not None and proxy_process.poll() is None:
+            print("[INFO] Cleaning up: Stopping proxy...")
+            proxy_process.terminate()
+            try:
+                proxy_process.wait(timeout=2)
+            except:
+                proxy_process.kill()
+
+atexit.register(cleanup)
 
 # Suppress Flask development server banner and logs
 cli.show_server_banner = lambda *args: None
@@ -279,20 +293,6 @@ def log_entries():
                 "entries": entries,
                 "total": len(lines)
             })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/policy/save', methods=['POST'])
-def policy_save():
-    data = request.json or {}
-    policy_str = data.get('policy', '')
-    if not policy_str:
-        return jsonify({"error": "Empty policy"}), 400
-        
-    try:
-        with open(cfg['policy'], 'w') as f:
-            f.write(policy_str)
-        return jsonify({"status": "saved", "path": cfg['policy']})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

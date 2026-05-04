@@ -546,15 +546,21 @@ tools:
         <div id="panel-3" class="panel">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
                 <h2 style="margin-bottom: 0;">Audit History</h2>
-                <button id="btn-log-refresh" class="btn">
-                    <div class="spinner"></div> Refresh Logs
-                </button>
+                <div style="display: flex; gap: 12px;">
+                    <button id="btn-verify" class="btn">
+                        <div class="spinner"></div> Verify Log Integrity
+                    </button>
+                    <button id="btn-log-refresh" class="btn">
+                        <div class="spinner"></div> Refresh Logs
+                    </button>
+                </div>
             </div>
+            <div id="verify-banner" class="error-banner" style="margin-bottom: 20px;"></div>
             <div class="stats-bar">
                 <div class="stat-item"><span class="stat-label">Total Calls</span><span id="stat-total" class="stat-value">0</span></div>
                 <div class="stat-item"><span class="stat-label">Allowed</span><span id="stat-allowed" class="stat-value" style="color: var(--green)">0</span></div>
                 <div class="stat-item"><span class="stat-label">Denied</span><span id="stat-denied" class="stat-value" style="color: var(--red)">0</span></div>
-                <div class="stat-item"><span class="stat-label">p95 Latency</span><span id="stat-lat" class="stat-value">0ms</span></div>
+                <div class="stat-item"><span class="stat-label">Avg Latency</span><span id="stat-lat" class="stat-value">0ms</span></div>
             </div>
             <div class="card">
                 <div style="overflow-x: auto;">
@@ -670,7 +676,15 @@ const checkStatus = async () => {
         }
     } catch {
         isBridgeReachable = false;
+        isProxyRunning = false;
+        el('sb-status-dot').className = 'status-dot stopped';
+        el('sb-status-text').textContent = 'DISCONNECTED';
+        el('p2-status-badge').className = 'badge muted';
+        el('p2-status-badge').textContent = '○ DISCONNECTED';
         el('p2-ready-badge').style.display = 'none';
+        el('btn-proxy-start').style.display = 'inline-flex';
+        el('btn-proxy-stop').style.display = 'none';
+        [el('cfg-listen'), el('cfg-kill')].forEach(i => i.disabled = false);
     }
     el('bridge-banner').style.display = isBridgeReachable ? 'none' : 'block';
 };
@@ -769,7 +783,7 @@ const setupSSE = () => {
     eventSource = new EventSource(`${BRIDGE_URL}/log/stream`);
     const ind = el('sse-indicator');
     
-    eventSource.onopen = () => { ind.textContent = '● CONNECTED'; ind.style.color = 'var(--green)'; };
+    eventSource.onopen = () => { ind.textContent = '● CONNECTED'; ind.style.color = 'var(--green)'; el('log-container').innerHTML = ''; };
     eventSource.onerror = () => { ind.textContent = '○ DISCONNECTED'; ind.style.color = 'var(--text-muted)'; };
     eventSource.onmessage = (e) => {
         try {
