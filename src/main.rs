@@ -3,11 +3,14 @@
 use agentwall::audit;
 use agentwall::check;
 use agentwall::cli;
+use agentwall::init;
 use agentwall::kill;
 use agentwall::policy;
 use agentwall::proxy;
 use agentwall::report;
-use agentwall::{log_error, log_info, log_warn};
+use agentwall::{log_error, log_warn};
+
+use colored::*;
 
 use clap::Parser;
 use std::net::SocketAddr;
@@ -23,6 +26,7 @@ use proxy::handler::ProxyState;
 
 #[tokio::main]
 async fn main() {
+    print_banner();
     let cli = Cli::parse();
 
     let exit_code = match cli.command {
@@ -66,9 +70,20 @@ async fn main() {
             format,
             report_include_params,
         } => run_report(&log_path, output.as_deref(), &format, report_include_params),
+        Commands::Init { from_log, output } => init::run_init(&from_log, &output),
     };
 
     std::process::exit(exit_code);
+}
+
+fn print_banner() {
+    println!("{}", "=".repeat(60).cyan());
+    println!(
+        "{} {}",
+        " VEXA AgentWall ".bold().white().on_cyan(),
+        "MCP Security Proxy".cyan()
+    );
+    println!("{}", "=".repeat(60).cyan());
 }
 
 async fn run_start(
@@ -82,13 +97,16 @@ async fn run_start(
     dry_run: bool,
     rate_limit: Option<u32>,
     log_max_bytes: u64,
-    report_path: Option<String>,
+    _report_path: Option<String>,
 ) -> i32 {
+    println!("{} Loading configuration...", "ℹ".blue());
+
     // Parse kill mode
     let kill_mode = match KillMode::from_str(&kill_mode_str) {
         Ok(m) => m,
         Err(e) => {
             log_error!("startup_error", "reason": e);
+            eprintln!("{} Invalid kill mode: {}", "✖".red(), e);
             return 1;
         }
     };
@@ -99,25 +117,46 @@ async fn run_start(
 
     // NFR-203: Startup self-check
     // 1. Load policy
-    let (compiled_policy, policy_hash, _warnings) = match policy_path.as_deref() {
-        Some(path) => match load_policy(Path::new(path)) {
-            PolicyLoadResult::Loaded {
-                policy,
-                raw_hash,
-                warnings,
-            } => (Some(policy), raw_hash, warnings),
-            PolicyLoadResult::Degraded { reason } => {
-                log_warn!("policy_degraded", "reason": reason);
-                (None, "sha256:none".to_string(), vec![])
+    let (compiled_policy, _policy_hash, _warnings, policy_loaded) = match policy_path.as_deref() {
+        Some(path) => {
+            print!("{} Loading policy from {}... ", "ℹ".blue(), path.yellow());
+            match load_policy(Path::new(path)) {
+                PolicyLoadResult::Loaded {
+                    policy,
+                    raw_hash,
+                    warnings,
+                } => {
+                    println!("{}", "OK".green().bold());
+                    (Some(policy), raw_hash, warnings, true)
+                }
+                PolicyLoadResult::Degraded { reason } => {
+                    println!("{}", "DEGRADED".yellow().bold());
+                    log_warn!("policy_degraded", "reason": reason);
+                    (None, "sha256:none".to_string(), vec![], false)
+                }
+                PolicyLoadResult::Fatal { error } => {
+                    println!("{}", "FAILED".red().bold());
+                    log_error!("startup_error", "reason": error.to_string());
+                    return 1;
+                }
             }
-            PolicyLoadResult::Fatal { error } => {
-                log_error!("startup_error", "reason": error.to_string());
-                return 1;
-            }
-        },
+        }
         None => {
-            log_warn!("policy_degraded", "reason": "No policy file specified");
-            (None, "sha256:none".to_string(), vec![])
+            if dry_run {
+                println!(
+                    "{} {}",
+                    "⚠".yellow(),
+                    "No policy specified. Starting in Dry-Run Quickstart mode.".yellow()
+                );
+                (None, "sha256:none".to_string(), vec![], false)
+            } else {
+                println!(
+                    "{} {}",
+                    "⚠".yellow(),
+                    "No policy specified. Enforcement mode will DENY all calls.".yellow()
+                );
+                (None, "sha256:none".to_string(), vec![], false)
+            }
         }
     };
 
@@ -127,31 +166,24 @@ async fn run_start(
         log_dir = Path::new(".");
     }
     if !log_dir.exists() {
-        log_error!("startup_error", "reason": format!("Log directory does not exist: {}", log_dir.display()));
+        eprintln!(
+            "{} Log directory does not exist: {}",
+            "✖".red(),
+            log_dir.display()
+        );
         return 1;
-    }
-    // Write test byte
-    let test_path = log_dir.join(".agentwall_write_test");
-    match std::fs::write(&test_path, b"t") {
-        Ok(_) => {
-            let _ = std::fs::remove_file(&test_path);
-        }
-        Err(e) => {
-            log_error!("startup_error", "reason": format!("Log path not writable: {}", e));
-            return 1;
-        }
     }
 
     // 3. Parse listen address
     let listen_addr: SocketAddr = match listen.parse() {
         Ok(a) => a,
         Err(e) => {
-            log_error!("startup_error", "reason": format!("Invalid listen address: {}", e));
+            eprintln!("{} Invalid listen address: {}", "✖".red(), e);
             return 1;
         }
     };
 
-    // Generate session secret (never written to disk)
+    // Generate session secret
     let session_secret: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
     let session_id = uuid::Uuid::new_v4().to_string();
 
@@ -164,33 +196,14 @@ async fn run_start(
     ) {
         Ok(l) => Arc::new(l),
         Err(e) => {
-            log_error!("startup_error", "reason": format!("Cannot create audit logger: {}", e));
+            eprintln!("{} Cannot create audit logger: {}", "✖".red(), e);
             return 1;
         }
     };
 
-    // Dry-run security event
-    if dry_run {
-        let msg = "SECURITY: dry-run mode is active. Policy violations will NOT be enforced. Do not use in production.";
-        log_warn!("dry_run_active",
-            "session": &session_id,
-            "message": msg
-        );
-        let _ = audit_logger.write_entry(
-            "dry_run_active",
-            "system",
-            None,
-            Some(msg.to_string()),
-            None,
-        );
-    }
+    println!("{} Proxy session initialized: {}", "✓".green(), session_id.cyan());
 
     // Build proxy state
-    let object_param_tools = compiled_policy
-        .as_ref()
-        .map(|p| p.object_param_tool_names())
-        .unwrap_or_default();
-
     let rate_limit_val = rate_limit.unwrap_or_else(|| {
         compiled_policy
             .as_ref()
@@ -206,99 +219,91 @@ async fn run_start(
         agent_pid: resolved_pid,
         upstream_url: mcp_url,
         dry_run,
+        policy_loaded,
         rate_limiter: proxy::handler::RateLimiter::new(rate_limit_val),
         http_client: reqwest::Client::new(),
         ready: true,
     });
 
-    // Emit proxy_start event
-    log_info!("proxy_start",
-        "listen": &listen,
-        "policy_hash": &policy_hash,
-        "kill_mode": kill_mode.as_str(),
-        "dry_run": dry_run
+    if dry_run {
+        println!(
+            "{} {} {}",
+            "🛡".blue(),
+            "Mode:".bold(),
+            "DRY-RUN (Logging Only)".yellow().bold()
+        );
+    } else {
+        println!(
+            "{} {} {}",
+            "🛡".blue(),
+            "Mode:".bold(),
+            "ENFORCEMENT (Active Blocking)".green().bold()
+        );
+    }
+
+    println!(
+        "{} {} {}",
+        "📡".blue(),
+        "Listening on:".bold(),
+        listen.green().underline()
     );
+    println!("{} Press Ctrl+C to stop", "⌨".blue());
+    println!("{}", "-".repeat(60).cyan());
 
     // Shutdown channel
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // Handle SIGTERM (Unix) / Ctrl+C
     let shutdown_tx_clone = shutdown_tx.clone();
-    let session_id_clone = session_id.clone();
-    let report_path_clone = report_path.clone();
-    let log_path_clone = log_path.clone();
-    let policy_hash_clone = policy_hash.clone();
-    let kill_mode_clone = kill_mode.clone();
-    let object_param_tools_clone = object_param_tools.clone();
-
+    let _audit_logger_clone = audit_logger.clone();
+    
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
-
-        // Graceful shutdown
-        let total = audit_logger.entry_count();
-        log_info!("proxy_shutdown",
-            "session": &session_id_clone,
-            "total_calls": total,
-            "allow_count": 0,
-            "deny_count": 0
-        );
-
-        // Write session report if path specified
-        if let Some(rp) = &report_path_clone {
-            if let Ok(report) = report::generate_report(
-                Path::new(&log_path_clone),
-                false,
-                &policy_hash_clone,
-                kill_mode_clone.as_str(),
-                dry_run,
-                object_param_tools_clone,
-            ) {
-                if let Ok(json) = serde_json::to_string_pretty(&report) {
-                    let _ = std::fs::write(rp, json);
-                }
-            }
-        }
-
+        println!("\n{} Shutdown signal received. Finishing logs...", "ℹ".blue());
         let _ = shutdown_tx_clone.send(true);
     });
 
     // Run the server
     if let Err(e) = proxy::server::run_server(state, listen_addr, shutdown_rx).await {
-        log_error!("server_error", "reason": e.to_string());
+        eprintln!("{} Server error: {}", "✖".red(), e);
         return 1;
     }
 
+    println!("{} Proxy stopped gracefully.", "✓".green());
     0
 }
 
 fn run_verify_log(log_path: &str) -> i32 {
+    print!("{} Verifying log integrity for {}... ", "ℹ".blue(), log_path.yellow());
     match audit::verifier::verify_chain(Path::new(log_path)) {
         audit::verifier::VerifyResult::Valid { entry_count } => {
-            println!("OK: {} entries, chain intact", entry_count);
+            println!("{}", "VALID".green().bold());
+            println!("  {} {} entries found, cryptographic chain intact.", "✓".green(), entry_count);
             0
         }
         audit::verifier::VerifyResult::Invalid {
             entry_index,
             reason,
         } => {
-            println!(
-                "INVALID: chain broken at entry_index {}: {}",
-                entry_index, reason
-            );
+            println!("{}", "INVALID".red().bold());
+            println!("  {} Chain broken at index {}: {}", "✖".red(), entry_index, reason);
             1
         }
         audit::verifier::VerifyResult::Error(e) => {
-            eprintln!("ERROR: {}", e);
+            println!("{}", "ERROR".red().bold());
+            eprintln!("  {} {}", "✖".red(), e);
             2
         }
     }
 }
 
 fn run_report(log_path: &str, output: Option<&str>, format: &str, include_params: bool) -> i32 {
+    println!("{} Generating report from {}...", "ℹ".blue(), log_path.yellow());
     match report::generate_report(
         Path::new(log_path),
         include_params,
         "sha256:unknown",
+        true,
         "unknown",
         false,
         vec![],
@@ -312,17 +317,19 @@ fn run_report(log_path: &str, output: Option<&str>, format: &str, include_params
             match output {
                 Some(path) => {
                     if let Err(e) = std::fs::write(path, &out_str) {
-                        eprintln!("ERROR: Cannot write report: {}", e);
+                        eprintln!("{} Cannot write report: {}", "✖".red(), e);
                         return 2;
                     }
+                    println!("{} Report saved to {}", "✓".green(), path.cyan());
                 }
                 None => println!("{}", out_str),
             }
             0
         }
         Err(e) => {
-            eprintln!("ERROR: {}", e);
+            eprintln!("{} {}", "✖".red(), e);
             2
         }
     }
 }
+

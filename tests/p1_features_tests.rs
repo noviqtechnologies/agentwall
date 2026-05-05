@@ -89,6 +89,7 @@ fn test_session_report_generation() {
         &log_path,
         false,
         "sha256:test",
+        true, // policy_loaded
         "both",
         false,
         vec![],

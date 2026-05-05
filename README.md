@@ -79,73 +79,158 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 
 ---
 
+## How It Works (Step-by-Step)
+
+VEXA AgentWall acts as a mandatory enforcement layer between your AI agent and its tools.
+
+![How VEXA Proxy Works](images/vexa_proxy_how_it_works.jpg)
+
+### 1. Before the Agent Starts
+The `VEXA_PROXY_URL` environment variable is set (e.g., `http://127.0.0.1:8080`). This happens in your shell, CI/CD pipeline, or Docker configuration.
+
+### 2. Agent Initialization
+When the AI agent (or IDE) starts, the MCP client library automatically checks for `VEXA_PROXY_URL`. No code changes are required for most standard MCP implementations.
+
+### 3. Tool Execution Attempt
+When the agent decides to use a tool, it sends the JSON-RPC request to the proxy URL instead of the tool server directly.
+*   **Request:** `POST http://127.0.0.1:8080`
+*   **Payload:** `{"jsonrpc": "2.0", "method": "tools/call", "params": {...}}`
+
+### 4. Policy Evaluation & Enforcement
+The VEXA proxy receives the call and immediately flushes a log entry to disk. The policy engine then evaluates the call:
+*   **Validation:** Is the tool in the allowlist? Do parameters match the required regex patterns?
+*   **On Failure (DENY):** The proxy returns a JSON-RPC error `-32001`. If configured, it triggers a **kill switch** (closes the socket or sends `SIGKILL` to the agent).
+*   **On Success (ALLOW):** The call is forwarded to the actual MCP server, and the result is passed back to the agent.
+
+---
+
+> [!IMPORTANT]
+> **Why the agent has no choice but to use the proxy:**
+> 1. **SDK-Level Resolution:** Most MCP SDKs resolve the server URL from `VEXA_PROXY_URL` at import time.
+> 2. **Network Egress Control:** Direct MCP access should be blocked at the OS or network level (e.g., `iptables` or K8s `NetworkPolicy`). Even if an agent tries to ignore the environment variable, it cannot reach the MCP server any other way.
+
+---
+
 ## Quickstart
 
-### Step 1 — Build the Binary
+**New in v4.2:** The recommended path starts locally in dry-run mode — no CI/CD, no DevOps, no pipeline changes. 
 
+**Step 0 — Build the binary**
+
+Before you start, build the project and move the binary to the root for easier access:
+
+*macOS/Linux (Bash):*
 ```bash
 cargo build --release
-# Binary will be at: target/release/agentwall (Linux/macOS) or target\release\agentwall.exe (Windows)
+cp target/release/agentwall .
 ```
 
-> Pre-built binaries for Windows are available in `agentwall-windows.zip`.
-
-### Step 2 — Write a Policy
-
-```yaml
-version: "1"
-default_action: deny
-session:
-  max_calls_per_second: 5
-
-tools:
-  - name: "read_file"
-    action: allow
-    parameters:
-      - name: "path"
-        type: string
-        pattern: "/workspace/.*"
-        required: true
+*Windows (PowerShell):*
+```powershell
+cargo build
+copy target\debug\agentwall.exe .
 ```
 
-### Step 3 — Pre-flight Validation
+**Step 1 — Start in dry-run mode without a policy**
 
-Test your policy against a fixture file *before* running a real agent:
+Open a terminal and start the proxy.
 
+*Bash:*
 ```bash
-agentwall check --policy policy.yaml fixture.json
-# Exit 0 = all calls allowed
-# Exit 1 = one or more denied
-# Exit 2 = error (bad policy / bad fixture)
-```
-
-### Step 4 — Start the Proxy
-
-```bash
-agentwall start \
-  --policy policy.yaml \
-  --listen 127.0.0.1:8080 \
-  --log-path audit.log \
-  --kill-mode both &
-
-# Wait for proxy to be ready
+./agentwall start --dry-run --listen 127.0.0.1:8080 --log-path audit.log &
+# Wait for proxy
 until curl -sf http://127.0.0.1:8080/healthz; do sleep 0.1; done
-
-# Point your agent at the proxy
-VEXA_PROXY_URL=http://127.0.0.1:8080 python your_agent.py
 ```
 
-### Step 5 — Verify and Report
+*PowerShell:*
+```powershell
+Start-Process -FilePath ".\agentwall.exe" -ArgumentList "start", "--dry-run", "--listen", "127.0.0.1:8080", "--log-path", "audit.log"
+```
+
+**Step 2 — Point your agent at the proxy (or simulate a call)**
+
+To test the proxy immediately, you can use the provided quickstart agent script.
+
+*PowerShell (Windows):*
+```powershell
+# Set the environment variable for your session
+$env:VEXA_PROXY_URL="http://127.0.0.1:8080"
+
+# Run the simulated agent
+python quickstart_agent.py
+```
+
+*Bash:*
+```bash
+# Set environment variable
+export VEXA_PROXY_URL=http://127.0.0.1:8080
+
+# Simulate a tool call
+curl -X POST http://127.0.0.1:8080 -H "Content-Type: application/json" -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "read_file", "arguments": {"path": "test.txt"}}, "id": 1}'
+```
+
+Once you are ready, you can run the provided quickstart agent:
+`python quickstart_agent.py`
+
+**Step 3 — See what your agent actually did**
+```bash
+# macOS/Linux (Bash):
+./agentwall report audit.log --format text
+
+# Windows (PowerShell):
+.\agentwall.exe report audit.log --format text
+```
+
+**Step 4 — Generate a starter policy**
+```bash
+# macOS/Linux (Bash):
+./agentwall init --from-log audit.log
+
+# Windows (PowerShell):
+.\agentwall.exe init --from-log audit.log
+```
+
+**Step 5 — Tune the generated policy and re-run with enforcement**
+
+Edit `policy.yaml` — tighten regexes, remove tools your agent shouldn't need. Then pre-flight validate:
 
 ```bash
-# Verify cryptographic chain integrity
-agentwall verify-log audit.log
-# Exit 0 = chain intact, Exit 1 = tampered
+# Windows:
+.\agentwall.exe check --policy policy.yaml audit.log
 
-# Generate a session report
-agentwall report audit.log --format text   # human-readable summary
-agentwall report audit.log --format json   # machine-readable JSON
+# macOS/Linux:
+./agentwall check --policy policy.yaml audit.log
 ```
+
+Finally, run with enforcement enabled (no `--dry-run`):
+
+*macOS/Linux (Bash):*
+```bash
+# Adding & at the end runs it in the background
+./agentwall start --policy policy.yaml --listen 127.0.0.1:8080 --log-path audit.log --kill-mode both &
+```
+
+*Windows (PowerShell):*
+```powershell
+# Start-Process ensures the proxy runs in a separate window so it doesn't block your terminal
+Start-Process -FilePath ".\agentwall.exe" -ArgumentList "start", "--policy", "policy.yaml", "--listen", "127.0.0.1:8080", "--log-path", "audit.log", "--kill-mode", "both"
+```
+
+**Step 6 — Verify the log**
+
+*Note: If you didn't run the proxy in the background in the previous step, you must open a **new terminal window** to run this command.*
+
+```bash
+# macOS/Linux (Bash):
+./agentwall verify-log audit.log
+
+# Windows (PowerShell):
+.\agentwall.exe verify-log audit.log
+```
+
+### Path B — CI/CD Integration (Graduation Path)
+
+Once you have a working local policy and at least one session report, you can deploy the proxy to your CI/CD pipeline or cluster, enforcing the same `policy.yaml`.
 
 ---
 
@@ -194,6 +279,7 @@ SUBCOMMANDS:
   check        Pre-flight validate a policy against a fixture file
   verify-log   Verify cryptographic integrity of an audit log
   report       Generate a session analytics report from an audit log
+  init         Generate a starter policy from a dry-run audit log
 
 OPTIONS FOR 'start':
   --policy <PATH>          Path to policy YAML file
@@ -212,11 +298,15 @@ OPTIONS FOR 'check':
 OPTIONS FOR 'report':
   <LOG_PATH>               Path to audit log file
   --format <FORMAT>        Output format: json | text (default: text)
+
+OPTIONS FOR 'init':
+  --from-log <PATH>        Audit log to derive policy from
+  --output <PATH>          Output policy file path (default: policy.yaml)
 ```
 
 ---
 
-## Features (Phase 1 MVP)
+## Features (Phase 1 & Phase 1.1)
 
 | Feature | Reference | Description |
 |---|---|---|
@@ -226,6 +316,9 @@ OPTIONS FOR 'report':
 | Log Rotation | FR-109 | `fsync`-based rotation archiving to `.bak` files when `--log-max-bytes` is exceeded |
 | Dry-Run Mode | FR-110 | Policy enforcement simulation; violations logged as `DRY_RUN_DENY` but not blocked |
 | Session Report | FR-111 | `agentwall report` tool for post-session analytics in JSON or text formats |
+| Policy Generation | FR-112 | `agentwall init` dynamically scaffolds a `policy.yaml` from observed log calls |
+| Quickstart Mode | FR-113 | `--dry-run` works without a policy file to support fast developer onboarding |
+| Observability Report| FR-114 | Terminal-friendly session insights linking dry-run events to policy actions |
 
 ---
 

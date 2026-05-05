@@ -96,4 +96,15 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         report_include_params: bool,
     },
+
+    /// Generate a starter policy from a dry-run audit log (FR-112)
+    Init {
+        /// Audit log to derive policy from
+        #[arg(long)]
+        from_log: String,
+
+        /// Output policy file path
+        #[arg(long, default_value = "policy.yaml")]
+        output: String,
+    },
 }

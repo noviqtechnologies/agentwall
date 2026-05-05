@@ -47,15 +47,39 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
         }
     };
 
-    let calls: Vec<FixtureCall> = match serde_json::from_slice(&fixture_bytes) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("ERROR: Invalid fixture JSON: {}", e);
+    let calls: Vec<FixtureCall> = if let Ok(c) = serde_json::from_slice(&fixture_bytes) {
+        c
+    } else {
+        // Try parsing as JSON lines (audit.log format)
+        let mut lines_calls = Vec::new();
+        let content = String::from_utf8_lossy(&fixture_bytes);
+        for (_i, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                // Check if it's a tool call event
+                let event = entry.get("event").and_then(|e| e.as_str()).unwrap_or("");
+                if event == "tool_allow" || event == "tool_deny" || event == "tool_dry_run_deny" {
+                    if let (Some(tool), Some(params)) = (entry.get("tool_name"), entry.get("params")) {
+                        lines_calls.push(FixtureCall {
+                            tool: tool.as_str().unwrap_or("").to_string(),
+                            params: params.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        if lines_calls.is_empty() {
+            eprintln!("ERROR: Invalid fixture JSON: expected a sequence [...] or a valid audit.log");
             return 2;
         }
+        lines_calls
     };
 
     let mut any_denied = false;
+    use colored::*;
 
     for call in &calls {
         let result = policy.evaluate(&call.tool, &call.params);
@@ -75,11 +99,11 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
                 let detail = params_str.join(" ");
                 CheckResult {
                     tool: call.tool.clone(),
-                    verdict: "ALLOW".to_string(),
+                    verdict: "ALLOW".green().bold().to_string(),
                     reason: if detail.is_empty() {
                         None
                     } else {
-                        Some(detail)
+                        Some(detail.dimmed().to_string())
                     },
                 }
             }
@@ -103,8 +127,8 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
 
                 CheckResult {
                     tool: call.tool.clone(),
-                    verdict: "DENY".to_string(),
-                    reason: Some(reason_parts.join(" ")),
+                    verdict: "DENY".red().bold().to_string(),
+                    reason: Some(reason_parts.join(" ").yellow().to_string()),
                 }
             }
         };
@@ -112,10 +136,10 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
         // Output one line per call
         match &check_result.reason {
             Some(detail) => println!(
-                "{}\t{}\t{}",
-                check_result.verdict, check_result.tool, detail
+                "{}  {:<18}  {}",
+                check_result.verdict, check_result.tool.bold(), detail
             ),
-            None => println!("{}\t{}", check_result.verdict, check_result.tool),
+            None => println!("{}  {}", check_result.verdict, check_result.tool.bold()),
         }
     }
 

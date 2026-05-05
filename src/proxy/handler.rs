@@ -19,6 +19,8 @@ pub struct ProxyState {
     pub agent_pid: Option<u32>,
     pub upstream_url: String,
     pub dry_run: bool,
+    /// FR-113: Whether a policy file was successfully loaded
+    pub policy_loaded: bool,
     pub rate_limiter: RateLimiter,
     pub http_client: reqwest::Client,
     pub ready: bool,
@@ -168,7 +170,31 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
     let policy = match &state.policy {
         Some(p) => p,
         None => {
-            // No valid policy — DENY all
+            if state.dry_run && !state.policy_loaded {
+                // FR-113: No policy in dry-run mode — allow-all sentinel.
+                // Log the call and forward it.
+                let _ = state.audit_logger.write_entry(
+                    "tool_allow",
+                    tool_name,
+                    Some(tool_params.clone()),
+                    None,
+                    Some(0.0),
+                );
+                logging::log_event(
+                    Level::Info,
+                    "tool_allow",
+                    json!({"tool": tool_name, "session": &state.session_id, "latency_ms": 0.0, "note": "no_policy_dry_run"}),
+                );
+
+                return match forward::forward_request(&state.http_client, &state.upstream_url, body).await {
+                    Ok(resp) => (resp, false),
+                    Err(e) => (
+                        make_error(&id, -32603, &format!("Upstream error: {}", e)),
+                        false,
+                    ),
+                };
+            }
+            // No valid policy in enforcement mode — DENY all
             return handle_deny(state, &id, tool_name, "no_valid_policy_loaded").await;
         }
     };

@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod check;
 pub mod cli;
+pub mod init;
 pub mod kill;
 pub mod logging;
 pub mod policy;

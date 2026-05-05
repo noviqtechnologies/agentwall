@@ -11,8 +11,9 @@ use std::path::Path;
 pub struct SessionReport {
     pub schema_version: String,
     pub proxy_version: String,
-    pub policy_version: String,
-    pub policy_hash: String,
+    pub policy_version: Option<String>,
+    pub policy_hash: Option<String>,
+    pub policy: Option<String>,
     pub session_id: String,
     pub dry_run: bool,
     pub started_at: String,
@@ -57,6 +58,7 @@ pub fn generate_report(
     log_path: &Path,
     include_params: bool,
     policy_hash: &str,
+    policy_loaded: bool,
     kill_mode: &str,
     dry_run: bool,
     object_param_tools: Vec<String>,
@@ -161,8 +163,9 @@ pub fn generate_report(
     Ok(SessionReport {
         schema_version: "1".to_string(),
         proxy_version: env!("CARGO_PKG_VERSION").to_string(),
-        policy_version: "1".to_string(),
-        policy_hash: policy_hash.to_string(),
+        policy_version: if policy_loaded { Some("1".to_string()) } else { None },
+        policy_hash: if policy_loaded { Some(policy_hash.to_string()) } else { None },
+        policy: None,
         session_id,
         dry_run: session_dry_run,
         started_at,
@@ -183,57 +186,119 @@ pub fn generate_report(
 }
 
 pub fn format_text_report(report: &SessionReport) -> String {
+    use colored::*;
     let mut out = String::new();
-    out.push_str("AgentWall Session Report\n");
-    out.push_str("──────────────────────────────\n");
-    out.push_str(&format!("Session:     {}\n", report.session_id));
-    let hash_disp = if report.policy_hash.len() > 19 {
-        &report.policy_hash[0..19]
+    
+    let title = " AgentWall Session Report ".bold().white().on_cyan();
+    out.push_str(&format!("\n{}\n", title));
+    out.push_str(&format!("{}\n", "─".repeat(60).cyan()));
+    
+    out.push_str(&format!("  {:<12} {}\n", "Session:".bold(), report.session_id.cyan()));
+    
+    if let Some(hash) = &report.policy_hash {
+        let hash_disp = if hash.len() > 19 {
+            &hash[0..19]
+        } else {
+            hash
+        };
+        out.push_str(&format!("  {:<12} {}...\n", "Policy:".bold(), hash_disp.yellow()));
     } else {
-        &report.policy_hash
+        out.push_str(&format!("  {:<12} {}\n", "Policy:".bold(), "None (Allow-all sentinel)".red()));
+    }
+    
+    let mode_str = if report.dry_run { 
+        "DRY-RUN (Logging Only)".yellow().bold() 
+    } else { 
+        "ENFORCEMENT (Active Blocking)".green().bold() 
     };
-    out.push_str(&format!("Policy:      {}...\n", hash_disp));
+    out.push_str(&format!("  {:<12} {}\n", "Mode:".bold(), mode_str));
+    
     out.push_str(&format!(
-        "Dry-run:     {}\n",
-        if report.dry_run { "YES" } else { "NO" }
+        "  {:<12} {} → {}\n",
+        "Duration:".bold(),
+        report.started_at.dimmed(),
+        report.ended_at.dimmed()
     ));
-    out.push_str(&format!(
-        "Duration:    {} → {}\n\n",
-        report.started_at, report.ended_at
-    ));
+    out.push_str(&format!("{}\n\n", "─".repeat(60).cyan()));
 
-    out.push_str(&format!("Calls:  {} total  |  {} allowed  |  {} denied  |  {} dry-run-denied  |  {} rate-limited\n\n",
-        report.summary.total_calls, report.summary.allowed, report.summary.denied, report.summary.dry_run_denied, report.summary.rate_limited));
+    // Summary Box
+    out.push_str(&format!("  {}   {} total calls\n", "📊".blue(), report.summary.total_calls.to_string().bold()));
+    out.push_str(&format!("  {}   {} allowed\n", "✅".green(), report.summary.allowed.to_string().green()));
+    
+    if report.dry_run {
+        out.push_str(&format!("  {}   {} dry-run violations\n", "⚠ ".yellow(), report.summary.dry_run_denied.to_string().yellow()));
+    } else {
+        out.push_str(&format!("  {}   {} blocked\n", "🚫".red(), report.summary.denied.to_string().red()));
+    }
+    
+    if report.summary.rate_limited > 0 {
+        out.push_str(&format!("  {}   {} rate limited\n", "⏳".blue(), report.summary.rate_limited.to_string().blue()));
+    }
+    out.push_str("\n");
 
-    out.push_str("Denied Calls:\n");
-    for call in &report.denied_calls {
-        out.push_str(&format!(
-            "  [{}] {}  reason={}\n",
-            call.ts, call.tool, call.reason
-        ));
-    }
-    if report.denied_calls.is_empty() {
-        out.push_str("  (None)\n");
-    }
-    out.push_str("\nTools Used:\n");
-    for t in &report.tools_used {
-        out.push_str(&format!(
-            "  {}   {} calls  (first: {})\n",
-            t.name, t.call_count, t.first_called
-        ));
-    }
+    // Tools Table
+    out.push_str(&format!("  {}\n", "Tools Observed:".bold().underline()));
     if report.tools_used.is_empty() {
-        out.push_str("  (None)\n");
+        out.push_str("    (None recorded)\n");
+    } else {
+        for t in &report.tools_used {
+            out.push_str(&format!(
+                "    {:<20} {:>4} calls   ({})\n",
+                t.name.cyan(),
+                t.call_count.to_string().bold(),
+                format!("first: {}", t.first_called).dimmed()
+            ));
+        }
     }
+    out.push_str("\n");
 
-    if report.object_param_blind_passthrough {
-        out.push_str("\n  ⚠ OBJECT PARAM WARNING: The following tools use type:object or type:array parameters\n");
-        out.push_str(
-            "    whose content was NOT validated in this session (Phase 1 limitation):\n    ",
-        );
-        out.push_str(&report.object_param_tools.join(", "));
+    // Violations List
+    if !report.denied_calls.is_empty() {
+        let violation_title = if report.dry_run {
+            "Policy Violations (Dry-Run):".bold().yellow().underline()
+        } else {
+            "Denied Calls:".bold().red().underline()
+        };
+        out.push_str(&format!("  {}\n", violation_title));
+        
+        for call in &report.denied_calls {
+            let mut params_str = String::new();
+            if !call.params_redacted {
+                if let Some(p) = &call.params {
+                    params_str = format!("  params={}", p).dimmed().to_string();
+                }
+            }
+            out.push_str(&format!(
+                "    [{}] {:<18}  reason={}{}\n",
+                call.ts.dimmed(),
+                call.tool.bold(),
+                call.reason.yellow(),
+                params_str
+            ));
+        }
         out.push_str("\n");
     }
+
+    // Warnings
+    if report.object_param_blind_passthrough {
+        out.push_str(&format!("  {} {}\n", "⚠".yellow(), "OBJECT PARAM WARNING:".bold().yellow()));
+        out.push_str("    The following tools use complex objects/arrays which were NOT validated:\n");
+        out.push_str(&format!("    {}\n\n", report.object_param_tools.join(", ").dimmed()));
+    }
+
+    if report.policy_hash.is_none() {
+        out.push_str(&format!("  {} {}\n\n", "⚠".red(), "CRITICAL: No policy loaded during this session.".bold().red()));
+    }
+
+    // Footer / Next Steps
+    out.push_str(&format!("{}\n", "─".repeat(60).cyan()));
+    out.push_str(&format!("  {}\n", "Next Steps:".bold()));
+    if report.policy_hash.is_none() || report.dry_run {
+        out.push_str(&format!("    Run `{}` to generate your rules.\n", "agentwall init --from-log audit.log".cyan()));
+    } else {
+        out.push_str("    Review denied calls and refine your policy regex patterns.\n");
+    }
+    out.push_str(&format!("{}\n", "─".repeat(60).cyan()));
 
     out
 }
