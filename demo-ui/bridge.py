@@ -433,6 +433,14 @@ if __name__ == '__main__':
     cfg['log_path'] = os.path.abspath(args.log_path)
     cfg['listen'] = args.listen
     cfg['report_path'] = os.path.abspath(args.report_path)
+
+    # Fallback: if policy.yaml doesn't exist but policy.example.yaml does, copy it
+    if not os.path.exists(cfg['policy']) and args.policy == './policy.yaml':
+        example_path = os.path.join(os.path.dirname(cfg['policy']), 'policy.example.yaml')
+        if os.path.exists(example_path):
+            import shutil
+            print(f"[INFO] {cfg['policy']} not found. Initializing from {example_path}...")
+            shutil.copy(example_path, cfg['policy'])
     
     print("=" * 60)
     print(" VEXA AGENTWALL - BRIDGE SERVER")

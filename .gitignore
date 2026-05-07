@@ -28,3 +28,7 @@ agentwall-pkg/
 manual_test/*.log
 manual_test/*.bak
 tests/tmp_*
+
+# Local policies
+policy.yaml
+policy.yaml.bak

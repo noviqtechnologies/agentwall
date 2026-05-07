@@ -10,7 +10,7 @@ A **local-first, zero-build** interactive dashboard for exploring VEXA AgentWall
 demo-ui/
 ├── index.html      # Single-page dashboard — open directly in your browser
 ├── bridge.py       # Python bridge server (Flask + flask-cors)
-├── policy.yaml     # Default demo policy loaded into the editor on first launch
+├── policy.example.yaml # Default demo policy template (copied to policy.yaml on first run)
 └── README.md       # This file
 ```
 

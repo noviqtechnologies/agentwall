@@ -332,7 +332,7 @@ The demo UI is a zero-dependency single-page app (no npm, no build step) backed 
 demo-ui/
 ├── index.html      # Single-page dashboard (open directly in browser)
 ├── bridge.py       # Python bridge server (Flask) — relays API calls to the binary
-├── policy.yaml     # Default demo policy — edit live in the UI
+├── policy.example.yaml # Default demo policy template
 └── README.md       # Demo-specific setup guide
 ```
 
