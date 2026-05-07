@@ -164,15 +164,6 @@ Start-Process -FilePath ".\agentwall.exe" -ArgumentList "start", "--dry-run", "-
 
 To test the proxy immediately, you can use the provided quickstart agent script.
 
-*PowerShell (Windows):*
-```powershell
-# Set the environment variable for your session
-$env:VEXA_PROXY_URL="http://127.0.0.1:8080"
-
-# Run the simulated agent
-python quickstart_agent.py
-```
-
 *Bash:*
 ```bash
 # Set environment variable
@@ -180,6 +171,15 @@ export VEXA_PROXY_URL=http://127.0.0.1:8080
 
 # Simulate a tool call
 curl -X POST http://127.0.0.1:8080 -H "Content-Type: application/json" -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "read_file", "arguments": {"path": "test.txt"}}, "id": 1}'
+```
+
+*PowerShell (Windows):*
+```powershell
+# Set the environment variable for your session
+$env:VEXA_PROXY_URL="http://127.0.0.1:8080"
+
+# Run the simulated agent
+python quickstart_agent.py
 ```
 
 Once you are ready, you can run the provided quickstart agent:
@@ -208,11 +208,13 @@ Once you are ready, you can run the provided quickstart agent:
 Edit `policy.yaml` — tighten regexes, remove tools your agent shouldn't need. Then pre-flight validate:
 
 ```bash
-# Windows:
-.\agentwall.exe check --policy policy.yaml audit.log
-
 # macOS/Linux:
 ./agentwall check --policy policy.yaml audit.log
+```
+
+```powershell
+# Windows:
+.\agentwall.exe check --policy policy.yaml audit.log
 ```
 
 Finally, run with enforcement enabled (no `--dry-run`):
