@@ -115,6 +115,12 @@ The VEXA proxy receives the call and immediately flushes a log entry to disk. Th
 
 **New in v4.2:** The recommended path starts locally in dry-run mode — no CI/CD, no DevOps, no pipeline changes. 
 
+### Prerequisites
+
+- **Rust Toolchain**: `cargo` and `rustc` (v1.75+). Install from [rustup.rs](https://rustup.rs/).
+- **Python 3.8+**: Required for running the included simulation scripts and the Demo UI bridge.
+- **Git**: To clone and manage the repository.
+
 **Step 0 — Build the binary**
 
 Before you start, build the project and move the binary to the root for easier access:
