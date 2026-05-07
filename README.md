@@ -360,6 +360,20 @@ demo-ui/
 | **Audit History** | `03` | Browse all log entries with stats (total / allowed / denied / p95 latency) |
 | **Session Report** | `04` | Generate and view a session analytics report with blocked incidents and tool usage |
 
+### Quick Launch (macOS/Linux)
+
+```bash
+# 1. Install Python dependencies (one-time)
+pip install flask flask-cors
+
+# 2. Start the bridge server (from demo-ui folder)
+cd demo-ui
+python3 bridge.py --vexa-bin ../target/release/agentwall
+
+# 3. Open the UI — open index.html in your browser
+#    (e.g. 'open index.html' on macOS)
+```
+
 ### Quick Launch (Windows)
 
 ```powershell
