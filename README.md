@@ -113,7 +113,7 @@ The VEXA proxy receives the call and immediately flushes a log entry to disk. Th
 
 ## Quickstart
 
-**New in v4.2:** The recommended path starts locally in dry-run mode — no CI/CD, no DevOps, no pipeline changes. 
+The recommended path starts locally in dry-run mode — no CI/CD, no DevOps, no pipeline changes. 
 
 ### Prerequisites
 
@@ -121,7 +121,14 @@ The VEXA proxy receives the call and immediately flushes a log entry to disk. Th
 - **Python 3.8+**: Required for running the included simulation scripts and the Demo UI bridge.
 - **Git**: To clone and manage the repository.
 
-**Step 0 — Build the binary**
+**Step 1 — Clone the repository**
+
+```bash
+git clone https://github.com/noviqtechnologies/agentwall.git
+cd agentwall
+```
+
+**Step 2 — Build the binary**
 
 Before you start, build the project and move the binary to the root for easier access:
 
@@ -137,7 +144,7 @@ cargo build
 copy target\debug\agentwall.exe .
 ```
 
-**Step 1 — Start in dry-run mode without a policy**
+**Step 3 — Start in dry-run mode without a policy**
 
 Open a terminal and start the proxy.
 
@@ -153,7 +160,7 @@ until curl -sf http://127.0.0.1:8080/healthz; do sleep 0.1; done
 Start-Process -FilePath ".\agentwall.exe" -ArgumentList "start", "--dry-run", "--listen", "127.0.0.1:8080", "--log-path", "audit.log"
 ```
 
-**Step 2 — Point your agent at the proxy (or simulate a call)**
+**Step 4 — Point your agent at the proxy (or simulate a call)**
 
 To test the proxy immediately, you can use the provided quickstart agent script.
 
@@ -178,7 +185,7 @@ curl -X POST http://127.0.0.1:8080 -H "Content-Type: application/json" -d '{"jso
 Once you are ready, you can run the provided quickstart agent:
 `python quickstart_agent.py`
 
-**Step 3 — See what your agent actually did**
+**Step 5 — See what your agent actually did**
 ```bash
 # macOS/Linux (Bash):
 ./agentwall report audit.log --format text
@@ -187,7 +194,7 @@ Once you are ready, you can run the provided quickstart agent:
 .\agentwall.exe report audit.log --format text
 ```
 
-**Step 4 — Generate a starter policy**
+**Step 6 — Generate a starter policy**
 ```bash
 # macOS/Linux (Bash):
 ./agentwall init --from-log audit.log
@@ -196,7 +203,7 @@ Once you are ready, you can run the provided quickstart agent:
 .\agentwall.exe init --from-log audit.log
 ```
 
-**Step 5 — Tune the generated policy and re-run with enforcement**
+**Step 7 — Tune the generated policy and re-run with enforcement**
 
 Edit `policy.yaml` — tighten regexes, remove tools your agent shouldn't need. Then pre-flight validate:
 
@@ -222,7 +229,7 @@ Finally, run with enforcement enabled (no `--dry-run`):
 Start-Process -FilePath ".\agentwall.exe" -ArgumentList "start", "--policy", "policy.yaml", "--listen", "127.0.0.1:8080", "--log-path", "audit.log", "--kill-mode", "both"
 ```
 
-**Step 6 — Verify the log**
+**Step 8 — Verify the log**
 
 *Note: If you didn't run the proxy in the background in the previous step, you must open a **new terminal window** to run this command.*
 
