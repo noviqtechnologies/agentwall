@@ -15,13 +15,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: agentwall-linux
-            asset_name: agentwall-v1.0.4-linux.zip
+            asset_name: agentwall-v1.0.5-linux.zip
           - os: macos-latest
             artifact_name: agentwall-macos
-            asset_name: agentwall-v1.0.4-macos.zip
+            asset_name: agentwall-v1.0.5-macos.zip
           - os: windows-latest
             artifact_name: agentwall-windows
-            asset_name: agentwall-v1.0.4-windows.zip
+            asset_name: agentwall-v1.0.5-windows.zip
 
     steps:
       - name: Checkout code
@@ -44,7 +44,7 @@ jobs:
           fi
           cp demo-ui/index.html release/ui/
           cp demo-ui/bridge.py release/ui/
-          cp demo-ui/policy.yaml release/config/policy.yaml.example
+          cp demo-ui/policy.example.yaml release/config/policy.yaml.example
 
       - name: Create Zip (Unix)
         if: matrix.os != 'windows-latest'

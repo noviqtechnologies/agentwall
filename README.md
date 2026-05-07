@@ -3,7 +3,7 @@
 > **Local-first sidecar proxy enforcing deterministic security policies for autonomous AI agents over MCP.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-1.0.5-brightgreen.svg)]()
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)]()
 
 VEXA AgentWall sits between an AI agent runtime and its MCP (Model Context Protocol) tool servers. It intercepts every JSON-RPC tool call, evaluates it against a YAML-defined policy, and either allows or denies the call — while writing a cryptographically chained, tamper-evident audit log of every decision.
