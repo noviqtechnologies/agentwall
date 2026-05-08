@@ -143,7 +143,7 @@ The built-in check fixtures test:
 - `exec_shell` with an allowed command → **ALLOW**
 - `exec_shell` with `rm -rf /` → **DENY**
 
-> **Tip:** Edit the policy, save it, then re-run `vexa check` to immediately see how your changes affect enforcement — without starting the proxy.
+> **Tip:** Edit the policy, save it, then re-run **Policy Check** to immediately see how your changes affect enforcement — without starting the proxy.
 
 ---
 
@@ -204,7 +204,7 @@ A historical view of the entire `audit.log` file, refreshed on demand.
 
 **Actions:**
 - **Refresh Logs** — reloads up to the last 100 entries from `GET /log/entries?limit=100`
-- **Run vexa verify-log** — calls `agentwall verify-log` on the current log file and displays whether the HMAC chain is intact (`✓ Chain intact`) or broken (`✗ Tampered`)
+- **Run AgentWall verify-log** — calls `agentwall verify-log` on the current log file and displays whether the HMAC chain is intact (`✓ Chain intact`) or broken (`✗ Tampered`)
 
 ---
 

@@ -474,7 +474,7 @@ if __name__ == '__main__':
             shutil.copy(example_path, cfg['policy'])
     
     print("=" * 60)
-    print(" VEXA AGENTWALL - BRIDGE SERVER")
+    print(" VEXA AGENTWALL — BRIDGE SERVER")
     print(" Status:        RUNNING")
     print(f" Bridge URL:   http://127.0.0.1:{args.port}")
     print(f" Vexa Binary:  {cfg['vexa_bin']}")

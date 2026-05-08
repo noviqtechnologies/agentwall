@@ -15,11 +15,11 @@ VEXA AgentWall sits between an AI agent runtime and its MCP (Model Context Proto
 - [Why AgentWall?](#why-agentwall)
 - [Key Benefits](#key-benefits)
 - [Architecture](#architecture)
-- [Demo UI](#demo-ui)
 - [Quickstart](#quickstart)
 - [Policy Reference](#policy-reference)
 - [CLI Reference](#cli-reference)
 - [Features (Phase 1 MVP)](#features-phase-1-mvp)
+- [Demo UI](#demo-ui)
 - [Security Guarantees & Known Limitations](#security-guarantees--known-limitations)
 - [Building from Source](#building-from-source)
 - [License](#license)
@@ -97,7 +97,7 @@ When the agent decides to use a tool, it sends the JSON-RPC request to the proxy
 *   **Payload:** `{"jsonrpc": "2.0", "method": "tools/call", "params": {...}}`
 
 ### 4. Policy Evaluation & Enforcement
-The AgentWall proxy receives the call and immediately flushes a log entry to disk. The policy engine then evaluates the call:
+The VEXA proxy receives the call and immediately flushes a log entry to disk. The policy engine then evaluates the call:
 *   **Validation:** Is the tool in the allowlist? Do parameters match the required regex patterns?
 *   **On Failure (DENY):** The proxy returns a JSON-RPC error `-32001`. If configured, it triggers a **kill switch** (closes the socket or sends `SIGKILL` to the agent).
 *   **On Success (ALLOW):** The call is forwarded to the actual MCP server, and the result is passed back to the agent.
@@ -108,61 +108,6 @@ The AgentWall proxy receives the call and immediately flushes a log entry to dis
 > **Why the agent has no choice but to use the proxy:**
 > 1. **SDK-Level Resolution:** Most MCP SDKs resolve the server URL from `AGENTWALL_PROXY_URL` at import time.
 > 2. **Network Egress Control:** Direct MCP access should be blocked at the OS or network level (e.g., `iptables` or K8s `NetworkPolicy`). Even if an agent tries to ignore the environment variable, it cannot reach the MCP server any other way.
-
----
-
-## Demo UI
-
-AgentWall ships with a **local-first demo dashboard** for exploring its features interactively without writing any code.
-
-The demo UI is a zero-dependency single-page app (no npm, no build step) backed by a lightweight Python bridge server that relays commands to the `agentwall` binary.
-
-```
-demo-ui/
-├── index.html      # Single-page dashboard (open directly in browser)
-├── bridge.py       # Python bridge server (Flask) — relays API calls to the binary
-├── policy.example.yaml # Default demo policy template
-└── README.md       # Demo-specific setup guide
-```
-
-### Demo UI Features
-
-| Panel | Key | What It Does |
-|---|---|---|
-| **Policy Editor** | `01` | Live YAML editor with one-click pre-flight validation against built-in sample calls |
-| **Session Monitor** | `02` | Start/stop the proxy, watch real-time log stream via SSE, simulate tool calls |
-| **Audit History** | `03` | Browse all log entries with stats (total / allowed / denied / p95 latency) |
-| **Session Report** | `04` | Generate and view a session analytics report with blocked incidents and tool usage |
-
-### Quick Launch (macOS/Linux)
-
-```bash
-# 1. Install Python dependencies (one-time)
-pip install flask flask-cors
-
-# 2. Start the bridge server (from demo-ui folder)
-cd demo-ui
-python3 bridge.py --vexa-bin ../target/release/agentwall
-
-# 3. Open the UI — open index.html in your browser
-#    (e.g. 'open index.html' on macOS)
-```
-
-### Quick Launch (Windows)
-
-```powershell
-# 1. Install Python dependencies (one-time)
-pip install flask flask-cors
-
-# 2. Start the bridge server (from demo-ui folder)
-cd demo-ui
-python bridge.py --vexa-bin ..\target\release\agentwall.exe
-
-# 3. Open the UI — just double-click index.html in File Explorer
-#    or navigate to it in your browser
-```
-
-> See [`demo-ui/README.md`](demo-ui/README.md) for the full setup guide including all bridge server options.
 
 ---
 
@@ -400,6 +345,61 @@ OPTIONS FOR 'init':
 | **Nested Validation** | **FR-201** | **JSON Schema validation (Draft 7 subset) for nested parameters with depth limiting.** |
 | **Identity Binding** | **FR-202** | **OIDC-bound JWT validation for tool calls with background JWK rotation.** |
 | **Promotion Suite** | **FR-204** | **`agentwall promote` for production readiness checks and cryptographic policy signing.** |
+
+---
+
+## Demo UI
+
+AgentWall ships with a **local-first demo dashboard** for exploring its features interactively without writing any code.
+
+The demo UI is a zero-dependency single-page app (no npm, no build step) backed by a lightweight Python bridge server that relays commands to the `agentwall` binary.
+
+```
+demo-ui/
+├── index.html      # Single-page dashboard (open directly in browser)
+├── bridge.py       # Python bridge server (Flask) — relays API calls to the binary
+├── policy.example.yaml # Default demo policy template
+└── README.md       # Demo-specific setup guide
+```
+
+### Demo UI Features
+
+| Panel | Key | What It Does |
+|---|---|---|
+| **Policy Editor** | `01` | Live YAML editor with one-click pre-flight validation against built-in sample calls |
+| **Session Monitor** | `02` | Start/stop the proxy, watch real-time log stream via SSE, simulate tool calls |
+| **Audit History** | `03` | Browse all log entries with stats (total / allowed / denied / p95 latency) |
+| **Session Report** | `04` | Generate and view a session analytics report with blocked incidents and tool usage |
+
+### Quick Launch (macOS/Linux)
+
+```bash
+# 1. Install Python dependencies (one-time)
+pip install flask flask-cors
+
+# 2. Start the bridge server (from demo-ui folder)
+cd demo-ui
+python3 bridge.py --vexa-bin ../target/release/agentwall
+
+# 3. Open the UI — open index.html in your browser
+#    (e.g. 'open index.html' on macOS)
+```
+
+### Quick Launch (Windows)
+
+```powershell
+# 1. Install Python dependencies (one-time)
+pip install flask flask-cors
+
+# 2. Start the bridge server (from demo-ui folder)
+cd demo-ui
+python bridge.py --vexa-bin ..\target\release\agentwall.exe
+
+# 3. Open the UI — just double-click index.html in File Explorer
+#    or navigate to it in your browser
+```
+
+> See [`demo-ui/README.md`](demo-ui/README.md) for the full setup guide including all bridge server options.
 
 ---
 
