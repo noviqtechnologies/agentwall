@@ -7,6 +7,8 @@ use std::path::Path;
 use super::engine::CompiledPolicy;
 use super::schema::{ParamType, PolicyFile, SUPPORTED_VERSIONS};
 use crate::logging::{self, Level};
+use std::sync::Arc;
+use jsonschema::JSONSchema;
 
 /// Errors during policy loading
 #[derive(Debug)]
@@ -76,7 +78,7 @@ pub enum PolicyLoadResult {
 }
 
 /// Load, validate, and compile a policy file.
-pub fn load_policy(path: &Path) -> PolicyLoadResult {
+pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadResult {
     let raw_bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -224,10 +226,43 @@ pub fn load_policy(path: &Path) -> PolicyLoadResult {
                     };
                 }
 
+                // Nested JSON Schema Compilation (FR-201)
+                let compiled_schema = if let Some(schema_val) = &param.schema {
+                    let mut schema_to_compile = schema_val.clone();
+
+                    // Security: Enforce recursion depth (FR-201: 5 levels)
+                    if let Err(e) = check_schema_depth(&schema_to_compile, 0) {
+                        return PolicyLoadResult::Fatal {
+                            error: PolicyLoadError::InvalidYaml(format!(
+                                "Tool \"{}\" param \"{}\" schema exceeds depth limit: {}",
+                                tool.name, param.name, e
+                            )),
+                        };
+                    }
+
+                    // Security: Default additionalProperties to false (FR-201)
+                    inject_additional_properties_false(&mut schema_to_compile);
+
+                    match JSONSchema::compile(&schema_to_compile) {
+                        Ok(s) => Some(Arc::new(s)),
+                        Err(e) => {
+                            return PolicyLoadResult::Fatal {
+                                error: PolicyLoadError::InvalidYaml(format!(
+                                    "Tool \"{}\" param \"{}\" has invalid JSON Schema: {}",
+                                    tool.name, param.name, e
+                                )),
+                            };
+                        }
+                    }
+                } else {
+                    None
+                };
+
                 compiled_params.push(super::engine::CompiledParam {
                     name: param.name.clone(),
                     param_type: param.param_type.clone(),
                     pattern: compiled_regex,
+                    schema: compiled_schema,
                     max_length: param.max_length,
                     required: param.required,
                 });
@@ -236,6 +271,7 @@ pub fn load_policy(path: &Path) -> PolicyLoadResult {
         compiled_tools.push(super::engine::CompiledTool {
             name: tool.name.clone(),
             action: tool.action.clone(),
+            risk: tool.risk.clone(),
             parameters: compiled_params,
         });
     }
@@ -245,10 +281,27 @@ pub fn load_policy(path: &Path) -> PolicyLoadResult {
         .and_then(|s| s.max_calls_per_second)
         .unwrap_or(0);
 
+    let identity_validator = if let Some(ident) = policy_file.identity {
+        let final_issuer = issuer_override.unwrap_or(ident.issuer);
+        let validator = super::identity::IdentityValidator::new(final_issuer, ident.audience);
+        validator.clone().start_background_rotation();
+        Some(validator)
+    } else {
+        if let Some(issuer) = issuer_override {
+             logging::log_event(
+                Level::Warn,
+                "oidc_issuer_ignored",
+                serde_json::json!({"reason": "no identity section in policy", "issuer": &issuer}),
+            );
+        }
+        None
+    };
+
     PolicyLoadResult::Loaded {
         policy: CompiledPolicy {
             tools: compiled_tools,
             max_calls_per_second,
+            identity_validator,
         },
         raw_hash,
         warnings,
@@ -278,4 +331,53 @@ fn check_world_writable(path: &Path, warnings: &mut Vec<String>) {
     {
         let _ = (path, warnings);
     }
+}
+
+/// Recursively inject "additionalProperties": false into objects if not specified (FR-201)
+fn inject_additional_properties_false(value: &mut serde_json::Value) {
+    if let serde_json::Value::Object(map) = value {
+        if let Some(serde_json::Value::String(t)) = map.get("type") {
+            if t == "object" && !map.contains_key("additionalProperties") {
+                map.insert(
+                    "additionalProperties".to_string(),
+                    serde_json::Value::Bool(false),
+                );
+            }
+        }
+
+        // Recurse into properties
+        if let Some(serde_json::Value::Object(props)) = map.get_mut("properties") {
+            for (_, v) in props.iter_mut() {
+                inject_additional_properties_false(v);
+            }
+        }
+
+        // Recurse into items (for arrays)
+        if let Some(items) = map.get_mut("items") {
+            inject_additional_properties_false(items);
+        }
+    }
+}
+
+/// Check schema recursion depth (FR-201: limit 5)
+fn check_schema_depth(value: &serde_json::Value, current_depth: usize) -> Result<(), String> {
+    if current_depth > 5 {
+        return Err("Recursion depth limit of 5 exceeded".to_string());
+    }
+
+    if let serde_json::Value::Object(map) = value {
+        // Check properties
+        if let Some(serde_json::Value::Object(props)) = map.get("properties") {
+            for (_, v) in props.iter() {
+                check_schema_depth(v, current_depth + 1)?;
+            }
+        }
+
+        // Check items
+        if let Some(items) = map.get("items") {
+            check_schema_depth(items, current_depth + 1)?;
+        }
+    }
+
+    Ok(())
 }

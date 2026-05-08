@@ -368,22 +368,25 @@
 
 <div class="sidebar">
     <div class="logo-area">
-        <div class="logo-vexa">VEXA</div>
-        <div class="logo-agentwall">AgentWall</div>
-        <p class="logo-tagline">Watch tool calls in real-time.<br>Block the dangerous ones.</p>
+        <div class="logo-vexa">AGENTWALL</div>
+        <div class="logo-agentwall">Governance</div>
+        <p class="logo-tagline">Secure. Audit. Promote.<br>AI Security for the Enterprise.</p>
     </div>
     <div class="nav-items">
         <div class="nav-item active" data-target="panel-1">
             <span class="nav-icon">01</span> Policy Editor
         </div>
         <div class="nav-item" data-target="panel-2">
-            <span class="nav-icon">02</span> Session Monitor
+            <span class="nav-icon">02</span> Monitor & Auth
+        </div>
+        <div class="nav-item" data-target="panel-5">
+            <span class="nav-icon">03</span> Policy Promotion
         </div>
         <div class="nav-item" data-target="panel-3">
-            <span class="nav-icon">03</span> Audit Logs
+            <span class="nav-icon">04</span> Audit History
         </div>
         <div class="nav-item" data-target="panel-4">
-            <span class="nav-icon">04</span> Session Report
+            <span class="nav-icon">05</span> Session Report
         </div>
     </div>
     <div class="sidebar-footer">
@@ -420,53 +423,47 @@
                 <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg> YAML Policy Configuration</h3>
                 <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Define rules to intercept and filter tool calls from your AI agent.</p>
                 <div class="code-editor">
-                    <textarea id="policy-editor" spellcheck="false">version: "1"
+                    <textarea id="policy-editor" spellcheck="false">version: "2"
 default_action: deny
-session:
-  max_calls_per_second: 5
+
+identity:
+  issuer: "https://auth.company.com"
+  audience: "agentwall-proxy"
 
 tools:
-  # Allow reading files in specific safe directories
+  # FR-201: Nested Validation Engine Example
+  - name: "query_database"
+    action: allow
+    risk: high
+    parameters:
+      - name: "options"
+        type: object
+        schema:
+          type: object
+          properties:
+            query: { type: string, pattern: "^SELECT.*" }
+            limit: { type: integer, maximum: 100 }
+            filters:
+              type: object
+              properties:
+                status: { type: string, enum: ["active", "pending"] }
+              required: ["status"]
+          required: ["query", "limit"]
+
   - name: "read_file"
     action: allow
-    parameters:
-      - name: "path"
-        type: string
-        pattern: "^/workspace/(src|docs|tests)/.*$"
-        required: true
-
-  # Allow listing directory contents within the workspace
-  - name: "list_directory"
-    action: allow
+    risk: low
     parameters:
       - name: "path"
         type: string
         pattern: "^/workspace/.*"
-        required: true
-
-  # Restrict file writing to a specific output directory
-  - name: "write_file"
-    action: allow
-    parameters:
-      - name: "path"
-        type: string
-        pattern: "^/workspace/output/.*"
-        required: true
-
-  # Only allow specific safe shell commands
-  - name: "exec_shell"
-    action: allow
-    parameters:
-      - name: "command"
-        type: string
-        pattern: "^(ls|git status|npm test)$"
         required: true</textarea>
                 </div>
                 <div id="lint-chips" style="margin-top: 16px; display: flex; gap: 10px;"></div>
                 
                 <div style="margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 24px; display: flex; justify-content: flex-end; gap: 16px;">
                     <button id="btn-check" class="btn">
-                        <div class="spinner"></div> Run vexa check
+                        <div class="spinner"></div> Run Policy Check
                     </button>
                     <button id="btn-save-policy" class="btn btn-primary">
                         <div class="spinner"></div> <span class="btn-text">Save Policy</span>
@@ -515,11 +512,17 @@ tools:
                     </div>
                 </div>
                 <div id="proxy-error" class="error-banner"></div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: end;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                     <div>
                         <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">Listen Address</label>
                         <input type="text" id="cfg-listen" class="input" value="127.0.0.1:8080">
                     </div>
+                    <div>
+                        <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">OIDC Issuer (FR-202)</label>
+                        <input type="text" id="cfg-oidc" class="input" value="https://auth.company.com" placeholder="https://...">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: end;">
                     <div>
                         <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">Kill Mode</label>
                         <select id="cfg-kill" class="select">
@@ -527,6 +530,10 @@ tools:
                             <option value="connection">Connection Only</option>
                             <option value="process">Process Only</option>
                         </select>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 10px;">
+                        <input type="checkbox" id="cfg-dry-run" style="width: 18px; height: 18px; cursor: pointer;">
+                        <label for="cfg-dry-run" style="font-size: 0.9rem; cursor: pointer;">Enable Dry Run Mode</label>
                     </div>
                 </div>
             </div>
@@ -542,15 +549,21 @@ tools:
             <div class="card">
                 <h3>Simulate Tool Call</h3>
                 <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('query_database', '{\x22options\x22: {\x22query\x22: \x22SELECT * FROM users\x22, \x22limit\x22: 10, \x22filters\x22: {\x22status\x22: \x22active\x22}}}')">Valid Nested</button>
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('query_database', '{\x22options\x22: {\x22query\x22: \x22SELECT * FROM users\x22, \x22limit\x22: 200, \x22filters\x22: {\x22status\x22: \x22active\x22}}}')">Invalid Nested (Limit)</button>
                     <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('read_file', '{\x22path\x22: \x22/workspace/src/main.py\x22}')">Safe Read</button>
-                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('read_file', '{\x22path\x22: \x22/workspace/.env\x22}')">Block Secrets</button>
-                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('exec_shell', '{\x22command\x22: \x22ls\x22}')">Allowed Shell</button>
-                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('exec_shell', '{\x22command\x22: \x22rm -rf /\x22}')">Blocked Shell</button>
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('read_file', '{\x22path\x22: \x22/etc/passwd\x22}')">Blocked Path</button>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div>
+                        <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">Identity JWT Token (FR-202)</label>
+                        <input type="text" id="call-token" class="input" placeholder="eyJhbGciOiJIUzI1NiI...">
+                    </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 200px 1fr auto; gap: 12px;">
                     <input type="text" id="call-tool" class="input" placeholder="Tool Name">
                     <textarea id="call-params" rows="1" class="input" style="min-height: 40px; padding-top: 10px;">{}</textarea>
-                    <button id="btn-call" class="btn btn-primary">Send</button>
+                    <button id="btn-call" class="btn btn-primary">Send Call</button>
                 </div>
                 <div id="call-error" class="error-banner" style="margin-top: 12px;"></div>
                 <div id="call-result" class="result-box"></div>
@@ -623,6 +636,43 @@ tools:
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Panel 5: Promotion (FR-204) -->
+        <div id="panel-5" class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+                <h2 style="margin-bottom: 0;">Policy Promotion Suite</h2>
+                <button id="btn-promote" class="btn btn-primary">
+                    <div class="spinner"></div> Run Promotion Check
+                </button>
+            </div>
+            
+            <div class="card">
+                <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> FR-204: Production Readiness</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">
+                    Verify policy integrity, risk scores, and cryptographic signatures before deploying to production environments.
+                </p>
+                <div id="promote-results" class="result-box" style="display: block; min-height: 100px; background: rgba(0,0,0,0.2);">
+                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                        Click the button above to analyze the current policy for production readiness.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Promotion Checklist</h3>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                        <span class="badge green">✓</span> Risk Scores assigned to all tools
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                        <span class="badge green">✓</span> Identity Provider (OIDC) validated
+                    </li>
+                    <li style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                        <span class="badge green">✓</span> Cryptographic Policy Signature generated
+                    </li>
+                </ul>
             </div>
         </div>
     </div>
@@ -730,7 +780,9 @@ el('btn-proxy-start').onclick = async () => {
             method: 'POST',
             body: JSON.stringify({ 
                 listen: el('cfg-listen').value, 
-                kill_mode: el('cfg-kill').value
+                kill_mode: el('cfg-kill').value,
+                oidc_issuer: el('cfg-oidc').value,
+                dry_run: el('cfg-dry-run').checked
             })
         });
         if (!res.ok) throw new Error(res.data.error || 'Failed to start proxy');
@@ -768,7 +820,11 @@ el('btn-call').onclick = async () => {
     try {
         const res = await fetchAPI('/proxy/call', {
             method: 'POST',
-            body: JSON.stringify({ tool: el('call-tool').value, params: JSON.parse(el('call-params').value) })
+            body: JSON.stringify({ 
+                tool: el('call-tool').value, 
+                params: JSON.parse(el('call-params').value),
+                token: el('call-token').value
+            })
         });
         
         resEl.style.display = 'block';
@@ -990,7 +1046,8 @@ bind('btn-check', 'click', async () => {
             const tbody = table.querySelector('tbody');
             if (code > 1) {
                 // If it's a real error (not just a denial), show the raw output as an error row
-                tbody.innerHTML = `<tr><td colspan="4" style="color:var(--red); padding: 20px; text-align: center;">${res.data.output || 'Internal verification error'}</td></tr>`;
+                const errorMsg = res.data.stderr || res.data.stdout || 'Internal verification error';
+                tbody.innerHTML = `<tr><td colspan="4" style="color:var(--red); padding: 20px; text-align: center;">${errorMsg}</td></tr>`;
             } else {
                 tbody.innerHTML = lines.map(line => {
                     const parts = line.split(' ');
@@ -1051,6 +1108,33 @@ bind('btn-save-policy', 'click', async () => {
         }
     } catch (e) { alert(e.message); }
     finally { setBtnLoading(btn, false); }
+});
+
+bind('btn-promote', 'click', async () => {
+    const btn = el('btn-promote');
+    setBtnLoading(btn, true);
+    const resEl = el('promote-results');
+    try {
+        const res = await fetchAPI('/promote', { 
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        resEl.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="font-weight: 600; color: ${res.data.exit_code === 0 ? 'var(--green)' : 'var(--red)'};">
+                    ${res.data.exit_code === 0 ? 'READY FOR PRODUCTION' : 'PROMOTIONS BLOCKED'}
+                </div>
+                <div class="badge ${res.data.exit_code === 0 ? 'green' : 'red'}">Exit Code: ${res.data.exit_code}</div>
+            </div>
+            <pre style="font-size: 0.85rem; color: var(--text-main); white-space: pre-wrap; overflow: auto; max-height: 400px;">${res.data.stdout || res.data.stderr}</pre>
+        `;
+        if (res.data.exit_code === 0) resEl.className = 'result-box flash-green';
+        else resEl.className = 'result-box flash-red';
+        resEl.style.display = 'block';
+    } catch (e) {
+        resEl.innerHTML = `<div style="color:var(--red)">Error: ${e.message}</div>`;
+        resEl.style.display = 'block';
+    } finally { setBtnLoading(btn, false); }
 });
 </script>
 </body>

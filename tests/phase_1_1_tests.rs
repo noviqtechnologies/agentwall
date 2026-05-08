@@ -26,6 +26,7 @@ fn test_phase_1_1_init_from_log() {
             None,
             Some("dry run active".to_string()),
             None,
+            None,
         )
         .unwrap();
 
@@ -37,6 +38,7 @@ fn test_phase_1_1_init_from_log() {
             Some(json!({"repo": "https://github.com/foo/bar.git", "depth": 1})),
             None,
             Some(2.5),
+            None,
         )
         .unwrap();
 
@@ -74,6 +76,7 @@ fn test_phase_1_1_developer_observability_report() {
             None,
             Some("dry run active".to_string()),
             None,
+            None,
         )
         .unwrap();
 
@@ -83,6 +86,7 @@ fn test_phase_1_1_developer_observability_report() {
             "dangerous_tool",
             None,
             Some("not_in_policy".to_string()),
+            None,
             None,
         )
         .unwrap();
@@ -107,8 +111,8 @@ fn test_phase_1_1_developer_observability_report() {
 
     // Verify FR-114 outputs
     assert!(text_output.contains("Policy:      None (Allow-all sentinel)"));
-    assert!(text_output.contains("Would have been denied under real policy:"));
+    assert!(text_output.contains("Policy Violations (Dry-Run):"));
     assert!(text_output.contains("dangerous_tool"));
-    assert!(text_output.contains("Run `agentwall init --from-log <audit.log>` to generate a starter policy."));
-    assert!(text_output.contains("⚠ WARNING: no policy loaded; enforcement was not active."));
+    assert!(text_output.contains("Run `agentwall init --from-log audit.log` to generate your rules."));
+    assert!(text_output.contains("CRITICAL: No policy loaded during this session."));
 }

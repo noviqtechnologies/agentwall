@@ -6,6 +6,7 @@ use agentwall::cli;
 use agentwall::init;
 use agentwall::kill;
 use agentwall::policy;
+use agentwall::promote;
 use agentwall::proxy;
 use agentwall::report;
 use agentwall::{log_error, log_warn};
@@ -26,8 +27,18 @@ use proxy::handler::ProxyState;
 
 #[tokio::main]
 async fn main() {
-    print_banner();
     let cli = Cli::parse();
+    
+    // Suppress banner for commands that output machine-readable formats (FR-204)
+    let suppress_banner = match &cli.command {
+        Commands::Report { .. } => true,
+        Commands::Test { .. } => true,
+        _ => false,
+    };
+
+    if !suppress_banner {
+        print_banner();
+    }
 
     let exit_code = match cli.command {
         Commands::Start {
@@ -41,6 +52,7 @@ async fn main() {
             dry_run,
             rate_limit,
             log_max_bytes,
+            oidc_issuer,
             report_path,
         } => {
             run_start(
@@ -54,15 +66,19 @@ async fn main() {
                 dry_run,
                 rate_limit,
                 log_max_bytes,
+                oidc_issuer,
                 report_path,
             )
             .await
         }
-        Commands::Check {
+        Commands::Test {
             policy,
             fixture,
             dry_run,
         } => check::run_check(Path::new(&policy), Path::new(&fixture), dry_run),
+        Commands::Promote { policy, key } => {
+            promote::run_promote(&policy, key.as_deref())
+        }
         Commands::VerifyLog { log_path } => run_verify_log(&log_path),
         Commands::Report {
             log_path,
@@ -97,6 +113,7 @@ async fn run_start(
     dry_run: bool,
     rate_limit: Option<u32>,
     log_max_bytes: u64,
+    oidc_issuer: Option<String>,
     _report_path: Option<String>,
 ) -> i32 {
     println!("{} Loading configuration...", "ℹ".blue());
@@ -120,7 +137,7 @@ async fn run_start(
     let (compiled_policy, _policy_hash, _warnings, policy_loaded) = match policy_path.as_deref() {
         Some(path) => {
             print!("{} Loading policy from {}... ", "ℹ".blue(), path.yellow());
-            match load_policy(Path::new(path)) {
+            match load_policy(Path::new(path), oidc_issuer) {
                 PolicyLoadResult::Loaded {
                     policy,
                     raw_hash,
@@ -298,7 +315,6 @@ fn run_verify_log(log_path: &str) -> i32 {
 }
 
 fn run_report(log_path: &str, output: Option<&str>, format: &str, include_params: bool) -> i32 {
-    println!("{} Generating report from {}...", "ℹ".blue(), log_path.yellow());
     match report::generate_report(
         Path::new(log_path),
         include_params,

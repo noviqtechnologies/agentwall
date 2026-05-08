@@ -205,16 +205,16 @@ Once you are ready, you can run the provided quickstart agent:
 
 **Step 7 — Tune the generated policy and re-run with enforcement**
 
-Edit `policy.yaml` — tighten regexes, remove tools your agent shouldn't need. Then pre-flight validate:
+Edit `policy.yaml` — tighten regexes, remove tools your agent shouldn't need. Then pre-flight validate using the security test suite:
 
 ```bash
 # macOS/Linux:
-./agentwall check --policy policy.yaml audit.log
+./agentwall test --policy policy.yaml audit.log
 ```
 
 ```powershell
 # Windows:
-.\agentwall.exe check --policy policy.yaml audit.log
+.\agentwall.exe test --policy policy.yaml audit.log
 ```
 
 Finally, run with enforcement enabled (no `--dry-run`):
@@ -254,21 +254,29 @@ Once you have a working local policy and at least one session report, you can de
 A policy file is a YAML document with the following structure:
 
 ```yaml
-version: "1"                    # Schema version (always "1" for Phase 1)
+version: "2"                    # Schema version (FR-201/202 support)
 default_action: deny            # "allow" or "deny" for unconfigured tools
+
+identity:                       # FR-202: Identity Binding
+  issuer: "https://auth.com"    # OIDC issuer URL
+  audience: "agentwall-proxy"   # Expected audience in JWT
 
 session:
   max_calls_per_second: 10      # Optional: rate limit across all tools
 
 tools:
-  - name: "tool_name"           # Exact MCP tool name to match
-    action: allow               # "allow" or "deny"
+  - name: "query_database"      # FR-201: Nested Validation Engine
+    action: allow
+    risk: high                  # Required for FR-204 promotion
     parameters:
-      - name: "param_name"      # Parameter key in the tool's arguments
-        type: string            # "string", "number", "boolean", "object", "array"
-        pattern: "^/safe/.*$"   # Regex pattern (for string types only)
-        required: true          # If true, call is denied if param is missing
-        unanchored: false       # Set true to disable auto ^(?:...)$ wrapping (not recommended)
+      - name: "options"
+        type: object
+        schema:                 # Recursive JSON Schema validation
+          type: object
+          properties:
+            query: { type: string, pattern: "^SELECT.*" }
+            limit: { type: integer, maximum: 100 }
+          required: ["query"]
 ```
 
 ### Pattern Auto-Anchoring
@@ -291,7 +299,8 @@ agentwall <SUBCOMMAND>
 
 SUBCOMMANDS:
   start        Start the proxy server
-  check        Pre-flight validate a policy against a fixture file
+  test         Execute security unit tests against a fixture file (FR-204)
+  promote      Validate and sign a policy for production (FR-204)
   verify-log   Verify cryptographic integrity of an audit log
   report       Generate a session analytics report from an audit log
   init         Generate a starter policy from a dry-run audit log
@@ -302,11 +311,10 @@ OPTIONS FOR 'start':
   --log-path <PATH>        Path for the audit log file
   --kill-mode <MODE>       Action on policy violation: connection | process | both
   --dry-run                Log violations but do not enforce them
-  --log-max-bytes <N>      Rotate log when it exceeds N bytes
-  --rate-limit <N>         Calls-per-second limit (overrides policy file)
+  --oidc-issuer <URL>      Override OIDC issuer for identity binding (FR-202)
   --report-path <PATH>     Path to write the session report JSON on shutdown
 
-OPTIONS FOR 'check':
+OPTIONS FOR 'test':
   --policy <PATH>          Policy YAML file to validate against
   <FIXTURE>                JSON file containing an array of tool calls to test
 
@@ -334,6 +342,9 @@ OPTIONS FOR 'init':
 | Policy Generation | FR-112 | `agentwall init` dynamically scaffolds a `policy.yaml` from observed log calls |
 | Quickstart Mode | FR-113 | `--dry-run` works without a policy file to support fast developer onboarding |
 | Observability Report| FR-114 | Terminal-friendly session insights linking dry-run events to policy actions |
+| **Nested Validation** | **FR-201** | **JSON Schema validation (Draft 7 subset) for nested parameters with depth limiting.** |
+| **Identity Binding** | **FR-202** | **OIDC-bound JWT validation for tool calls with background JWK rotation.** |
+| **Promotion Suite** | **FR-204** | **`agentwall promote` for production readiness checks and cryptographic policy signing.** |
 
 ---
 
@@ -398,9 +409,7 @@ python bridge.py --vexa-bin ..\target\release\agentwall.exe
 
 1. **Direct Bypass**: The proxy cannot stop an agent from calling MCP servers directly if the network allows it. You **must** block direct MCP egress at the OS/container level (e.g., Kubernetes `NetworkPolicy`, `iptables`) and force all traffic through the proxy.
 
-2. **Nested Object Content**: Phase 1 treats `type: object` and `type: array` parameters as opaque. It checks for their *presence* if `required: true`, but does **not** validate their *contents*. An agent could exfiltrate data through nested fields of an otherwise-allowed tool.
-
-3. **SIGKILL Rollback**: When a violation triggers a kill, the proxy terminates the connection and/or process. It **cannot** roll back side effects already committed by the MCP server before termination.
+2. **SIGKILL Rollback**: When a violation triggers a kill, the proxy terminates the connection and/or process. It **cannot** roll back side effects already committed by the MCP server before termination.
 
 ### `--kill-mode` Reference
 

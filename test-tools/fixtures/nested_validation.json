@@ -1,0 +1,32 @@
+[
+  {
+    "tool": "query_database",
+    "params": {
+      "options": {
+        "query": "SELECT * FROM products",
+        "limit": 10,
+        "filters": { "status": "active" }
+      }
+    }
+  },
+  {
+    "tool": "query_database",
+    "params": {
+      "options": {
+        "query": "DROP TABLE users",
+        "limit": 10,
+        "filters": { "status": "active" }
+      }
+    }
+  },
+  {
+    "tool": "query_database",
+    "params": {
+      "options": {
+        "query": "SELECT * FROM products",
+        "limit": 500,
+        "filters": { "status": "active" }
+      }
+    }
+  }
+]

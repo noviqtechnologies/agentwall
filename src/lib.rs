@@ -5,5 +5,6 @@ pub mod init;
 pub mod kill;
 pub mod logging;
 pub mod policy;
+pub mod promote;
 pub mod proxy;
 pub mod report;

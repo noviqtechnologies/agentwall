@@ -29,6 +29,8 @@ pub struct AuditEntry {
     pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
     pub entry_index: u64,
     pub prev_hmac: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -108,6 +110,7 @@ impl AuditLogger {
         params: Option<Value>,
         reason: Option<String>,
         latency_ms: Option<f64>,
+        subject: Option<String>,
     ) -> Result<AuditEntry, AuditError> {
         let mut idx = self.entry_index.lock().unwrap();
         let mut prev = self.prev_hmac.lock().unwrap();
@@ -120,6 +123,7 @@ impl AuditLogger {
             params,
             reason,
             latency_ms,
+            subject,
             entry_index: *idx,
             prev_hmac: prev.clone(),
             hmac: None, // computed below
@@ -193,6 +197,7 @@ impl AuditLogger {
                 params: None,
                 reason: None,
                 latency_ms: None,
+                subject: None,
                 entry_index: 0,
                 prev_hmac: prev_hmac_for_seed,
                 hmac: None,

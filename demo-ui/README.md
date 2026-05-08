@@ -10,6 +10,7 @@ A **local-first, zero-build** interactive dashboard for exploring VEXA AgentWall
 demo-ui/
 ├── index.html      # Single-page dashboard — open directly in your browser
 ├── bridge.py       # Python bridge server (Flask + flask-cors)
+├── demo_setup.md   # Universal Setup Guide (Windows, macOS, Linux)
 ├── policy.example.yaml # Default demo policy template (copied to policy.yaml on first run)
 └── README.md       # This file
 ```
@@ -131,9 +132,9 @@ Edit your YAML security policy live in the browser.
 
 | Action | What Happens |
 |---|---|
-| **Edit the YAML** | Modify the policy directly in the code editor |
+| **Edit the YAML** | Modify the policy live. Support for **Schema v2** is active. |
 | **Save Policy** | Writes the YAML to the `--policy` file on disk via `POST /policy/save` |
-| **Run vexa check** | Runs `agentwall check` against a built-in set of sample tool calls and shows a pass/fail table |
+| **Run Policy Check** | Runs `agentwall test` (FR-204) against a built-in set of sample tool calls and shows a pass/fail table |
 
 The built-in check fixtures test:
 - `read_file` with a safe path → **ALLOW**
@@ -177,12 +178,12 @@ Send a JSON-RPC tool call directly to the running proxy to see it be allowed or 
 
 **Quick-fill presets:**
 
-| Button | Tool | Path/Command | Expected |
+| Button | Tool | Path/Command | Feature |
 |---|---|---|---|
-| Safe Read | `read_file` | `/workspace/src/main.py` | ✅ ALLOW |
-| Block Secrets | `read_file` | `/workspace/.env` | 🚫 DENY |
-| Allowed Shell | `exec_shell` | `ls` | ✅ ALLOW |
-| Blocked Shell | `exec_shell` | `rm -rf /` | 🚫 DENY |
+| **Valid Nested** | `query_database` | `{"options": {...}}` | **FR-201** (JSON Schema) |
+| **Invalid Nested**| `query_database` | `limit: 200` | **FR-201** (Violation) |
+| **Safe Read** | `read_file` | `/workspace/src/main.py` | Basic Regex |
+| **Blocked Path** | `read_file` | `/etc/passwd` | Path Restriction |
 
 Or enter any tool name and JSON parameters manually and click **Send**. The result card animates green for `ALLOWED` and red for `DENIED`.
 
@@ -218,6 +219,20 @@ Displays:
 - **Tool Usage** table — per-tool call counts across the session
 
 Click **Refresh Report** to re-run the report command against the current log.
+
+---
+
+### 05 — Policy Promotion (FR-204)
+
+Verify that your policy is ready for production and generate a cryptographic signature.
+
+| Check | Requirement |
+|---|---|
+| **Risk Scores** | Every tool in the policy must have a `risk` level (`low`, `medium`, `high`) |
+| **Identity Config**| Production policies must define an OIDC `issuer` (HTTPS) and `audience` |
+| **Signing** | Generates an Ed25519 signature of the policy content for tamper-evidence |
+
+Click **Run Promotion Check** to see the readiness report and public key.
 
 ---
 

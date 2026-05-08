@@ -26,7 +26,7 @@ pub struct CheckResult {
 /// Returns exit code: 0 = all allowed, 1 = any denied, 2 = error
 pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 {
     // Load policy
-    let policy = match load_policy(policy_path) {
+    let policy = match load_policy(policy_path, None) {
         PolicyLoadResult::Loaded { policy, .. } => policy,
         PolicyLoadResult::Degraded { reason } => {
             eprintln!("ERROR: Policy degraded — {}", reason);
@@ -112,6 +112,7 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
                 param_name,
                 param_value,
                 pattern,
+                json_pointer,
             } => {
                 any_denied = true;
                 let mut reason_parts = vec![format!("reason={}", reason_code)];
@@ -123,6 +124,9 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
                 }
                 if let Some(p) = pattern {
                     reason_parts.push(format!("pattern={}", p));
+                }
+                if let Some(ptr) = json_pointer {
+                    reason_parts.push(format!("pointer={}", ptr));
                 }
 
                 CheckResult {

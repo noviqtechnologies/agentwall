@@ -70,7 +70,11 @@ const JSONRPC_POLICY_VIOLATION: i64 = -32001;
 
 /// Handle an incoming JSON-RPC request body.
 /// Returns (response_json, should_kill).
-pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
+pub async fn handle_jsonrpc(
+    state: &ProxyState,
+    body: &Value,
+    auth_header: Option<String>,
+) -> (Value, bool) {
     let id = body.get("id").cloned().unwrap_or(Value::Null);
     let method = body.get("method").and_then(|m| m.as_str()).unwrap_or("");
     let params = body.get("params").cloned().unwrap_or(Value::Null);
@@ -94,6 +98,7 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
             method,
             None,
             Some("method_not_supported".to_string()),
+            None,
             None,
         );
         logging::log_event(
@@ -119,6 +124,7 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
             None,
             Some("unknown_method".to_string()),
             None,
+            None,
         );
         logging::log_event(
             Level::Warn,
@@ -139,7 +145,7 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
     if !state.rate_limiter.acquire() {
         let _ = state
             .audit_logger
-            .write_entry("rate_limited", tool_name, None, None, None);
+            .write_entry("rate_limited", tool_name, None, None, None, None);
         logging::log_event(
             Level::Warn,
             "rate_limited",
@@ -179,6 +185,7 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
                     Some(tool_params.clone()),
                     None,
                     Some(0.0),
+                    None,
                 );
                 logging::log_event(
                     Level::Info,
@@ -195,9 +202,38 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
                 };
             }
             // No valid policy in enforcement mode — DENY all
-            return handle_deny(state, &id, tool_name, "no_valid_policy_loaded").await;
+            return handle_deny(state, &id, tool_name, "no_valid_policy_loaded", None).await;
         }
     };
+
+    // Identity Binding (FR-202)
+    let mut subject = None;
+    if let Some(validator) = &policy.identity_validator {
+        // Fail-Closed: ensure keys are loaded
+        if !validator.is_ready().await {
+            return handle_deny(state, &id, tool_name, "identity_keys_not_ready", None).await;
+        }
+
+        let token = auth_header.and_then(|h| {
+            if h.starts_with("Bearer ") {
+                Some(h[7..].to_string())
+            } else {
+                None
+            }
+        });
+
+        match token {
+            Some(t) => match validator.validate_token(&t).await {
+                Ok(sub) => subject = Some(sub),
+                Err(e) => {
+                    return handle_deny(state, &id, tool_name, &format!("identity_validation_failed: {}", e), None).await;
+                }
+            },
+            None => {
+                return handle_deny(state, &id, tool_name, "identity_token_missing", None).await;
+            }
+        }
+    }
 
     let start = Instant::now();
     let eval_result = policy.evaluate(tool_name, &tool_params);
@@ -212,6 +248,7 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
                 Some(tool_params.clone()),
                 None,
                 Some(eval_ms),
+                subject.clone(),
             );
 
             if let Err(e) = log_result {
@@ -221,13 +258,13 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
                     "log_flush_failed",
                     json!({"reason": e.to_string(), "action": "deny_applied"}),
                 );
-                return handle_deny(state, &id, tool_name, "log_flush_failed").await;
+                return handle_deny(state, &id, tool_name, "log_flush_failed", subject).await;
             }
 
             logging::log_event(
                 Level::Info,
                 "tool_allow",
-                json!({"tool": tool_name, "session": &state.session_id, "latency_ms": eval_ms}),
+                json!({"tool": tool_name, "session": &state.session_id, "latency_ms": eval_ms, "sub": &subject}),
             );
 
             // Forward to MCP
@@ -244,6 +281,7 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
             param_name,
             param_value,
             pattern,
+            json_pointer,
         } => {
             let mut reason_parts = vec![format!("reason={}", reason_code)];
             if let Some(n) = &param_name {
@@ -255,6 +293,9 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
             if let Some(p) = &pattern {
                 reason_parts.push(format!("pattern={}", p));
             }
+            if let Some(ptr) = &json_pointer {
+                reason_parts.push(format!("pointer={}", ptr));
+            }
             let reason = reason_parts.join(" ");
 
             if state.dry_run {
@@ -265,11 +306,12 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
                     None,
                     Some(reason.clone()),
                     None,
+                    subject.clone(),
                 );
                 logging::log_event(
                     Level::Warn,
                     "tool_dry_run_deny",
-                    json!({"tool": tool_name, "session": &state.session_id, "reason": &reason}),
+                    json!({"tool": tool_name, "session": &state.session_id, "reason": &reason, "sub": &subject}),
                 );
 
                 // Forward despite violation
@@ -282,7 +324,7 @@ pub async fn handle_jsonrpc(state: &ProxyState, body: &Value) -> (Value, bool) {
                     ),
                 }
             } else {
-                handle_deny(state, &id, tool_name, &reason).await
+                handle_deny(state, &id, tool_name, &reason, subject).await
             }
         }
     }
@@ -294,6 +336,7 @@ async fn handle_deny(
     id: &Value,
     tool_name: &str,
     reason: &str,
+    subject: Option<String>,
 ) -> (Value, bool) {
     // Step 1: Write + fsync DENY log entry (params redacted)
     let log_result = state.audit_logger.write_entry(
@@ -302,6 +345,7 @@ async fn handle_deny(
         None,
         Some(reason.to_string()),
         None,
+        subject.clone(),
     );
 
     if let Err(e) = log_result {
@@ -316,7 +360,7 @@ async fn handle_deny(
     logging::log_event(
         Level::Warn,
         "tool_deny",
-        json!({"tool": tool_name, "session": &state.session_id, "reason": reason}),
+        json!({"tool": tool_name, "session": &state.session_id, "reason": reason, "sub": &subject}),
     );
 
     // Step 3: JSON-RPC error response

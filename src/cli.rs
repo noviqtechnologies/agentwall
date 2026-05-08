@@ -53,14 +53,18 @@ pub enum Commands {
         /// Max tool calls per second (overrides policy)
         #[arg(long)]
         rate_limit: Option<u32>,
+        
+        /// OIDC issuer URL for identity binding (FR-202)
+        #[arg(long, env = "AGENTWALL_OIDC_ISSUER")]
+        oidc_issuer: Option<String>,
 
         /// Write session report on shutdown
         #[arg(long, env = "AGENTWALL_REPORT_PATH")]
         report_path: Option<String>,
     },
 
-    /// Pre-flight policy check against a fixture
-    Check {
+    /// Executes "Security Unit Tests" using a fixture file (FR-204)
+    Test {
         /// YAML policy file path
         #[arg(long)]
         policy: String,
@@ -71,6 +75,18 @@ pub enum Commands {
 
         /// JSON fixture file
         fixture: String,
+    },
+
+    /// Validate and sign a policy for production (FR-204)
+    Promote {
+        /// YAML policy file to promote
+        #[arg(long)]
+        policy: String,
+
+        /// Path to the Ed25519 private key (PEM or raw bytes)
+        /// If not provided, a temporary key will be generated for demo purposes.
+        #[arg(long)]
+        key: Option<String>,
     },
 
     /// Verify HMAC chain integrity of an audit log

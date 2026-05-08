@@ -43,7 +43,7 @@ fn test_log_rotation_and_seed() {
 
     // Write entries until it rotates
     for _ in 0..10 {
-        logger.write_entry("tool_allow", "read_file", None, None, None).unwrap();
+        logger.write_entry("tool_allow", "read_file", None, None, None, None).unwrap();
         std::thread::sleep(Duration::from_millis(10));
     }
 
@@ -81,9 +81,9 @@ fn test_session_report_generation() {
     ).unwrap();
 
     // Mock session events
-    logger.write_entry("tool_allow", "read_file", None, None, None).unwrap();
-    logger.write_entry("tool_deny", "exec_shell", None, Some("action is deny".to_string()), None).unwrap();
-    logger.write_entry("rate_limited", "read_file", None, None, None).unwrap();
+    logger.write_entry("tool_allow", "read_file", None, None, None, None).unwrap();
+    logger.write_entry("tool_deny", "exec_shell", None, Some("action is deny".to_string()), None, None).unwrap();
+    logger.write_entry("rate_limited", "read_file", None, None, None, None).unwrap();
 
     let report = generate_report(
         &log_path,

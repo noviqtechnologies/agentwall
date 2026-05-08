@@ -110,13 +110,14 @@ def healthz():
 @app.route('/proxy/start', methods=['POST'])
 def proxy_start():
     global proxy_process
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     policy_path = data.get('policy_path', cfg['policy'])
     listen = data.get('listen', cfg['listen'])
     log_path = data.get('log_path', cfg['log_path'])
     kill_mode = data.get('kill_mode', 'both')
     dry_run = data.get('dry_run', False)
     report_path = data.get('report_path', cfg['report_path'])
+    oidc_issuer = data.get('oidc_issuer')
 
     with proxy_lock:
         if proxy_process is not None and proxy_process.poll() is None:
@@ -132,6 +133,8 @@ def proxy_start():
         ]
         if dry_run:
             cmd.append('--dry-run')
+        if oidc_issuer:
+            cmd.extend(['--oidc-issuer', oidc_issuer])
 
         try:
             proxy_process = subprocess.Popen(
@@ -202,7 +205,7 @@ def proxy_readyz():
 
 @app.route('/check', methods=['POST'])
 def check():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     policy_str = data.get('policy', '')
     fixture = data.get('fixture', [])
     
@@ -215,7 +218,7 @@ def check():
         fixture_tmp = f_fixture.name
 
     try:
-        cmd = [cfg['vexa_bin'], 'check', '--policy', policy_tmp, fixture_tmp]
+        cmd = [cfg['vexa_bin'], 'test', '--policy', policy_tmp, fixture_tmp]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         return jsonify({
             "exit_code": proc.returncode,
@@ -235,7 +238,7 @@ def check():
 
 @app.route('/policy/save', methods=['POST'])
 def save_policy():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     policy_content = data.get('policy')
     if not policy_content:
         return jsonify({"error": "No policy provided"}), 400
@@ -290,7 +293,7 @@ def verify_log():
 
 @app.route('/report', methods=['POST'])
 def report():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     log_path = data.get('log_path', cfg['log_path'])
     
     if not os.path.exists(log_path):
@@ -315,6 +318,29 @@ def report():
         return jsonify({"error": f"Binary not found: {cfg['vexa_bin']}"}), 500
     except subprocess.TimeoutExpired:
         return jsonify({"error": "Report command timed out"}), 500
+
+@app.route('/promote', methods=['POST'])
+def promote():
+    data = request.get_json(silent=True) or {}
+    policy_path = data.get('policy', cfg['policy'])
+    
+    if not os.path.exists(policy_path):
+        return jsonify({"error": f"Policy file not found: {policy_path}"}), 404
+        
+    try:
+        cmd = [cfg['vexa_bin'], 'promote', '--policy', policy_path]
+        print(f"[DEBUG] Running promote cmd: {' '.join(cmd)}")
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        return jsonify({
+            "exit_code": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr
+        })
+    except FileNotFoundError:
+        return jsonify({"error": f"Binary not found: {cfg['vexa_bin']}"}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Promote command timed out"}), 500
 
 @app.route('/log/entries', methods=['GET'])
 def log_entries():
@@ -378,6 +404,7 @@ def proxy_call():
     data = request.json or {}
     tool = data.get('tool')
     params = data.get('params', {})
+    token = data.get('token')
     listen = data.get('listen', cfg.get('current_listen', cfg['listen']))
     
     payload = {
@@ -390,10 +417,14 @@ def proxy_call():
         "id": 1
     }
     
+    headers = {'Content-Type': 'application/json'}
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+    
     req = urllib.request.Request(
         f"http://{listen}/", 
         data=json.dumps(payload).encode('utf-8'),
-        headers={'Content-Type': 'application/json'},
+        headers=headers,
         method='POST'
     )
     
@@ -418,8 +449,8 @@ def proxy_call():
         return jsonify({"error": "Proxy not reachable. Is it running?"}), 503
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="VEXA AgentWall Bridge")
-    parser.add_argument('--vexa-bin', default='./vexa', help='Path to the vexa binary')
+    parser = argparse.ArgumentParser(description="AgentWall Bridge")
+    parser.add_argument('--vexa-bin', default='./agentwall.exe', help='Path to the agentwall binary')
     parser.add_argument('--policy', default='./policy.yaml', help='Default policy file path')
     parser.add_argument('--log-path', default='./audit.log', help='Audit log to tail')
     parser.add_argument('--listen', default='127.0.0.1:8080', help='Proxy listen address')

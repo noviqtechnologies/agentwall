@@ -1,41 +1,52 @@
-version: "1"
+version: "2"
 default_action: deny
+
+# FR-202: Identity Binding configuration
+# To enable identity binding, provide an HTTPS issuer and audience.
+# identity:
+#   issuer: "https://auth.company.com"
+#   audience: "agentwall-proxy"
+
 session:
-  max_calls_per_second: 5
+  max_calls_per_second: 10
 
 tools:
-  # Allow reading files in specific safe directories
+  # FR-201: Nested Validation Engine Example
+  - name: "query_database"
+    action: allow
+    risk: high
+    parameters:
+      - name: "options"
+        type: object
+        schema:
+          type: object
+          properties:
+            query: { type: string, pattern: "^SELECT.*" }
+            limit: { type: integer, maximum: 100 }
+            filters:
+              type: object
+              properties:
+                status: { type: string, enum: ["active", "pending"] }
+              required: ["status"]
+          required: ["query", "limit"]
+
   - name: "read_file"
     action: allow
-    parameters:
-      - name: "path"
-        type: string
-        pattern: "^/workspace/(src|docs|tests)/.*$"
-        required: true
-
-  # Allow listing directory contents within the workspace
-  - name: "list_directory"
-    action: allow
+    risk: low
     parameters:
       - name: "path"
         type: string
         pattern: "^/workspace/.*"
         required: true
 
-  # Restrict file writing to a specific output directory
   - name: "write_file"
     action: allow
+    risk: medium
     parameters:
       - name: "path"
         type: string
         pattern: "^/workspace/output/.*"
         required: true
-
-  # Only allow specific safe shell commands
-  - name: "exec_shell"
-    action: allow
-    parameters:
-      - name: "command"
+      - name: "content"
         type: string
-        pattern: "^(ls|git status|npm test)$"
         required: true

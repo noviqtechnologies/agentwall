@@ -14,7 +14,7 @@ fn test_hmac_chain() {
 
     // Write first entry
     let e1 = logger
-        .write_entry("tool_allow", "read_file", None, None, Some(1.2))
+        .write_entry("tool_allow", "read_file", None, None, Some(1.2), None)
         .unwrap();
     assert_eq!(e1.entry_index, 0);
     assert_eq!(e1.prev_hmac, ZERO_HMAC);
@@ -27,6 +27,7 @@ fn test_hmac_chain() {
             "exec_shell",
             None,
             Some("not_allowed".to_string()),
+            None,
             None,
         )
         .unwrap();

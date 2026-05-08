@@ -3,12 +3,25 @@
 use super::schema::ParamType;
 use regex::Regex;
 use serde_json::Value;
+use std::sync::Arc;
+use jsonschema::JSONSchema;
 
 /// A compiled, ready-to-evaluate policy
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CompiledPolicy {
     pub tools: Vec<CompiledTool>,
     pub max_calls_per_second: u32,
+    pub identity_validator: Option<Arc<super::identity::IdentityValidator>>,
+}
+
+impl std::fmt::Debug for CompiledPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompiledPolicy")
+            .field("tools", &self.tools)
+            .field("max_calls_per_second", &self.max_calls_per_second)
+            .field("identity_validator", &self.identity_validator.as_ref().map(|_| "Some(IdentityValidator)"))
+            .finish()
+    }
 }
 
 /// A compiled tool rule with pre-compiled regex patterns
@@ -16,17 +29,32 @@ pub struct CompiledPolicy {
 pub struct CompiledTool {
     pub name: String,
     pub action: String,
+    pub risk: Option<super::schema::ToolRisk>,
     pub parameters: Vec<CompiledParam>,
 }
 
 /// A compiled parameter constraint
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CompiledParam {
     pub name: String,
     pub param_type: ParamType,
     pub pattern: Option<Regex>,
+    pub schema: Option<Arc<JSONSchema>>,
     pub max_length: Option<usize>,
     pub required: bool,
+}
+
+impl std::fmt::Debug for CompiledParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompiledParam")
+            .field("name", &self.name)
+            .field("param_type", &self.param_type)
+            .field("pattern", &self.pattern)
+            .field("schema", &self.schema.as_ref().map(|_| "Some(JSONSchema)"))
+            .field("max_length", &self.max_length)
+            .field("required", &self.required)
+            .finish()
+    }
 }
 
 /// Result of policy evaluation
@@ -38,6 +66,7 @@ pub enum EvalResult {
         param_name: Option<String>,
         param_value: Option<String>,
         pattern: Option<String>,
+        json_pointer: Option<String>, // FR-201
     },
 }
 
@@ -78,6 +107,7 @@ impl CompiledPolicy {
                     param_name: None,
                     param_value: None,
                     pattern: None,
+                    json_pointer: None,
                 }
             }
         };
@@ -89,6 +119,7 @@ impl CompiledPolicy {
                 param_name: None,
                 param_value: None,
                 pattern: None,
+                json_pointer: None,
             };
         }
 
@@ -102,9 +133,22 @@ impl CompiledPolicy {
                     param_name: None,
                     param_value: None,
                     pattern: None,
+                    json_pointer: None,
                 }
             }
         };
+
+        // Payload size limit (FR-201: 100KB)
+        let payload_str = params.to_string();
+        if payload_str.len() > 100 * 1024 {
+            return EvalResult::Deny {
+                reason_code: "payload_too_large".to_string(),
+                param_name: None,
+                param_value: None,
+                pattern: None,
+                json_pointer: None,
+            };
+        }
 
         for param_rule in &tool.parameters {
             let value = params_obj.get(&param_rule.name);
@@ -117,6 +161,7 @@ impl CompiledPolicy {
                         param_name: Some(param_rule.name.clone()),
                         param_value: None,
                         pattern: None,
+                        json_pointer: None,
                     };
                 }
             }
@@ -138,6 +183,7 @@ impl CompiledPolicy {
                                 param_name: Some(param_rule.name.clone()),
                                 param_value: Some(value.to_string()),
                                 pattern: None,
+                                json_pointer: None,
                             }
                         }
                     };
@@ -149,6 +195,7 @@ impl CompiledPolicy {
                                 param_name: Some(param_rule.name.clone()),
                                 param_value: Some(s.to_string()),
                                 pattern: None,
+                                json_pointer: None,
                             };
                         }
                     }
@@ -160,6 +207,7 @@ impl CompiledPolicy {
                                 param_name: Some(param_rule.name.clone()),
                                 param_value: Some(s.to_string()),
                                 pattern: Some(re.as_str().to_string()),
+                                json_pointer: None,
                             };
                         }
                     }
@@ -171,6 +219,7 @@ impl CompiledPolicy {
                             param_name: Some(param_rule.name.clone()),
                             param_value: Some(value.to_string()),
                             pattern: None,
+                            json_pointer: None,
                         };
                     }
                 }
@@ -181,18 +230,18 @@ impl CompiledPolicy {
                             param_name: Some(param_rule.name.clone()),
                             param_value: Some(value.to_string()),
                             pattern: None,
+                            json_pointer: None,
                         };
                     }
                 }
                 ParamType::Object => {
-                    // Enforce presence if required (already checked above)
-                    // DO NOT validate content — blind pass-through
                     if !value.is_object() {
                         return EvalResult::Deny {
                             reason_code: "param_type_mismatch".to_string(),
                             param_name: Some(param_rule.name.clone()),
                             param_value: Some(value.to_string()),
                             pattern: None,
+                            json_pointer: None,
                         };
                     }
                 }
@@ -203,8 +252,26 @@ impl CompiledPolicy {
                             param_name: Some(param_rule.name.clone()),
                             param_value: Some(value.to_string()),
                             pattern: None,
+                            json_pointer: None,
                         };
                     }
+                }
+            }
+
+            // Nested JSON Schema Validation (FR-201)
+            if let Some(schema) = &param_rule.schema {
+                if let Err(errors) = schema.validate(value) {
+                    // Get the first error and return as JSON Pointer (RFC 6901)
+                    let first_error = errors.into_iter().next();
+                    let pointer = first_error.map(|e| e.instance_path.to_string());
+                    
+                    return EvalResult::Deny {
+                        reason_code: "schema_validation_failed".to_string(),
+                        param_name: Some(param_rule.name.clone()),
+                        param_value: Some(value.to_string()),
+                        pattern: None,
+                        json_pointer: pointer,
+                    };
                 }
             }
         }

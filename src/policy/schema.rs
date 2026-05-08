@@ -6,24 +6,35 @@
 use serde::Deserialize;
 
 /// The supported policy schema versions.
-pub const SUPPORTED_VERSIONS: &[&str] = &["1"];
+pub const SUPPORTED_VERSIONS: &[&str] = &["1", "2"];
 
 /// Top-level policy document.
 /// Unknown fields at any level cause a fatal startup error.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyFile {
-    /// Required. Must be "1". Any other value = fatal error.
+    /// Required. Must be "1" or "2". Any other value = fatal error.
     pub version: String,
 
     /// Required. Must be "deny". "allow" = fatal error. Absent = fatal error.
     pub default_action: String,
+
+    /// Identity binding configuration (v2 only).
+    pub identity: Option<IdentityConfig>,
 
     /// Optional session configuration.
     pub session: Option<SessionConfig>,
 
     /// Tool allowlist. Empty = all denied.
     pub tools: Option<Vec<ToolRule>>,
+}
+
+/// Identity configuration (OIDC).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IdentityConfig {
+    pub issuer: String,
+    pub audience: String,
 }
 
 /// Session-level configuration.
@@ -34,15 +45,27 @@ pub struct SessionConfig {
     pub max_calls_per_second: Option<u32>,
 }
 
+/// Tool risk level.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolRisk {
+    Low,
+    Medium,
+    High,
+}
+
 /// A single tool rule in the allowlist.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolRule {
-    /// Exact case-sensitive tool name.
+    /// Exact case-sensitive tool name or regex (v2).
     pub name: String,
 
-    /// "allow" or "deny" (deny is redundant but valid). No other values.
+    /// "allow", "deny", or "notify" (v2).
     pub action: String,
+
+    /// Tool risk score (v2).
+    pub risk: Option<ToolRisk>,
 
     /// Parameter constraints. Optional.
     pub parameters: Option<Vec<ParameterRule>>,
@@ -81,6 +104,9 @@ pub struct ParameterRule {
     /// Expected JSON type.
     #[serde(rename = "type")]
     pub param_type: ParamType,
+
+    /// Nested JSON Schema (Draft 7 subset) (FR-201).
+    pub schema: Option<serde_json::Value>,
 
     /// Regex pattern (string type only). Auto-anchored with ^(?:...)$ unless unanchored: true.
     pub pattern: Option<String>,

@@ -113,6 +113,11 @@ async fn handle_request(
             .unwrap());
     }
 
+    // Extract Authorization header (FR-202)
+    let auth_header = req.headers().get(hyper::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+
     // Read body
     let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
         Ok(collected) => collected.to_bytes(),
@@ -138,7 +143,7 @@ async fn handle_request(
     };
 
     // Handle the JSON-RPC call
-    let (response, should_kill) = handler::handle_jsonrpc(state, &body).await;
+    let (response, should_kill) = handler::handle_jsonrpc(state, &body, auth_header).await;
 
     // Send response first (before kill)
     let http_response = json_response(StatusCode::OK, &response);

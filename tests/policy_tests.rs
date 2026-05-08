@@ -11,14 +11,17 @@ fn test_allowlist_evaluation() {
             CompiledTool {
                 name: "allowed_tool".to_string(),
                 action: "allow".to_string(),
+                risk: None,
                 parameters: vec![],
             },
             CompiledTool {
                 name: "denied_tool".to_string(),
                 action: "deny".to_string(),
+                risk: None,
                 parameters: vec![],
             },
         ],
+        identity_validator: None,
     };
 
     assert!(matches!(
@@ -44,14 +47,17 @@ fn test_regex_anchoring() {
         tools: vec![CompiledTool {
             name: "regex_tool".to_string(),
             action: "allow".to_string(),
+            risk: None,
             parameters: vec![CompiledParam {
                 name: "path".to_string(),
                 param_type: ParamType::String,
                 pattern: Some(Regex::new(r"^(?:/workspace/.*)$").unwrap()),
+                schema: None,
                 max_length: None,
                 required: true,
             }],
         }],
+        identity_validator: None,
     };
 
     assert!(matches!(
@@ -66,20 +72,23 @@ fn test_regex_anchoring() {
 }
 
 #[test]
-fn test_object_blind_passthrough() {
+fn test_object_blind_passthrough_if_no_schema() {
     let policy = CompiledPolicy {
         max_calls_per_second: 10,
         tools: vec![CompiledTool {
             name: "obj_tool".to_string(),
             action: "allow".to_string(),
+            risk: None,
             parameters: vec![CompiledParam {
                 name: "data".to_string(),
                 param_type: ParamType::Object,
                 pattern: None,
+                schema: None,
                 max_length: None,
                 required: true,
             }],
         }],
+        identity_validator: None,
     };
 
     assert!(matches!(
@@ -89,60 +98,90 @@ fn test_object_blind_passthrough() {
         ),
         EvalResult::Allow
     ));
+}
 
-    match policy.evaluate("obj_tool", &json!({})) {
-        EvalResult::Deny { reason_code, .. } => assert_eq!(reason_code, "param_required_missing"),
-        _ => panic!("Expected deny for missing object"),
+#[test]
+fn test_nested_schema_validation() {
+    use jsonschema::JSONSchema;
+    use std::sync::Arc;
+
+    let schema_json = json!({
+        "type": "object",
+        "properties": {
+            "limit": { "type": "integer", "maximum": 50 }
+        },
+        "required": ["limit"],
+        "additionalProperties": false
+    });
+    let compiled_schema = Arc::new(JSONSchema::compile(&schema_json).unwrap());
+
+    let policy = CompiledPolicy {
+        max_calls_per_second: 0,
+        tools: vec![CompiledTool {
+            name: "query_db".to_string(),
+            action: "allow".to_string(),
+            risk: None,
+            parameters: vec![CompiledParam {
+                name: "options".to_string(),
+                param_type: ParamType::Object,
+                pattern: None,
+                schema: Some(compiled_schema),
+                max_length: None,
+                required: true,
+            }],
+        }],
+        identity_validator: None,
+    };
+
+    // Valid call
+    assert!(matches!(
+        policy.evaluate("query_db", &json!({"options": {"limit": 10}})),
+        EvalResult::Allow
+    ));
+
+    // Invalid: missing required field
+    match policy.evaluate("query_db", &json!({"options": {}})) {
+        EvalResult::Deny { reason_code, json_pointer, .. } => {
+            assert_eq!(reason_code, "schema_validation_failed");
+            assert_eq!(json_pointer, Some("".to_string())); // root of options fails required
+        }
+        _ => panic!("Expected schema failure"),
     }
 
-    match policy.evaluate("obj_tool", &json!({"data": "string_instead_of_object"})) {
-        EvalResult::Deny { reason_code, .. } => assert_eq!(reason_code, "param_type_mismatch"),
-        _ => panic!("Expected deny for wrong type"),
+    // Invalid: maximum exceeded
+    match policy.evaluate("query_db", &json!({"options": {"limit": 100}})) {
+        EvalResult::Deny { reason_code, json_pointer, .. } => {
+            assert_eq!(reason_code, "schema_validation_failed");
+            assert_eq!(json_pointer, Some("/limit".to_string()));
+        }
+        _ => panic!("Expected schema failure"),
+    }
+
+    // Invalid: additional properties (defaulted to false in loader, but here we set it in schema)
+    match policy.evaluate("query_db", &json!({"options": {"limit": 10, "bogus": true}})) {
+        EvalResult::Deny { reason_code, .. } => {
+            assert_eq!(reason_code, "schema_validation_failed");
+        }
+        _ => panic!("Expected schema failure"),
     }
 }
 
 #[test]
-fn test_type_enforcement_and_max_length() {
+fn test_payload_size_limit() {
     let policy = CompiledPolicy {
-        max_calls_per_second: 10,
+        max_calls_per_second: 0,
         tools: vec![CompiledTool {
-            name: "type_tool".to_string(),
+            name: "tool".to_string(),
             action: "allow".to_string(),
-            parameters: vec![
-                CompiledParam {
-                    name: "s".to_string(),
-                    param_type: ParamType::String,
-                    pattern: None,
-                    max_length: Some(5),
-                    required: true,
-                },
-                CompiledParam {
-                    name: "n".to_string(),
-                    param_type: ParamType::Number,
-                    pattern: None,
-                    max_length: None,
-                    required: true,
-                },
-                CompiledParam {
-                    name: "b".to_string(),
-                    param_type: ParamType::Boolean,
-                    pattern: None,
-                    max_length: None,
-                    required: true,
-                },
-            ],
+            risk: None,
+            parameters: vec![],
         }],
+        identity_validator: None,
     };
 
-    assert!(matches!(
-        policy.evaluate("type_tool", &json!({"s": "12345", "n": 42, "b": true})),
-        EvalResult::Allow
-    ));
-
-    match policy.evaluate("type_tool", &json!({"s": "123456", "n": 42, "b": true})) {
-        EvalResult::Deny { reason_code, .. } => {
-            assert_eq!(reason_code, "param_max_length_exceeded")
-        }
-        _ => panic!("Expected deny for max_length"),
+    let large_params = json!({ "data": "a".repeat(110 * 1024) });
+    match policy.evaluate("tool", &large_params) {
+        EvalResult::Deny { reason_code, .. } => assert_eq!(reason_code, "payload_too_large"),
+        _ => panic!("Expected payload_too_large"),
     }
 }

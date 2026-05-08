@@ -4,6 +4,11 @@ docs/
 # Audit Logs and Backups (FR-104, FR-109)
 *.log
 *.bak
+*.sig
+
+# Reports
+session-report.json
+report.json
 
 # IDEs and OS
 .idea/
@@ -24,7 +29,6 @@ vexa-mvp1/
 agentwall-pkg/
 
 # Manual test runs
-# Manual test examples
 manual_test/*.log
 manual_test/*.bak
 tests/tmp_*
@@ -32,3 +36,14 @@ tests/tmp_*
 # Local policies
 policy.yaml
 policy.yaml.bak
+
+# Demo UI artifacts
+demo-ui/policy.yaml
+demo-ui/audit.log
+demo-ui/session-report.json
+demo-ui/policy.yaml.sig
+__pycache__/
+demo-ui/__pycache__/
+
+# Tooling artifacts
+test-tools/**/target/
