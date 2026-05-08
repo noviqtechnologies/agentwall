@@ -5,12 +5,12 @@ import sys
 
 def main():
     # 1. Get the proxy URL from the environment
-    proxy_url = os.environ.get("VEXA_PROXY_URL")
+    proxy_url = os.environ.get("AGENTWALL_PROXY_URL")
     
     if not proxy_url:
-        print("ERROR: VEXA_PROXY_URL environment variable is not set.")
-        print("Please run: $env:VEXA_PROXY_URL=\"http://127.0.0.1:8080\" (PowerShell)")
-        print("        or: export VEXA_PROXY_URL=http://127.0.0.1:8080 (Bash)")
+        print("ERROR: AGENTWALL_PROXY_URL environment variable is not set.")
+        print("Please run: $env:AGENTWALL_PROXY_URL=\"http://127.0.0.1:8080\" (PowerShell)")
+        print("        or: export AGENTWALL_PROXY_URL=http://127.0.0.1:8080 (Bash)")
         sys.exit(1)
 
     print(f"--- Starting Quickstart Agent ---")

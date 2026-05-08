@@ -14,7 +14,7 @@ def main():
         with open(args.pid_file, "w") as f:
             f.write(str(os.getpid()))
 
-    proxy_url = os.environ.get("VEXA_PROXY_URL", "http://127.0.0.1:8080")
+    proxy_url = os.environ.get("AGENTWALL_PROXY_URL", "http://127.0.0.1:8080")
     
     with open(args.fixture, "r") as f:
         calls = json.load(f)
