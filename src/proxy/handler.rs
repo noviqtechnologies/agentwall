@@ -8,7 +8,6 @@ use crate::audit::logger::AuditLogger;
 use crate::kill::KillMode;
 use crate::logging::{self, Level};
 use crate::policy::engine::{CompiledPolicy, EvalResult};
-use crate::proxy::forward;
 
 /// Shared proxy state
 pub struct ProxyState {
@@ -68,13 +67,19 @@ impl RateLimiter {
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
 const JSONRPC_POLICY_VIOLATION: i64 = -32001;
 
-/// Handle an incoming JSON-RPC request body.
-/// Returns (response_json, should_kill).
-pub async fn handle_jsonrpc(
+pub enum ProxyAction {
+    Forward,
+    Respond(Value),
+    KillAndRespond(Value),
+}
+
+/// Handle an incoming JSON-RPC request body to determine the proxy action.
+/// Returns a `ProxyAction`.
+pub async fn evaluate_jsonrpc(
     state: &ProxyState,
     body: &Value,
     auth_header: Option<String>,
-) -> (Value, bool) {
+) -> ProxyAction {
     let id = body.get("id").cloned().unwrap_or(Value::Null);
     let method = body.get("method").and_then(|m| m.as_str()).unwrap_or("");
     let params = body.get("params").cloned().unwrap_or(Value::Null);
@@ -82,13 +87,7 @@ pub async fn handle_jsonrpc(
     // Route by MCP method
     if method == "tools/list" || method.starts_with("notifications/") {
         // Transparent proxy — no policy evaluation
-        return match forward::forward_request(&state.http_client, &state.upstream_url, body).await {
-            Ok(resp) => (resp, false),
-            Err(e) => (
-                make_error(&id, -32603, &format!("Upstream error: {}", e)),
-                false,
-            ),
-        };
+        return ProxyAction::Forward;
     }
 
     if method.starts_with("resources/") || method.starts_with("prompts/") {
@@ -106,14 +105,11 @@ pub async fn handle_jsonrpc(
             "tool_deny",
             json!({"tool": method, "session": &state.session_id, "reason": "method_not_supported"}),
         );
-        return (
-            make_error(
-                &id,
-                JSONRPC_METHOD_NOT_FOUND,
-                "Method not supported in Phase 1",
-            ),
-            false,
-        );
+        return ProxyAction::Respond(make_error(
+            &id,
+            JSONRPC_METHOD_NOT_FOUND,
+            "Method not supported in Phase 1",
+        ));
     }
 
     if method != "tools/call" {
@@ -131,10 +127,7 @@ pub async fn handle_jsonrpc(
             "tool_deny",
             json!({"tool": method, "session": &state.session_id, "reason": "unknown_method"}),
         );
-        return (
-            make_error(&id, JSONRPC_METHOD_NOT_FOUND, "Method not found"),
-            false,
-        );
+        return ProxyAction::Respond(make_error(&id, JSONRPC_METHOD_NOT_FOUND, "Method not found"));
     }
 
     // tools/call — extract tool name and arguments
@@ -155,21 +148,18 @@ pub async fn handle_jsonrpc(
                 "limit_per_sec": state.rate_limiter.max_per_second
             }),
         );
-        return (
-            json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": -32029,
-                    "message": "Rate limit exceeded",
-                    "data": {
-                        "session_id": &state.session_id,
-                        "limit_per_sec": state.rate_limiter.max_per_second
-                    }
+        return ProxyAction::Respond(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": {
+                "code": -32029,
+                "message": "Rate limit exceeded",
+                "data": {
+                    "session_id": &state.session_id,
+                    "limit_per_sec": state.rate_limiter.max_per_second
                 }
-            }),
-            false,
-        );
+            }
+        }));
     }
 
     // Policy evaluation
@@ -193,13 +183,7 @@ pub async fn handle_jsonrpc(
                     json!({"tool": tool_name, "session": &state.session_id, "latency_ms": 0.0, "note": "no_policy_dry_run"}),
                 );
 
-                return match forward::forward_request(&state.http_client, &state.upstream_url, body).await {
-                    Ok(resp) => (resp, false),
-                    Err(e) => (
-                        make_error(&id, -32603, &format!("Upstream error: {}", e)),
-                        false,
-                    ),
-                };
+                return ProxyAction::Forward;
             }
             // No valid policy in enforcement mode — DENY all
             return handle_deny(state, &id, tool_name, "no_valid_policy_loaded", None).await;
@@ -268,13 +252,7 @@ pub async fn handle_jsonrpc(
             );
 
             // Forward to MCP
-            match forward::forward_request(&state.http_client, &state.upstream_url, body).await {
-                Ok(resp) => (resp, false),
-                Err(e) => (
-                    make_error(&id, -32603, &format!("Upstream error: {}", e)),
-                    false,
-                ),
-            }
+            ProxyAction::Forward
         }
         EvalResult::Deny {
             reason_code,
@@ -315,14 +293,7 @@ pub async fn handle_jsonrpc(
                 );
 
                 // Forward despite violation
-                match forward::forward_request(&state.http_client, &state.upstream_url, body).await
-                {
-                    Ok(resp) => (resp, false),
-                    Err(e) => (
-                        make_error(&id, -32603, &format!("Upstream error: {}", e)),
-                        false,
-                    ),
-                }
+                ProxyAction::Forward
             } else {
                 handle_deny(state, &id, tool_name, &reason, subject).await
             }
@@ -337,7 +308,7 @@ async fn handle_deny(
     tool_name: &str,
     reason: &str,
     subject: Option<String>,
-) -> (Value, bool) {
+) -> ProxyAction {
     // Step 1: Write + fsync DENY log entry (params redacted)
     let log_result = state.audit_logger.write_entry(
         "tool_deny",
@@ -378,7 +349,7 @@ async fn handle_deny(
     });
 
     // Step 4: Kill will be executed by the server after sending response
-    (error_response, true)
+    ProxyAction::KillAndRespond(error_response)
 }
 
 /// Create a JSON-RPC error response

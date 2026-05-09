@@ -1,0 +1,21 @@
+version: "2"
+default_action: deny
+tools:
+  - name: "safe_tool"
+    action: allow
+  - name: "read_file"
+    action: allow
+    parameters:
+      path:
+        regex: "^/workspace/.*"
+  - name: "query_database"
+    action: allow
+    parameters:
+      options:
+        schema:
+          type: object
+          properties:
+            limit:
+              type: integer
+              maximum: 100
+          required: ["limit"]

@@ -407,7 +407,7 @@
                 <ol style="margin: 10px 0; padding-left: 20px; line-height: 1.6;">
                     <li><strong>Start the Bridge:</strong> Ensure <code>python bridge.py</code> is running in your terminal.</li>
                     <li><strong>Go to Session Monitor:</strong> Click the "Session Monitor" tab in the sidebar.</li>
-                    <li><strong>Start Proxy:</strong> Click the <span class="badge green">▶ START PROXY</span> button to begin interception.</li>
+                    <li><strong>Start Proxy:</strong> Click the <span class="badge green">▶ START PROXY</span> button. (Toggle to <b>Stdio Wrap</b> mode to test the new Bidirectional MCP Interception).</li>
                     <li><strong>Try Simulation:</strong> Use the "Simulate Tool Call" buttons to see policies in action.</li>
                 </ol>
             </div>
@@ -501,8 +501,13 @@ tools:
                         <h3 style="margin-bottom: 8px;">Proxy Control</h3>
                         <div id="p2-status-badge" class="badge muted">○ STOPPED</div>
                         <div id="p2-ready-badge" class="badge" style="display: none; margin-left: 8px;"></div>
+                        <div id="p2-mode-badge" class="badge muted" style="margin-left: 8px;">MODE: HTTP</div>
                     </div>
                     <div style="display: flex; gap: 12px;">
+                        <div id="mode-selector" style="display: flex; background: var(--bg-color); padding: 4px; border-radius: 8px; border: 1px solid var(--border-color); margin-right: 8px;">
+                            <button id="mode-http" class="btn active-mode" style="padding: 4px 12px; font-size: 0.8rem; border: none; background: var(--accent); color: white;">HTTP Proxy</button>
+                            <button id="mode-wrap" class="btn" style="padding: 4px 12px; font-size: 0.8rem; border: none; background: transparent;">Stdio Wrap</button>
+                        </div>
                         <button id="btn-proxy-start" class="btn btn-primary">
                             <div class="spinner"></div> Start Proxy
                         </button>
@@ -521,6 +526,10 @@ tools:
                         <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">OIDC Issuer (FR-202)</label>
                         <input type="text" id="cfg-oidc" class="input" value="https://auth.company.com" placeholder="https://...">
                     </div>
+                </div>
+                <div id="wrap-config" style="display: none; margin-bottom: 20px;">
+                    <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">Command to Wrap (FR-302)</label>
+                    <input type="text" id="cfg-command" class="input" value="python ../test-tools/mock-stdio-server.py" placeholder='e.g. npx @modelcontextprotocol/server-memory'>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: end;">
                     <div>
@@ -547,12 +556,16 @@ tools:
             </div>
 
             <div class="card">
-                <h3>Simulate Tool Call</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 style="margin-bottom: 0;">Simulate Tool Call</h3>
+                    <div id="sim-status-badge" class="badge muted">○ STOPPED</div>
+                </div>
                 <div style="display: flex; gap: 8px; margin-bottom: 16px;">
                     <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('query_database', '{\x22options\x22: {\x22query\x22: \x22SELECT * FROM users\x22, \x22limit\x22: 10, \x22filters\x22: {\x22status\x22: \x22active\x22}}}')">Valid Nested</button>
                     <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('query_database', '{\x22options\x22: {\x22query\x22: \x22SELECT * FROM users\x22, \x22limit\x22: 200, \x22filters\x22: {\x22status\x22: \x22active\x22}}}')">Invalid Nested (Limit)</button>
                     <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('read_file', '{\x22path\x22: \x22/workspace/src/main.py\x22}')">Safe Read</button>
                     <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="quickFill('read_file', '{\x22path\x22: \x22/etc/passwd\x22}')">Blocked Path</button>
+                    <button class="btn btn-sm" style="padding: 4px 10px; font-size: 0.8rem; border-color: var(--accent);" onclick="quickFill('safe_tool', '{}')">Stdio Test Tool</button>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 12px;">
                     <div>
@@ -567,6 +580,28 @@ tools:
                 </div>
                 <div id="call-error" class="error-banner" style="margin-top: 12px;"></div>
                 <div id="call-result" class="result-box"></div>
+
+                <!-- Simulation Tips -->
+                <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                    <h4 style="margin-bottom: 12px; font-size: 0.85rem; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        DEMO GUIDE: SECURITY ENFORCEMENT
+                    </h4>
+                    <ul style="font-size: 0.8rem; color: var(--text-muted); list-style: none; padding: 0; margin: 0;">
+                        <li style="margin-bottom: 8px;">
+                            <span style="color: var(--green); font-weight: 600;">Safe Actions:</span> 
+                            Buttons like <b>Safe Read</b> or <b>Stdio Test Tool</b> are allowed by policy. The proxy remains <span style="color: var(--green)">RUNNING</span>.
+                        </li>
+                        <li style="margin-bottom: 8px;">
+                            <span style="color: var(--red); font-weight: 600;">Blocked Actions:</span> 
+                            <b>Blocked Path</b> simulates an attack. AgentWall will block it and send a security error.
+                        </li>
+                        <li style="margin-bottom: 0;">
+                            <span style="color: var(--accent); font-weight: 600;">Kill Mode:</span> 
+                            If set to <b>Process Only</b> or <b>Both</b>, the proxy will stop after a Blocked Action to protect the system. Set to <b>Connection Only</b> to keep testing without restarts.
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
 
@@ -685,6 +720,27 @@ const BRIDGE_URL = (window.location.origin && window.location.origin !== 'null' 
 let isBridgeReachable = false;
 let isProxyRunning = false;
 const el = id => document.getElementById(id);
+let currentMode = 'http';
+
+el('mode-http').onclick = () => {
+    currentMode = 'http';
+    el('mode-http').style.background = 'var(--accent)';
+    el('mode-http').style.color = 'white';
+    el('mode-wrap').style.background = 'transparent';
+    el('mode-wrap').style.color = 'var(--text-main)';
+    el('wrap-config').style.display = 'none';
+    el('p2-mode-badge').textContent = 'MODE: HTTP';
+};
+
+el('mode-wrap').onclick = () => {
+    currentMode = 'wrap';
+    el('mode-wrap').style.background = 'var(--accent)';
+    el('mode-wrap').style.color = 'white';
+    el('mode-http').style.background = 'transparent';
+    el('mode-http').style.color = 'var(--text-main)';
+    el('wrap-config').style.display = 'block';
+    el('p2-mode-badge').textContent = 'MODE: WRAP (STDIO)';
+};
 
 const setBtnLoading = (btn, loading) => {
     const spinner = btn.querySelector('.spinner');
@@ -723,6 +779,13 @@ const checkStatus = async () => {
         el('sb-status-text').textContent = isProxyRunning ? 'RUNNING' : 'STOPPED';
         el('p2-status-badge').className = `badge ${isProxyRunning ? 'green' : 'muted'}`;
         el('p2-status-badge').textContent = isProxyRunning ? '● RUNNING' : '○ STOPPED';
+        
+        const simBadge = el('sim-status-badge');
+        if (simBadge) {
+            simBadge.className = `badge ${isProxyRunning ? 'green' : 'red'}`;
+            simBadge.textContent = isProxyRunning ? '● RUNNING' : '○ STOPPED';
+        }
+        
         el('btn-proxy-start').style.display = isProxyRunning ? 'none' : 'inline-flex';
         el('btn-proxy-stop').style.display = isProxyRunning ? 'inline-flex' : 'none';
         
@@ -776,15 +839,26 @@ el('btn-proxy-start').onclick = async () => {
     setBtnLoading(btn, true);
     el('proxy-error').style.display = 'none';
     try {
-        const res = await fetchAPI('/proxy/start', {
-            method: 'POST',
-            body: JSON.stringify({ 
-                listen: el('cfg-listen').value, 
-                kill_mode: el('cfg-kill').value,
-                oidc_issuer: el('cfg-oidc').value,
-                dry_run: el('cfg-dry-run').checked
-            })
-        });
+        let res;
+        if (currentMode === 'http') {
+            res = await fetchAPI('/proxy/start', {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    listen: el('cfg-listen').value, 
+                    kill_mode: el('cfg-kill').value,
+                    oidc_issuer: el('cfg-oidc').value,
+                    dry_run: el('cfg-dry-run').checked
+                })
+            });
+        } else {
+            res = await fetchAPI('/proxy/wrap/start', {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    command: el('cfg-command').value,
+                    dry_run: el('cfg-dry-run').checked
+                })
+            });
+        }
         if (!res.ok) throw new Error(res.data.error || 'Failed to start proxy');
         setTimeout(checkStatus, 1000);
     } catch (e) {
@@ -818,7 +892,8 @@ el('btn-call').onclick = async () => {
     resEl.className = 'result-box';
 
     try {
-        const res = await fetchAPI('/proxy/call', {
+        const path = currentMode === 'http' ? '/proxy/call' : '/proxy/call/stdio';
+        const res = await fetchAPI(path, {
             method: 'POST',
             body: JSON.stringify({ 
                 tool: el('call-tool').value, 
@@ -846,6 +921,10 @@ el('btn-call').onclick = async () => {
     } catch (e) {
         el('call-error').textContent = e.message;
         el('call-error').style.display = 'block';
+        // If the process died, update status immediately
+        if (e.message.includes('terminated') || e.message.includes('Invalid argument')) {
+            setTimeout(checkStatus, 500);
+        }
     } finally { setBtnLoading(btn, false); }
 };
 
@@ -941,9 +1020,10 @@ async function loadReport() {
             el('rep-allowed').textContent = sum.allowed || 0;
             el('rep-denied').textContent = sum.denied || 0;
             
-            el('rep-denied-table').querySelector('tbody').innerHTML = (d.denied_calls || []).map(i => `
-                <tr><td>${(i.ts || '').split('T')[1]?.split('.')[0] || '-'}</td><td>${i.tool || '-'}</td><td>${i.reason || '-'}</td></tr>
-            `).join('');
+            el('rep-denied-table').querySelector('tbody').innerHTML = (d.denied_calls || []).map(i => {
+                const ts = i.ts ? i.ts.replace('T', ' ').split('.')[0] : '-';
+                return `<tr><td>${ts}</td><td>${i.tool || '-'}</td><td>${i.reason || '-'}</td></tr>`;
+            }).join('');
             
             el('rep-tools-table').querySelector('tbody').innerHTML = (d.tools_used || []).map(t => `
                 <tr><td>${t.name}</td><td>${t.call_count}</td></tr>

@@ -123,4 +123,31 @@ pub enum Commands {
         #[arg(long, default_value = "policy.yaml")]
         output: String,
     },
+
+    /// Automatically wrap an existing agent command with AgentWall (FR-301, FR-302)
+    Wrap {
+        /// The command to wrap (e.g. "npx @modelcontextprotocol/server-memory")
+        #[arg(long)]
+        command: Option<String>,
+
+        /// Automatically detect and wrap known agents
+        #[arg(long, default_value_t = false)]
+        auto_detect: bool,
+
+        /// YAML policy file path
+        #[arg(long)]
+        policy: Option<String>,
+
+        /// Dry-run mode: log violations but allow calls
+        #[arg(long, env = "AGENTWALL_DRY_RUN", default_value_t = false)]
+        dry_run: bool,
+
+        /// Kill mode: action to take on policy violation
+        #[arg(long, default_value = "process")]
+        kill_mode: String,
+
+        /// Audit log output path
+        #[arg(long, env = "AGENTWALL_LOG_PATH", default_value = "audit.log")]
+        log_path: String,
+    },
 }

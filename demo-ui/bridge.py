@@ -15,7 +15,7 @@ from flask_cors import CORS
 import logging
 
 def cleanup(signum=None, frame=None):
-    global proxy_process
+    global proxy_process, proxy_stdio_in, proxy_stdio_out
     try:
         with proxy_lock:
             if proxy_process is not None and proxy_process.poll() is None:
@@ -25,6 +25,17 @@ def cleanup(signum=None, frame=None):
                     proxy_process.wait(timeout=2)
                 except:
                     proxy_process.kill()
+            
+            # Close pipes explicitly
+            if proxy_stdio_in:
+                try: proxy_stdio_in.close()
+                except: pass
+            if proxy_stdio_out:
+                try: proxy_stdio_out.close()
+                except: pass
+                
+            proxy_stdio_in = None
+            proxy_stdio_out = None
     except:
         pass
     if signum:
@@ -50,6 +61,8 @@ def index():
 cfg = {}
 
 proxy_process = None
+proxy_stdio_in = None
+proxy_stdio_out = None
 proxy_lock = threading.Lock()
 
 log_subscribers = []
@@ -167,6 +180,68 @@ def proxy_start():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+@app.route('/proxy/wrap/start', methods=['POST'])
+def proxy_wrap_start():
+    global proxy_process, proxy_stdio_in, proxy_stdio_out
+    data = request.get_json(silent=True) or {}
+    command = data.get('command')
+    policy_path = data.get('policy_path', cfg['policy'])
+    log_path = data.get('log_path', cfg['log_path'])
+    kill_mode = data.get('kill_mode', 'process')
+    dry_run = data.get('dry_run', False)
+
+    if not command:
+        return jsonify({"error": "No command provided"}), 400
+
+    with proxy_lock:
+        if proxy_process is not None and proxy_process.poll() is None:
+            return jsonify({"error": "Proxy already running"}), 409
+
+        # Reset old pipes
+        proxy_stdio_in = None
+        proxy_stdio_out = None
+
+        cmd = [
+            cfg['vexa_bin'], 'wrap',
+            '--command', command,
+            '--log-path', log_path,
+            '--kill-mode', kill_mode
+        ]
+        if policy_path:
+            cmd.extend(['--policy', policy_path])
+        if dry_run:
+            cmd.append('--dry-run')
+
+        try:
+            # Use binary mode (text=False) and handle encoding manually for better stability on Windows
+            proxy_process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=False, 
+                bufsize=0
+            )
+            
+            proxy_stdio_in = proxy_process.stdin
+            proxy_stdio_out = proxy_process.stdout
+            
+            cfg['mode'] = 'wrap'
+            time.sleep(0.5)
+            
+            if proxy_process.poll() is not None:
+                stderr = proxy_process.stderr.read()
+                return jsonify({"error": f"Wrap failed to start: {stderr.strip()}"}), 500
+                
+            return jsonify({
+                "status": "started", 
+                "pid": proxy_process.pid, 
+                "mode": "wrap"
+            })
+            
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
 @app.route('/proxy/stop', methods=['POST'])
 def proxy_stop():
     global proxy_process
@@ -180,6 +255,16 @@ def proxy_stop():
         except subprocess.TimeoutExpired:
             proxy_process.kill()
             proxy_process.wait()
+        
+        if proxy_stdio_in:
+            try: proxy_stdio_in.close()
+            except: pass
+        if proxy_stdio_out:
+            try: proxy_stdio_out.close()
+            except: pass
+
+        proxy_stdio_in = None
+        proxy_stdio_out = None
             
         return jsonify({"status": "stopped"})
 
@@ -192,6 +277,12 @@ def proxy_status():
 
 @app.route('/proxy/readyz', methods=['GET'])
 def proxy_readyz():
+    if cfg.get('mode') == 'wrap':
+        with proxy_lock:
+            if proxy_process is not None and proxy_process.poll() is None:
+                return jsonify({"ready": True})
+            return jsonify({"ready": False})
+            
     listen = cfg.get('current_listen', cfg['listen'])
     try:
         url = f"http://{listen}/readyz"
@@ -219,7 +310,7 @@ def check():
 
     try:
         cmd = [cfg['vexa_bin'], 'test', '--policy', policy_tmp, fixture_tmp]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', timeout=60)
         return jsonify({
             "exit_code": proc.returncode,
             "stdout": proc.stdout,
@@ -302,7 +393,7 @@ def report():
     try:
         cmd = [cfg['vexa_bin'], 'report', log_path, '--format', 'json']
         print(f"[DEBUG] Running report cmd: {' '.join(cmd)}")
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', timeout=30)
         print(f"[DEBUG] Report exit_code: {proc.returncode}, stdout len: {len(proc.stdout)}, stderr: {proc.stderr}")
         
         if proc.returncode != 0:
@@ -330,7 +421,7 @@ def promote():
     try:
         cmd = [cfg['vexa_bin'], 'promote', '--policy', policy_path]
         print(f"[DEBUG] Running promote cmd: {' '.join(cmd)}")
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', timeout=30)
         
         return jsonify({
             "exit_code": proc.returncode,
@@ -447,6 +538,53 @@ def proxy_call():
         })
     except (ConnectionRefusedError, OSError) as e:
         return jsonify({"error": "Proxy not reachable. Is it running?"}), 503
+
+@app.route('/proxy/call/stdio', methods=['POST'])
+def proxy_call_stdio():
+    global proxy_stdio_in, proxy_stdio_out
+    data = request.json or {}
+    tool = data.get('tool')
+    params = data.get('params', {})
+    
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": tool,
+            "arguments": params
+        },
+        "id": int(time.time() * 1000)
+    }
+    
+    with proxy_lock:
+        if not proxy_stdio_in or not proxy_stdio_out:
+            return jsonify({"error": "Stdio proxy not running"}), 503
+            
+        try:
+            print(f"[DEBUG] Sending stdio call: {tool}")
+            # Encode to UTF-8 and add newline
+            payload_json = json.dumps(payload) + "\n"
+            proxy_stdio_in.write(payload_json.encode('utf-8'))
+            proxy_stdio_in.flush()
+            
+            # Read response
+            line_bytes = proxy_stdio_out.readline()
+            if not line_bytes:
+                # Process might have died
+                if proxy_process and proxy_process.poll() is not None:
+                    return jsonify({"error": "Proxy process terminated"}), 500
+                return jsonify({"error": "No response from proxy"}), 500
+                
+            line = line_bytes.decode('utf-8').strip()
+            print(f"[DEBUG] Received stdio response: {line[:100]}...")
+            
+            return jsonify({
+                "status": 200,
+                "body": json.loads(line)
+            })
+        except Exception as e:
+            print(f"[ERROR] Stdio call failed: {e}")
+            return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="AgentWall Bridge")

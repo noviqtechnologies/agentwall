@@ -160,6 +160,17 @@ Start and stop the `agentwall` proxy and watch it enforce policy in real time.
 | **Start Proxy** | Calls `POST /proxy/start` → spawns `agentwall start` as a subprocess |
 | **Stop Proxy** | Calls `POST /proxy/stop` → gracefully terminates the process |
 
+#### NEW: Stdio Wrap Mode (FR-302)
+
+AgentWall now supports **Bidirectional MCP Interception** for agents that communicate with tools via `stdin`/`stdout`.
+
+1.  Toggle the mode in the **Session Monitor** to **Stdio Wrap**.
+2.  Enter the command you want to wrap (e.g., `python test-tools/mock-stdio-server.py`).
+3.  Click **Start Proxy** → AgentWall spawns the command and intercepts its pipes.
+4.  Use **Simulate Tool Call** → The bridge sends the call to AgentWall's `stdin`, AgentWall evaluates it, forwards to the mock server, and returns the result.
+
+This mode allows AgentWall to be used as a transparent "wrapper" around any MCP server, providing governance without requiring network configuration.
+
 The sidebar status dot and badge update every 2 seconds to reflect the current proxy state (`STOPPED` / `RUNNING` / `READY` / `INITIALIZING`).
 
 #### Live Log Stream

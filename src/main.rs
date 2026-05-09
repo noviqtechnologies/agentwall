@@ -33,6 +33,7 @@ async fn main() {
     let suppress_banner = match &cli.command {
         Commands::Report { .. } => true,
         Commands::Test { .. } => true,
+        Commands::Wrap { .. } => true,
         _ => false,
     };
 
@@ -41,6 +42,14 @@ async fn main() {
     }
 
     let exit_code = match cli.command {
+        Commands::Wrap {
+            command,
+            auto_detect,
+            policy,
+            dry_run,
+            kill_mode,
+            log_path,
+        } => run_wrap(command, auto_detect, policy, dry_run, kill_mode, log_path).await,
         Commands::Start {
             policy,
             listen,
@@ -349,3 +358,106 @@ fn run_report(log_path: &str, output: Option<&str>, format: &str, include_params
     }
 }
 
+async fn run_wrap(
+    command: Option<String>,
+    auto_detect: bool,
+    policy_path: Option<String>,
+    dry_run: bool,
+    kill_mode: String,
+    log_path: String,
+) -> i32 {
+    if auto_detect {
+        println!("{} Auto-detect is not fully implemented yet (FR-301).", "ℹ".blue());
+        println!("Please use --command explicitly for now.");
+        return 1;
+    }
+
+    let cmd_str = match command {
+        Some(c) => c,
+        None => {
+            eprintln!("{} You must provide a --command or use --auto-detect.", "✖".red());
+            return 1;
+        }
+    };
+
+    // Load policy
+    let (compiled_policy, _policy_hash, _warnings, policy_loaded) = match policy_path.as_deref() {
+        Some(path) => {
+            match load_policy(Path::new(path), None) {
+                PolicyLoadResult::Loaded { policy, raw_hash, warnings, .. } => {
+                    (Some(policy), raw_hash, warnings, true)
+                }
+                PolicyLoadResult::Degraded { reason } => {
+                    log_warn!("policy_degraded", "reason": reason);
+                    (None, "sha256:none".to_string(), vec![], false)
+                }
+                PolicyLoadResult::Fatal { error } => {
+                    log_error!("startup_error", "reason": error.to_string());
+                    return 1;
+                }
+            }
+        }
+        None => {
+            (None, "sha256:none".to_string(), vec![], false)
+        }
+    };
+
+    let session_secret: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    let audit_logger = match AuditLogger::new(
+        std::path::PathBuf::from(&log_path),
+        session_id.clone(),
+        session_secret,
+        104857600, // 100MB
+    ) {
+        Ok(l) => Arc::new(l),
+        Err(e) => {
+            eprintln!("{} Cannot create audit logger: {}", "✖".red(), e);
+            return 1;
+        }
+    };
+
+    let state = Arc::new(ProxyState {
+        policy: compiled_policy,
+        audit_logger,
+        session_id,
+        kill_mode: match kill_mode.as_str() {
+            "connection" => KillMode::Connection,
+            "process" => KillMode::Process,
+            "both" => KillMode::Both,
+            _ => KillMode::Process,
+        },
+        agent_pid: None,
+        upstream_url: "".to_string(), // Not used in stdio proxy
+        dry_run,
+        policy_loaded,
+        rate_limiter: proxy::handler::RateLimiter::new(0),
+        http_client: reqwest::Client::new(),
+        ready: true,
+    });
+
+    // Parse the command string
+    let mut parts = match shlex::split(&cmd_str) {
+        Some(p) => p,
+        None => {
+            eprintln!("{} Failed to parse command string.", "✖".red());
+            return 1;
+        }
+    };
+    if parts.is_empty() {
+        eprintln!("{} Empty command provided.", "✖".red());
+        return 1;
+    }
+
+    let program = parts.remove(0);
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(parts);
+
+    if let Err(e) = proxy::stdio::run_stdio_bridge(state, cmd).await {
+        eprintln!("{} Stdio proxy error: {}", "✖".red(), e);
+        return 1;
+    }
+
+    0
+}

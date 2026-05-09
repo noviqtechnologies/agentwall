@@ -42,8 +42,14 @@ demo-ui/policy.yaml
 demo-ui/audit.log
 demo-ui/session-report.json
 demo-ui/policy.yaml.sig
+# Python caches
 __pycache__/
-demo-ui/__pycache__/
+**/__pycache__/
+*.pyc
 
 # Tooling artifacts
 test-tools/**/target/
+
+# Environment variables
+.env
+.env.*

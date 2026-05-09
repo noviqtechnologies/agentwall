@@ -64,7 +64,7 @@ For more information, product tours, and demo requests, visit:
 │                     AI Agent Runtime                    │
 │            (any framework: LangChain, AutoGPT, …)       │
 └──────────────────────┬──────────────────────────────────┘
-                       │  JSON-RPC over HTTP
+                       │  JSON-RPC over HTTP or Stdio (Wrap mode)
                        ▼
 ┌─────────────────────────────────────────────────────────┐
 │               VEXA AgentWall Proxy                      │
@@ -79,6 +79,11 @@ For more information, product tours, and demo requests, visit:
 │                  MCP Tool Servers                       │
 │        (filesystem, shell, search, database, …)         │
 └─────────────────────────────────────────────────────────┘
+
+### Transport Modes
+AgentWall supports two distinct interception modes:
+1. **HTTP Proxy Mode** (`agentwall start`): Intercepts MCP calls over HTTP.
+2. **Stdio Wrap Mode** (`agentwall wrap`): Wraps the agent executable, intercepting its standard input/output streams directly. This is ideal for CLI agents that don't support configuring a proxy URL.
 ```
 
 ### Key Design Decisions
@@ -348,7 +353,8 @@ pattern: "/workspace/.*"
 agentwall <SUBCOMMAND>
 
 SUBCOMMANDS:
-  start        Start the proxy server
+  start        Start the proxy server (HTTP mode)
+  wrap         Wrap an agent executable, intercepting its stdio (Stdio mode)
   test         Execute security unit tests against a fixture file (FR-204)
   promote      Validate and sign a policy for production (FR-204)
   verify-log   Verify cryptographic integrity of an audit log
@@ -364,6 +370,12 @@ OPTIONS FOR 'start':
   --dry-run                Log violations but do not enforce them
   --oidc-issuer <URL>      Override OIDC issuer for identity binding (FR-202)
   --report-path <PATH>     Path to write the session report JSON on shutdown
+
+OPTIONS FOR 'wrap':
+  --command <CMD>          The full command to execute and wrap (e.g., 'python agent.py')
+  --policy <PATH>          Path to policy YAML file
+  --log-path <PATH>        Path for the audit log file
+  --kill-mode <MODE>       Action on policy violation: connection | process | both (default: connection)
 
 OPTIONS FOR 'test':
   --policy <PATH>          Policy YAML file to validate against

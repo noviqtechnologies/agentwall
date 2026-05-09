@@ -13,8 +13,9 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
-use super::handler::{self, ProxyState};
+use super::handler::{self, ProxyState, ProxyAction};
 use crate::kill::{self};
+use super::forward;
 
 /// Run the proxy server. Blocks until shutdown signal.
 pub async fn run_server(
@@ -143,7 +144,25 @@ async fn handle_request(
     };
 
     // Handle the JSON-RPC call
-    let (response, should_kill) = handler::handle_jsonrpc(state, &body, auth_header).await;
+    let action = handler::evaluate_jsonrpc(state, &body, auth_header).await;
+
+    let (response, should_kill) = match action {
+        ProxyAction::Forward => {
+            match forward::forward_request(&state.http_client, &state.upstream_url, &body).await {
+                Ok(resp) => (resp, false),
+                Err(e) => (
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": body.get("id"),
+                        "error": { "code": -32603, "message": format!("Upstream error: {}", e) }
+                    }),
+                    false,
+                ),
+            }
+        }
+        ProxyAction::Respond(resp) => (resp, false),
+        ProxyAction::KillAndRespond(resp) => (resp, true),
+    };
 
     // Send response first (before kill)
     let http_response = json_response(StatusCode::OK, &response);
