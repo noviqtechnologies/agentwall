@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VEXA AgentWall | Deterministic Agent Governance</title>
+    <meta name="description" content="The Developer-First Agent Governance Layer. Secure your AI agents with deterministic, zero-latency policies.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #00f2ff;
+            --primary-dim: rgba(0, 242, 255, 0.1);
+            --secondary: #7000ff;
+            --bg: #030406;
+            --card-bg: #0d0f14;
+            --text: #94a3b8;
+            --text-light: #f8fafc;
+            --border: rgba(255, 255, 255, 0.08);
+            --font-main: 'Inter', sans-serif;
+            --font-title: 'Outfit', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--font-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4 { font-family: var(--font-title); color: var(--text-light); font-weight: 700; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 2rem; }
+
+        /* Navigation */
+        nav {
+            position: fixed; top: 0; width: 100%; height: 70px;
+            background: rgba(3, 4, 6, 0.8); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            z-index: 1000; display: flex; align-items: center;
+        }
+        nav .container { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .logo { font-size: 1.25rem; font-weight: 700; color: var(--primary); text-decoration: none; letter-spacing: 1px; }
+        .nav-links { display: flex; gap: 2.5rem; align-items: center; }
+        .nav-links a { text-decoration: none; color: var(--text); font-size: 0.85rem; font-weight: 500; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--primary); }
+        .btn-cta { 
+            background: var(--primary); color: #000; padding: 0.6rem 1.2rem; 
+            border-radius: 6px; font-weight: 700; font-size: 0.85rem; cursor: pointer; border: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn-cta:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 242, 255, 0.3); }
+
+        /* Hero Section */
+        .hero { padding: 8rem 0 4rem; text-align: center; }
+        .hero h1 { font-size: 4.5rem; line-height: 1.1; margin-bottom: 1.5rem; letter-spacing: -2px; }
+        .hero p { font-size: 1.25rem; max-width: 700px; margin: 0 auto 3rem; color: var(--text); }
+
+        /* Industry Grid */
+        .industry-section { padding: 4rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.01); }
+        .industry-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; }
+        .ind-card { 
+            padding: 2rem; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+            transition: border-color 0.3s;
+        }
+        .ind-card:hover { border-color: var(--primary); }
+        .ind-card .icon { font-size: 2rem; margin-bottom: 1rem; display: block; }
+        .ind-card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+        .ind-card p { font-size: 0.85rem; color: #64748b; }
+
+        .manifesto { padding: 4rem 0; text-align: center; }
+
+        /* Features Section */
+        .features { padding: 4rem 0; }
+        .section-title { text-align: center; margin-bottom: 3rem; }
+        .section-title h2 { font-size: 3rem; margin-bottom: 1rem; }
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 2rem; }
+        .feat-card { 
+            padding: 3rem; background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border);
+            position: relative; overflow: hidden;
+        }
+        .feat-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 0; 
+            background: var(--primary); transition: height 0.3s;
+        }
+        .feat-card:hover::before { height: 100%; }
+        .feat-card h3 { font-size: 1.5rem; margin-bottom: 1.25rem; }
+        .feat-card p { font-size: 0.95rem; margin-bottom: 2rem; }
+        .tag-list { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .tag { font-size: 0.65rem; padding: 4px 10px; background: rgba(255,255,255,0.03); border: 1px solid #222; border-radius: 4px; font-weight: 700; text-transform: uppercase; color: #ccc; }
+
+        /* Console Section */
+        .console-section { padding: 8rem 0; background: #000; }
+        .console-container { background: #080808; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 50px 100px rgba(0,0,0,0.5); }
+        .console-tabs { display: flex; border-bottom: 1px solid var(--border); background: #0d0d0d; flex-wrap: wrap; }
+        .tab-btn { flex: 1; min-width: 150px; padding: 1.5rem; border: none; background: transparent; color: #555; cursor: pointer; font-family: var(--font-title); font-weight: 700; font-size: 0.9rem; transition: 0.2s; }
+        .tab-btn.active { color: var(--primary); background: rgba(255,255,255,0.02); box-shadow: inset 0 -2px 0 var(--primary); }
+        .console-body { display: flex; min-height: 600px; }
+        .console-pane { flex: 1; padding: 2.5rem; display: flex; flex-direction: column; }
+        .pane-left { border-right: 1px solid var(--border); }
+        .pane-label { font-size: 0.7rem; font-weight: 800; color: #444; margin-bottom: 1.25rem; text-transform: uppercase; letter-spacing: 2px; }
+        .code-editor { 
+            flex: 1; background: #000; padding: 1.5rem; border-radius: 8px; 
+            font-family: 'Courier New', monospace; font-size: 0.85rem; color: #888;
+            border: 1px solid transparent; outline: none; transition: 0.3s;
+        }
+        .code-editor:focus { border-color: rgba(0, 242, 255, 0.2); color: #ccc; }
+        .terminal-output { color: #0f0; }
+        .btn-simulate { 
+            margin-top: 2rem; padding: 1.25rem; background: var(--primary); color: #000;
+            border: none; border-radius: 6px; font-family: var(--font-title); font-weight: 800;
+            text-transform: uppercase; letter-spacing: 1px; cursor: pointer;
+        }
+
+        /* Stats Section */
+        .stats { padding: 6rem 0; text-align: center; background: radial-gradient(circle at 50% 50%, rgba(0,242,255,0.05), transparent 70%); }
+        .stat-grid { display: flex; justify-content: center; gap: 6rem; }
+        .stat-item h4 { font-size: 3.5rem; color: var(--primary); margin-bottom: 0.5rem; }
+        .stat-item p { font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* Footer */
+        footer { padding: 6rem 0 3rem; border-top: 1px solid var(--border); }
+        .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 4rem; margin-bottom: 4rem; }
+        .footer-brand h2 { margin-bottom: 1.5rem; }
+        .footer-links h4 { margin-bottom: 1.5rem; font-size: 0.9rem; text-transform: uppercase; }
+        .footer-links ul { list-style: none; }
+        .footer-links li { margin-bottom: 1rem; }
+        .footer-links a { color: var(--text); text-decoration: none; font-size: 0.85rem; transition: 0.2s; }
+        .footer-links a:hover { color: var(--primary); }
+        .copyright { padding-top: 3rem; border-top: 1px solid var(--border); text-align: center; font-size: 0.8rem; color: #444; }
+
+        /* Utility */
+        .st-tag { padding: 2px 8px; border-radius: 4px; font-weight: 800; font-size: 0.7rem; margin-right: 8px; }
+        .st-allow { background: rgba(0,255,0,0.1); color: #0f0; }
+        .st-deny { background: rgba(255,0,0,0.1); color: #f00; }
+        .st-shadow { background: rgba(255,255,0,0.1); color: #ff0; }
+
+        @media (max-width: 900px) {
+            .hero h1 { font-size: 3rem; }
+            .console-body { flex-direction: column; }
+            .footer-grid { grid-template-columns: 1fr; }
+            .stat-grid { flex-direction: column; gap: 3rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="container">
+            <a href="#" class="logo" style="display: flex; align-items: center; gap: 10px;">
+                <img src="images/logo.png" alt="VEXA" style="height: 40px; width: auto; border-radius: 4px;">
+                <span>AGENTWALL</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#demo">Product Tour</a>
+                <a href="#stats">Performance</a>
+                <button class="btn-cta" onclick="window.location.href='#demo'">Get Started</button>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="container">
+            <h1>Secure Your Agents with<br><span style="color: var(--primary)">Hardened Boundaries</span></h1>
+            <p>The Developer-First Agent Governance Layer. Stop relying on fragile System Prompts and enforce deterministic safety at the network layer.</p>
+            <div style="display: flex; gap: 1.5rem; justify-content: center;">
+                <button class="btn-cta" style="padding: 1rem 2.5rem; font-size: 1rem;" onclick="window.location.href='#demo'">Deploy Live Lab</button>
+                <button class="btn-cta" style="padding: 1rem 2.5rem; font-size: 1rem; background: transparent; border: 1px solid #444; color: #fff;" onclick="window.open('https://github.com/noviqtechnologies/agentwall', '_blank')">View Docs</button>
+            </div>
+        </div>
+    </header>
+
+    <section id="solutions" class="industry-section">
+        <div class="container">
+            <div class="section-title">
+                <h2>Vertical-Specific Governance</h2>
+                <p>Deterministic safety tailored for high-stakes operational domains.</p>
+            </div>
+            <div class="industry-grid">
+                <div class="ind-card">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                        <span class="icon">⚖️</span>
+                        <h3 style="margin: 0;">Finance & Banking</h3>
+                    </div>
+                    <ul style="list-style: none; font-size: 0.85rem; color: #888;">
+                        <li style="margin-bottom: 1rem;"><b style="color: var(--text-light);">Autonomous Trading Limits:</b> Hard caps on transaction amounts enforced at the proxy level.</li>
+                        <li style="margin-bottom: 1rem;"><b style="color: var(--text-light);">SEC/FINRA Auditability:</b> Every agent-to-tool call is signed and fsync'd for regulatory review.</li>
+                        <li><b style="color: var(--text-light);">Zero-Trust Data Export:</b> Prevent bulk data exfiltration via nested schema validation.</li>
+                    </ul>
+                </div>
+                <div class="ind-card">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                        <span class="icon">🏥</span>
+                        <h3 style="margin: 0;">Healthcare</h3>
+                    </div>
+                    <ul style="list-style: none; font-size: 0.85rem; color: #888;">
+                        <li style="margin-bottom: 1rem;"><b style="color: var(--text-light);">HIPAA & PII Shield:</b> Real-time regex hardening to prevent sensitive data from leaving clinical agents.</li>
+                        <li style="margin-bottom: 1rem;"><b style="color: var(--text-light);">Patient Scoping:</b> Use Nested Validation to ensure agents only access authorized patient IDs.</li>
+                        <li><b style="color: var(--text-light);">Immutable Audit Trail:</b> Cryptographically chained logs for clinical accountability.</li>
+                    </ul>
+                </div>
+                <div class="ind-card">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                        <span class="icon">📦</span>
+                        <h3 style="margin: 0;">Retail & E-Commerce</h3>
+                    </div>
+                    <ul style="list-style: none; font-size: 0.85rem; color: #888;">
+                        <li style="margin-bottom: 1rem;"><b style="color: var(--text-light);">Refund Guardrails:</b> Enforce maximum refund values and discount caps across autonomous support agents.</li>
+                        <li style="margin-bottom: 1rem;"><b style="color: var(--text-light);">Fraud Prevention:</b> Detect and block path-traversal or injection attempts in tool parameters.</li>
+                        <li><b style="color: var(--text-light);">Session Governance:</b> Bind agent identities to specific customer sessions via OIDC.</li>
+                    </ul>
+                </div>
+                <div class="ind-card">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                        <span class="icon">🛡️</span>
+                        <h3 style="margin: 0;">Legal & Compliance</h3>
+                    </div>
+                    <ul style="list-style: none; font-size: 0.85rem; color: #888;">
+                        <li style="margin-bottom: 1rem;"><b style="color: var(--text-light);">e-Discovery Readiness:</b> Searchable, structured JSON audit logs optimized for forensic analysis.</li>
+                        <li style="margin-bottom: 1rem;"><b style="color: var(--text-light);">Chain of Custody:</b> HMAC-SHA256 chained integrity checks prevent log tampering.</li>
+                        <li><b style="color: var(--text-light);">Promotion Policies:</b> Enforce "Four-Eyes" principle via signed policy promotion.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="manifesto">
+        <div class="container">
+            <div class="section-title" style="margin-bottom: 0;">
+                <h2>No Hallucination<br>Can Bypass a Regex.</h2>
+                <p style="max-width: 800px; margin: 2rem auto;">AgentWall sits as a zero-trust sidecar between your AI and your APIs. We don't ask the agent to be safe—we enforce it using project-portable security-as-code.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="features container">
+        <div class="section-title">
+            <h2>The Security Core</h2>
+            <p>Every feature built to production standards for enterprise-grade reliability.</p>
+        </div>
+        <div class="feature-grid">
+            <div class="feat-card">
+                <h3>Nested Validation</h3>
+                <p>Deep-inspect nested JSON objects up to 5 levels with hard recursion caps and 100KB payload limits. No hidden data leaks.</p>
+                <div class="tag-list">
+                    <span class="tag">JSON Schema</span>
+                    <span class="tag">Draft 7</span>
+                    <span class="tag">Fail-Closed</span>
+                </div>
+            </div>
+            <div class="feat-card">
+                <h3>Identity Binding</h3>
+                <p>Every tool call is cryptographically tied to a human subject using background-rotated JWKs with zero-latency validation.</p>
+                <div class="tag-list">
+                    <span class="tag">OIDC</span>
+                    <span class="tag">JWT Binding</span>
+                    <span class="tag">RSA/ECDSA</span>
+                </div>
+            </div>
+            <div class="feat-card">
+                <h3>Promotion Suite</h3>
+                <p>Move from dev to prod with confidence. Cryptographic signing and risk-score verification for every policy update.</p>
+                <div class="tag-list">
+                    <span class="tag">Integrity Check</span>
+                    <span class="tag">Unit Tests</span>
+                </div>
+            </div>
+            <div class="feat-card">
+                <h3>Durable Audit</h3>
+                <p>Chained HMAC-SHA256 logs where every entry is fsync'd to disk before the tool call is forwarded. Proof of compliance.</p>
+                <div class="tag-list">
+                    <span class="tag">Anti-Repudiation</span>
+                    <span class="tag">Tamper-Proof</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="demo" class="console-section">
+        <div class="container">
+            <div class="section-title">
+                <h2>Product Tour</h2>
+                <p>Experience the four pillars of deterministic governance across industry verticals.</p>
+            </div>
+            <div class="console-container">
+                <div class="console-tabs" id="industry-tabs">
+                    <button class="tab-btn active" onclick="setIndustry('healthcare')">Healthcare</button>
+                    <button class="tab-btn" onclick="setIndustry('finance')">Finance</button>
+                    <button class="tab-btn" onclick="setIndustry('retail')">Retail</button>
+                    <button class="tab-btn" onclick="setIndustry('legal')">Legal</button>
+                </div>
+                <div id="pillar-tabs" style="display: flex; gap: 1rem; padding: 1rem 2.5rem; background: #0a0a0a; border-bottom: 1px solid var(--border); overflow-x: auto;">
+                    <!-- Pillars injected here -->
+                </div>
+                <div class="console-body">
+                    <div class="console-pane pane-left">
+                        <div class="pane-label" id="input-lbl">AI Agent Tool Request</div>
+                        <div id="json-in" class="code-editor" contenteditable="true"></div>
+                        <button class="btn-simulate" id="sim-btn" onclick="sim()">Simulate Governance</button>
+                    </div>
+                    <div class="console-pane">
+                        <div class="pane-label">Decision & Enforcement Engine</div>
+                        <div id="term" class="code-editor terminal-output">> Monitoring operational boundary...</div>
+                        <div class="pane-label" style="margin-top: 3rem;">Deterministic Policy (Security-as-Code)</div>
+                        <div id="policy-snip" class="code-editor" style="color: var(--secondary); background: rgba(112,0,255,0.03);" contenteditable="true"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="stats" class="stats container">
+        <div class="section-title">
+            <h2>Built for Scale</h2>
+            <p>Rust-powered engine optimized for zero-latency enforcement.</p>
+        </div>
+        <div class="stat-grid">
+            <div class="stat-item">
+                <h4>< 12ms</h4>
+                <p>p95 Latency Overhead</p>
+            </div>
+            <div class="stat-item">
+                <h4>400+</h4>
+                <p>Req/Sec Throughput</p>
+            </div>
+            <div class="stat-item">
+                <h4>100%</h4>
+                <p>Fail-Closed Integrity</p>
+            </div>
+        </div>
+    </section>
+
+    <footer class="container">
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem;">
+                    <img src="images/logo.png" alt="VEXA Logo" style="height: 30px; width: auto; border-radius: 4px;">
+                    <h2 class="logo" style="margin-bottom: 0;">AGENTWALL</h2>
+                </div>
+                <p>Defining the next generation of agentic security. Deterministic, portable, and developer-first.</p>
+            </div>
+            <div class="footer-links">
+                <h4>Platform</h4>
+                <ul>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#demo">Live Demo</a></li>
+                    <li><a href="#">Documentation</a></li>
+                </ul>
+            </div>
+            <div class="footer-links">
+                <h4>Company</h4>
+                <ul>
+                    <li><a href="#">About</a></li>
+                    <li><a href="#">Contact</a></li>
+                    <li><a href="#">Privacy</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="copyright">
+            <p>&copy; 2026 NoviqTech | VEXA AgentWall. All Rights Reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        const tourData = {
+            healthcare: {
+                validation: {
+                    name: "Nested Validation",
+                    desc: "Enforcing patient-specific record boundaries in clinical datasets.",
+                    json: { method: "get_patient_records", params: { filter: { patient_id: "MED-X-902", type: "PHI" } } },
+                    policy: "tools:\n  - name: \"get_patient_records\"\n    parameters:\n      - name: \"filter\"\n        schema:\n          properties:\n            patient_id: { enum: [\"MED-X-902\"] }",
+                    check: (d) => d.params.filter.patient_id === "MED-X-902" ? { ok: true, msg: "ALLOWED: HIPAA-compliant access. Subject restricted to MED-X-902 scope." } : { ok: false, msg: "DENIED: Unauthorized attempt to traverse patient record boundaries." }
+                },
+                identity: {
+                    name: "Identity Binding",
+                    desc: "Verifying clinical staff credentials for surgical data access.",
+                    json: { method: "access_surgery_data", params: { room: "OR-04" } },
+                    policy: "identity:\n  enforcement: strict\n  allowed_groups: [\"SurgicalStaff\", \"ChiefMedicalOfficer\"]",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Verified Surgeon: dr_smith_01 (OIDC Verified). Access to OR-04 granted." })
+                },
+                promotion: {
+                    name: "Promotion Suite",
+                    desc: "Ensuring HIPAA policy updates are signed before going live.",
+                    json: { action: "deploy_policy", version: "hipaa-v4.3-prod" },
+                    policy: "promotion:\n  require_integrity_signature: true\n  verify_medical_compliance: true",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Policy integrity verified. New clinical security rules deployed." })
+                },
+                audit: {
+                    name: "Durable Audit",
+                    desc: "Immutable record of all patient data access events.",
+                    json: { method: "phi_access_log" },
+                    policy: "audit:\n  chaining: HMAC-SHA256\n  retention: 7_years",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Access event hashed and appended to patient-chain audit log." })
+                }
+            },
+            finance: {
+                validation: {
+                    name: "Nested Validation",
+                    desc: "Enforcing trading caps on complex nested financial transactions.",
+                    json: { method: "execute_trade", params: { order: { symbol: "AAPL", volume: 500000, type: "market" } } },
+                    policy: "tools:\n  - name: \"execute_trade\"\n    parameters:\n      - name: \"order\"\n        schema:\n          properties:\n            volume: { maximum: 100000 } # Enforce hard limit",
+                    check: (d) => d.params.order.volume <= 100000 ? { ok: true, msg: "ALLOWED: Trade within autonomous limit." } : { ok: false, msg: "DENIED: Trade volume (500k) exceeds safety threshold (100k)." }
+                },
+                identity: {
+                    name: "Identity Binding",
+                    desc: "Authorizing high-value capital movements.",
+                    json: { method: "wire_transfer", params: { amount: 2000000, currency: "USD" } },
+                    policy: "identity:\n  enforcement: strict\n  require_mfa_token: true",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Wire Authorized. Verified Identity: senior_trader_vault_A (RSA Signed)." })
+                },
+                promotion: {
+                    name: "Promotion Suite",
+                    desc: "Moving compliance rules to trading terminals safely.",
+                    json: { action: "promote", policy: "risk_engine_prod_final" },
+                    policy: "promotion:\n  verify_risk_score: true\n  signed_by: \"ChiefComplianceOfficer\"",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Risk score (0.02) verified. Trading rules promoted to prod cluster." })
+                },
+                audit: {
+                    name: "Durable Audit",
+                    desc: "FINRA-compliant immutable trade trail.",
+                    json: { method: "record_trade_audit" },
+                    policy: "audit_logging:\n  durability: fsync\n  anti_repudiation: true",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Trade event fsync'd to disk. Entry hash signed for regulatory proof." })
+                }
+            },
+            retail: {
+                validation: {
+                    name: "Nested Validation",
+                    desc: "Preventing autonomous agents from applying unauthorized discounts.",
+                    json: { method: "apply_discount", params: { order: { id: "ORD-123", items: [{ sku: "A-1", discount: 0.50 }] } } },
+                    policy: "tools:\n  - name: \"apply_discount\"\n    parameters:\n      - name: \"order\"\n        schema:\n          properties:\n            items: { items: { properties: { discount: { maximum: 0.20 } } } }",
+                    check: (d) => d.params.order.items[0].discount <= 0.20 ? { ok: true, msg: "ALLOWED: Discount within seasonal promotion limits." } : { ok: false, msg: "DENIED: Unauthorized discount depth (50%) detected in nested array." }
+                },
+                identity: {
+                    name: "Identity Binding",
+                    desc: "Restricting customer support agents to verified sessions.",
+                    json: { method: "view_customer_pii", params: { session_id: "SESS-998" } },
+                    policy: "identity:\n  enforcement: session_bound\n  max_session_ttl: 3600",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Verified Support Associate: agent_retail_support_04. Access to session SESS-998 granted." })
+                },
+                promotion: {
+                    name: "Promotion Suite",
+                    desc: "Deploying seasonal sale guardrails.",
+                    json: { action: "update_guardrails", set: "BlackFriday_2026" },
+                    policy: "promotion:\n  require_integrity_signature: true\n  unit_test_required: true",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: 412 Security unit tests passed. Black Friday guardrails promoted." })
+                },
+                audit: {
+                    name: "Durable Audit",
+                    desc: "Tracking all automated refund events for loss prevention.",
+                    json: { method: "log_refund_event" },
+                    policy: "audit:\n  alert_threshold: \"refund > $500\"",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Refund action logged and mirrored to Loss Prevention dashboard." })
+                }
+            },
+            legal: {
+                validation: {
+                    name: "Nested Validation",
+                    desc: "Enforcing attorney-client privilege boundaries in document discovery.",
+                    json: { method: "export_discovery", params: { docs: { case: "CIV-88", status: "privileged" } } },
+                    policy: "tools:\n  - name: \"export_discovery\"\n    parameters:\n      - name: \"docs\"\n        schema:\n          properties:\n            status: { not: { const: \"privileged\" } }",
+                    check: (d) => d.params.docs.status !== "privileged" ? { ok: true, msg: "ALLOWED: Public records export verified." } : { ok: false, msg: "PRIVILEGE ESCALATION PREVENTED: Attempted export of privileged documents blocked." }
+                },
+                identity: {
+                    name: "Identity Binding",
+                    desc: "Verifying legal counsel access to sensitive case files.",
+                    json: { method: "open_case_file", params: { case_id: "SEC-INVEST-12" } },
+                    policy: "identity:\n  enforcement: strict\n  allowed_subjects: [\"LeadCounsel\", \"DiscoveryManager\"]",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Verified Lead Counsel: attorney_jones_01. SEC Case access authorized." })
+                },
+                promotion: {
+                    name: "Promotion Suite",
+                    desc: "Securing the movement of sensitive discovery rules.",
+                    json: { action: "promote_rules", target: "forensic_node_1" },
+                    policy: "promotion:\n  require_integrity_signature: true\n  require_manual_approval: true",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Forensic integrity verified. Discovery rules promoted to secure node." })
+                },
+                audit: {
+                    name: "Durable Audit",
+                    desc: "Legal chain-of-custody tracking for all digital evidence.",
+                    json: { method: "evidence_log_entry" },
+                    policy: "audit:\n  chaining: HMAC-SHA256\n  compliance: ISO-27001",
+                    check: (d) => ({ ok: true, msg: "SUCCESS: Chain-of-custody entry sealed. Entry hash cryptographically immutable." })
+                }
+            }
+        };
+
+        let currentIndustry = 'healthcare';
+        let currentPillar = 'validation';
+
+        function setIndustry(ind) {
+            currentIndustry = ind;
+            document.querySelectorAll('#industry-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.innerText.toLowerCase().includes(ind)));
+            renderPillars();
+            renderPillarData();
+        }
+
+        function setPillar(pillar) {
+            currentPillar = pillar;
+            document.querySelectorAll('#pillar-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.getAttribute('onclick').includes(pillar)));
+            renderPillarData();
+        }
+
+        function renderPillars() {
+            const tabs = document.getElementById('pillar-tabs');
+            const pillars = ['validation', 'identity', 'promotion', 'audit'];
+            tabs.innerHTML = pillars.map(p => {
+                const name = tourData[currentIndustry][p].name;
+                return `<button class="tab-btn ${p === currentPillar ? 'active' : ''}" onclick="setPillar('${p}')" style="padding: 0.5rem 1.5rem; min-width: auto; font-size: 0.75rem;">${name}</button>`;
+            }).join('');
+        }
+
+        function renderPillarData() {
+            const data = tourData[currentIndustry][currentPillar];
+            document.getElementById('json-in').innerText = JSON.stringify(data.json, null, 4);
+            document.getElementById('policy-snip').innerText = data.policy;
+            document.getElementById('term').innerHTML = `> Monitoring active: ${data.desc}`;
+        }
+
+        function sim() {
+            const term = document.getElementById('term');
+            const data = tourData[currentIndustry][currentPillar];
+            const pText = document.getElementById('policy-snip').innerText;
+            
+            term.innerHTML = '<div style="color: var(--primary)">> INTERCEPTED: Analyzing operational risk...</div>';
+            setTimeout(() => {
+                try {
+                    const input = JSON.parse(document.getElementById('json-in').innerText);
+                    const result = data.check(input, pText);
+                    
+                    setTimeout(() => {
+                        const st = result.ok ? 'st-allow' : 'st-deny';
+                        const tx = result.ok ? 'ALLOWED' : 'DENIED';
+                        term.innerHTML += `<div><span class="st-tag ${st}">${tx}</span> ${result.msg}</div>`;
+                        term.innerHTML += `<div style="color: var(--primary)">> Digital Signature: ${Math.random().toString(16).slice(2,10)}... Chain Secure.</div>`;
+                    }, 800);
+                } catch(e) {
+                    term.innerHTML += `<div style="color: #f00">> ERROR: Simulation failure. Please check input syntax.</div>`;
+                }
+            }, 400);
+        }
+
+        // Initialize
+        setIndustry('healthcare');
+    </script>
+</body>
+</html>

@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentWall | The Intelligent Firewall for AI Agents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            bg: '#020617',
+                            card: '#0f172a',
+                            border: '#1e293b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            scroll-behavior: smooth;
+        }
+
+        .dark body {
+            background-color: #020617;
+            color: #f1f5f9;
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+
+        .dark .gradient-bg {
+            background: linear-gradient(135deg, #020617 0%, #1e293b 100%);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            transition: all 0.3s ease;
+        }
+
+        .tour-tab.active {
+            border-bottom: 2px solid #3b82f6;
+            color: #3b82f6;
+        }
+
+        .dark .nav-link:hover {
+            color: #60a5fa;
+        }
+
+        /* Custom Scrollbar for Dark Mode */
+        .dark ::-webkit-scrollbar {
+            width: 8px;
+        }
+        .dark ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 10px;
+        }
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
+        }
+    </style>
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
+
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 dark:bg-slate-950/80 dark:border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-2">
+                    <div class="bg-blue-600 p-2 rounded-lg text-white">
+                        <i class="fas fa-shield-halved text-xl"></i>
+                    </div>
+                    <span class="text-xl font-bold tracking-tight text-slate-800 dark:text-white">AgentWall</span>
+                </div>
+                <div class="hidden md:flex space-x-8 text-sm font-medium">
+                    <a href="#features" class="nav-link hover:text-blue-600 transition dark:text-slate-300">Features</a>
+                    <a href="#tours" class="nav-link hover:text-blue-600 transition dark:text-slate-300">Solutions</a>
+                    <a href="#docs" class="nav-link hover:text-blue-600 transition dark:text-slate-300">Developers</a>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button id="theme-toggle" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition">
+                        <i id="theme-icon" class="fas fa-moon text-lg dark:fa-sun"></i>
+                    </button>
+                    <a href="https://github.com/noviqtechnologies/agentwall"
+                        class="bg-slate-900 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-slate-800 transition">
+                        <i class="fab fa-github mr-2"></i>GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="gradient-bg text-white py-20 px-4">
+        <div class="max-w-5xl mx-auto text-center">
+            <h1 class="text-5xl md:text-6xl font-extrabold mb-6 leading-tight">
+                Run AI Agents with Confidence. <br><span class="text-blue-400">Not Anxiety.</span>
+            </h1>
+            <p class="text-xl text-slate-300 mb-10 max-w-2xl mx-auto">
+                The world’s first intelligent firewall for AI agents. Stop prompt injections, prevent data exfiltration,
+                and stay in control of every tool call.
+            </p>
+            <div class="flex flex-wrap justify-center gap-4">
+                <button
+                    onclick="window.open('https://github.com/noviqtechnologies/agentwall', '_blank')"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-lg font-bold text-lg transition shadow-lg shadow-blue-900/20">
+                    Get Started for Free
+                </button>
+                <button
+                    onclick="alert('Please reach out to support@vexasec.io for enterprise demo requests.'); window.location.href='mailto:support@vexasec.io';"
+                    class="bg-slate-700 hover:bg-slate-600 text-white px-8 py-4 rounded-lg font-bold text-lg transition border border-slate-500">
+                    Request Enterprise Demo
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Problem Statement -->
+    <section class="py-16 bg-white dark:bg-slate-900 border-b dark:border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 grid md:grid-cols-3 gap-8">
+            <div class="p-6 text-center">
+                <div class="text-red-500 text-3xl mb-4"><i class="fas fa-user-secret"></i></div>
+                <h3 class="font-bold text-lg mb-2 dark:text-white">The Shadow Data Leak</h3>
+                <p class="text-slate-600 dark:text-slate-400">Agents may "accidentally" read your secrets and send them to third-party LLM
+                    providers.</p>
+            </div>
+            <div class="p-6 text-center">
+                <div class="text-red-500 text-3xl mb-4"><i class="fas fa-virus-slash"></i></div>
+                <h3 class="font-bold text-lg mb-2 dark:text-white">Prompt Injection</h3>
+                <p class="text-slate-600 dark:text-slate-400">Malicious repos can "hijack" your agent to steal SSH keys or delete critical
+                    system files.</p>
+            </div>
+            <div class="p-6 text-center">
+                <div class="text-red-500 text-3xl mb-4"><i class="fas fa-triangle-exclamation"></i></div>
+                <h3 class="font-bold text-lg mb-2 dark:text-white">Runaway Autonomy</h3>
+                <p class="text-slate-600 dark:text-slate-400">Logic loops can result in hundreds of unwanted and expensive API calls in
+                    seconds.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive Capability Lab -->
+    <section id="features" class="py-20 bg-slate-50 dark:bg-slate-950">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold mb-4 dark:text-white">Technical Capability Lab</h2>
+                <p class="text-slate-600 dark:text-slate-400">Interact with the core security primitives of the AgentWall engine.</p>
+            </div>
+            
+            <div class="grid lg:grid-cols-12 gap-8">
+                <!-- Lab Selection (4 cols) -->
+                <div class="lg:col-span-4 space-y-4">
+                    <button onclick="selectLab('validate')" id="lab-validate" class="lab-btn active w-full text-left p-6 rounded-2xl bg-white dark:bg-slate-900 border border-blue-500/50 shadow-lg shadow-blue-500/10 transition">
+                        <div class="flex items-center gap-4">
+                            <div class="p-3 bg-blue-600 rounded-lg text-white"><i class="fas fa-microchip"></i></div>
+                            <div>
+                                <h4 class="font-bold dark:text-white">Nested Validation</h4>
+                                <p class="text-xs text-slate-500 mt-1">Deep JSON Schema enforcement</p>
+                            </div>
+                        </div>
+                    </button>
+                    <button onclick="selectLab('identity')" id="lab-identity" class="lab-btn w-full text-left p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition hover:border-blue-400">
+                        <div class="flex items-center gap-4">
+                            <div class="p-3 bg-blue-600/10 rounded-lg text-blue-600"><i class="fas fa-fingerprint"></i></div>
+                            <div>
+                                <h4 class="font-bold dark:text-white">Identity Binding</h4>
+                                <p class="text-xs text-slate-500 mt-1">Cryptographic OIDC linkage</p>
+                            </div>
+                        </div>
+                    </button>
+                    <button onclick="selectLab('promote')" id="lab-promote" class="lab-btn w-full text-left p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition hover:border-blue-400">
+                        <div class="flex items-center gap-4">
+                            <div class="p-3 bg-blue-600/10 rounded-lg text-blue-600"><i class="fas fa-rocket"></i></div>
+                            <div>
+                                <h4 class="font-bold dark:text-white">Promotion Suite</h4>
+                                <p class="text-xs text-slate-500 mt-1">Risk-aware policy signing</p>
+                            </div>
+                        </div>
+                    </button>
+                    <button onclick="selectLab('audit')" id="lab-audit" class="lab-btn w-full text-left p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition hover:border-blue-400">
+                        <div class="flex items-center gap-4">
+                            <div class="p-3 bg-blue-600/10 rounded-lg text-blue-600"><i class="fas fa-list-check"></i></div>
+                            <div>
+                                <h4 class="font-bold dark:text-white">Durable Audit</h4>
+                                <p class="text-xs text-slate-500 mt-1">HMAC-SHA256 log chaining</p>
+                            </div>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- Lab Console (8 cols) -->
+                <div class="lg:col-span-8 bg-slate-900 rounded-3xl p-8 border border-slate-800 shadow-2xl flex flex-col min-h-[500px]">
+                    <div class="flex justify-between items-center mb-6">
+                        <div class="flex gap-2">
+                            <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                            <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                            <div class="w-3 h-3 rounded-full bg-slate-700"></div>
+                        </div>
+                        <div class="text-xs font-mono text-slate-500 uppercase tracking-widest" id="lab-status">Ready: Nested Validation</div>
+                    </div>
+
+                    <div id="lab-content" class="flex-1 flex flex-col">
+                        <!-- Dynamic Lab UI injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Industry Solutions Grid -->
+    <section id="solutions" class="py-20 bg-white dark:bg-slate-900 border-b dark:border-slate-800">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4 dark:text-white">Industry-Specific Governance</h2>
+                <p class="text-slate-600 dark:text-slate-400">Deterministic safety tailored for high-stakes operational domains.</p>
+            </div>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Finance -->
+                <div class="p-8 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 transition hover:border-blue-500">
+                    <div class="text-blue-600 text-3xl mb-4"><i class="fas fa-landmark"></i></div>
+                    <h3 class="font-bold text-xl mb-4 dark:text-white">Finance & Banking</h3>
+                    <ul class="text-sm space-y-3 text-slate-600 dark:text-slate-400">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Hard caps on transaction volumes.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>SEC/FINRA compliant audit logs.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Zero-trust asset movement.</li>
+                    </ul>
+                </div>
+                <!-- Healthcare -->
+                <div class="p-8 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 transition hover:border-blue-500">
+                    <div class="text-blue-600 text-3xl mb-4"><i class="fas fa-hospital-user"></i></div>
+                    <h3 class="font-bold text-xl mb-4 dark:text-white">Healthcare</h3>
+                    <ul class="text-sm space-y-3 text-slate-600 dark:text-slate-400">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>HIPAA-compliant PII shielding.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Patient-scoped record access.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Clinical audit trails.</li>
+                    </ul>
+                </div>
+                <!-- Retail -->
+                <div class="p-8 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 transition hover:border-blue-500">
+                    <div class="text-blue-600 text-3xl mb-4"><i class="fas fa-shopping-bag"></i></div>
+                    <h3 class="font-bold text-xl mb-4 dark:text-white">Retail & E-Commerce</h3>
+                    <ul class="text-sm space-y-3 text-slate-600 dark:text-slate-400">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Refund & discount guardrails.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Session-bound agent identities.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Automated fraud prevention.</li>
+                    </ul>
+                </div>
+                <!-- Legal -->
+                <div class="p-8 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 transition hover:border-blue-500">
+                    <div class="text-blue-600 text-3xl mb-4"><i class="fas fa-balance-scale"></i></div>
+                    <h3 class="font-bold text-xl mb-4 dark:text-white">Legal & Compliance</h3>
+                    <ul class="text-sm space-y-3 text-slate-600 dark:text-slate-400">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Privilege-aware discovery tools.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Signed policy promotion chain.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Anti-repudiation audit logs.</li>
+                    </ul>
+                </div>
+                <!-- Software -->
+                <div class="p-8 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 transition hover:border-blue-500">
+                    <div class="text-blue-600 text-3xl mb-4"><i class="fas fa-laptop-code"></i></div>
+                    <h3 class="font-bold text-xl mb-4 dark:text-white">Software Engineering</h3>
+                    <ul class="text-sm space-y-3 text-slate-600 dark:text-slate-400">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Safe repository exploration.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Protected CI/CD environment calls.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Supply-chain attack mitigation.</li>
+                    </ul>
+                </div>
+                <!-- Cybersecurity -->
+                <div class="p-8 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 transition hover:border-blue-500">
+                    <div class="text-blue-600 text-3xl mb-4"><i class="fas fa-user-shield"></i></div>
+                    <h3 class="font-bold text-xl mb-4 dark:text-white">Cybersecurity & SOC</h3>
+                    <ul class="text-sm space-y-3 text-slate-600 dark:text-slate-400">
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Autonomous IR with HITL.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Deterministic firewall rules.</li>
+                        <li><i class="fas fa-check text-green-500 mr-2"></i>Threat-intel tool gating.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Industry Simulated Tours -->
+    <section id="tours" class="py-20 bg-white dark:bg-slate-900 border-t dark:border-slate-800">
+        <div class="max-w-5xl mx-auto px-4">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold mb-4 dark:text-white">Choose Your Adventure</h2>
+                <p class="text-slate-600 dark:text-slate-400">See how AgentWall protects your specific workflow.</p>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="flex flex-wrap justify-center gap-4 md:gap-8 border-b border-slate-200 dark:border-slate-800 mb-10 overflow-x-auto pb-2">
+                <button onclick="showTour('retail')" id="tab-retail"
+                    class="tour-tab active py-4 font-semibold px-2 transition dark:text-slate-400 whitespace-nowrap text-sm">Retail</button>
+                <button onclick="showTour('fin')" id="tab-fin"
+                    class="tour-tab py-4 font-semibold px-2 transition dark:text-slate-400 whitespace-nowrap text-sm">Finance</button>
+                <button onclick="showTour('health')" id="tab-health"
+                    class="tour-tab py-4 font-semibold px-2 transition dark:text-slate-400 whitespace-nowrap text-sm">Healthcare</button>
+                <button onclick="showTour('legal')" id="tab-legal"
+                    class="tour-tab py-4 font-semibold px-2 transition dark:text-slate-400 whitespace-nowrap text-sm">Legal</button>
+                <button onclick="showTour('dev')" id="tab-dev"
+                    class="tour-tab py-4 font-semibold px-2 transition dark:text-slate-400 whitespace-nowrap text-sm">Software</button>
+                <button onclick="showTour('cyber')" id="tab-cyber"
+                    class="tour-tab py-4 font-semibold px-2 transition dark:text-slate-400 whitespace-nowrap text-sm">Cybersecurity</button>
+            </div>
+
+            <!-- Tour Content -->
+            <div class="bg-slate-900 rounded-3xl p-8 text-white min-h-[400px] shadow-2xl relative overflow-hidden">
+                <div id="tour-content" class="relative z-10">
+                    <!-- Default content loaded via JS -->
+                </div>
+                <!-- Abstract visual element -->
+                <div class="absolute -right-20 -bottom-20 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl font-mono">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Developer Setup Section -->
+    <section id="docs" class="py-20 bg-slate-50 dark:bg-slate-950">
+        <div class="max-w-4xl mx-auto px-4">
+            <h2 class="text-center text-3xl font-bold mb-10 dark:text-white">Secure Your Agent in 30 Seconds</h2>
+            <div class="bg-slate-900 rounded-xl p-6 shadow-xl">
+                <div class="flex gap-2 mb-4">
+                    <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                </div>
+                <code class="text-blue-400 font-mono text-sm block">
+                    <span class="text-slate-500"># Install AgentWall (Rust binary)</span><br>
+                    cargo install --path .<br><br>
+                    <span class="text-slate-500"># Start the proxy with a policy and OIDC identity</span><br>
+                    agentwall start --policy policy.yaml --oidc-issuer https://auth.acme.com<br><br>
+                    <span class="text-green-400">✔ Firewall Active: Enforcing Nested JSON Schemas...</span><br>
+                    <span class="text-green-400">✔ Governance Dashboard: http://localhost:8081</span>
+                </code>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 text-slate-400 py-12 px-4 border-t border-slate-800 dark:bg-black">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+            <div class="flex items-center gap-2">
+                <div class="bg-blue-600 p-1.5 rounded text-white text-xs">
+                    <i class="fas fa-shield-halved"></i>
+                </div>
+                <span class="text-lg font-bold text-white">AgentWall</span>
+            </div>
+            <div class="text-sm">
+                &copy; 2026 Noviq Technologies. Open Source under Apache-2.0 License.
+            </div>
+            <div class="flex gap-6 text-xl">
+                <a href="#" class="hover:text-white transition"><i class="fab fa-twitter"></i></a>
+                <a href="https://github.com/noviqtechnologies/agentwall" class="hover:text-white transition"><i
+                        class="fab fa-github"></i></a>
+                <a href="#" class="hover:text-white transition"><i class="fab fa-discord"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const tours = {
+            retail: {
+                title: "Refund & Discount Guardrails",
+                scenario: "Preventing unauthorized financial concessions in support agents.",
+                steps: [
+                    { icon: "fa-shopping-cart", text: "<strong>Threat:</strong> A malicious user attempts to manipulate an agent into issuing a 100% refund." },
+                    { icon: "fa-microchip", text: "<strong>Nested Validation:</strong> AgentWall detects the 'refund_amount' exceeds the policy maximum of $50." },
+                    { icon: "fa-shield", text: "<strong>The Block:</strong> The tool call is rejected, preventing the financial loss before it reaches the API." }
+                ],
+                value: "Enforce deterministic business logic that agents can never hallucinate through.",
+                policy: "version: \"2\"\ntools:\n  - name: \"issue_refund\"\n    action: allow\n    parameters:\n      - name: \"refund_amount\"\n        type: number\n        schema:\n          maximum: 50"
+            },
+            fin: {
+                title: "Privacy-First Operations",
+                scenario: "Enforcing complex business logic on transaction tools.",
+                steps: [
+                    { icon: "fa-file-invoice-dollar", text: "<strong>Constraint:</strong> Agent attempts to call 'transfer_funds' with a $50,000 limit." },
+                    { icon: "fa-code", text: "<strong>Schema Enforcement:</strong> AgentWall's Nested Engine detects the 'amount' exceeds the policy maximum of $10,000." },
+                    { icon: "fa-lock", text: "<strong>Audit Trail:</strong> Violation is durably logged with HMAC signature before the call is dropped." }
+                ],
+                value: "Maintain SOC2 and GDPR compliance with deterministic, schema-based enforcement.",
+                policy: "version: \"2\"\ntools:\n  - name: \"transfer_funds\"\n    action: allow\n    parameters:\n      - name: \"amount\"\n        type: integer\n        schema:\n          maximum: 10000"
+            },
+            health: {
+                title: "Identity-Bound Access",
+                scenario: "Securing patient data access with user-tied credentials.",
+                steps: [
+                    { icon: "fa-user-nurse", text: "<strong>Auth:</strong> Agent attempts a tool call using a JWT not tied to a licensed practitioner." },
+                    { icon: "fa-fingerprint", text: "<strong>Identity Binding:</strong> AgentWall validates the 'sub' and 'iss' claims against the OIDC provider." },
+                    { icon: "fa-hand", text: "<strong>Intercept:</strong> Call is rejected because the agent is acting outside the human user's scope." }
+                ],
+                value: "Zero-trust for agents: every action must be cryptographically tied to a verified human identity.",
+                policy: "version: \"2\"\nidentity:\n  issuer: \"https://auth.clinical-health.org\"\n  audience: \"agentwall-proxy\"\ntools:\n  - name: \"read_patient_data\"\n    action: allow"
+            },
+            legal: {
+                title: "Production Promotion",
+                scenario: "Deploying security policies to high-stakes environments.",
+                steps: [
+                    { icon: "fa-clipboard-check", text: "<strong>Testing:</strong> Run 'agentwall test' to simulate edge cases against your security policy." },
+                    { icon: "fa-rocket", text: "<strong>Promotion:</strong> 'agentwall promote' verifies risk scores and signs the policy for production." },
+                    { icon: "fa-server", text: "<strong>Deployment:</strong> The signed policy is deployed to K8s, ensuring zero-modification integrity." }
+                ],
+                value: "Seamlessly move from local experimentation to production-grade agent governance.",
+                policy: "version: \"2\"\ntools:\n  - name: \"export_discovery\"\n    action: allow\n    risk: high # Required for promote\n# Result: policy.yaml.sig generated"
+            },
+            dev: {
+                title: "Safe Repo Exploration",
+                scenario: "Preventing exploits during autonomous code refactoring.",
+                steps: [
+                    { icon: "fa-bug", text: "<strong>Threat:</strong> A malicious repository contains a prompt injection to steal .env files." },
+                    { icon: "fa-microchip", text: "<strong>Nested Validation:</strong> AgentWall enforces JSON Schema limits on parameter paths and recursion." },
+                    { icon: "fa-shield", text: "<strong>The Block:</strong> The tool call is rejected because it violates the 'path' regex constraints." }
+                ],
+                value: "Stay secure even when agents are manipulated by malicious third-party code payloads.",
+                policy: "version: \"2\"\ntools:\n  - name: \"read_file\"\n    action: allow\n    parameters:\n      - name: \"path\"\n        pattern: \"^/workspace/.*$\""
+            },
+            cyber: {
+                title: "Autonomous Incident Response",
+                scenario: "Gating high-risk IR actions with human-in-the-loop (HITL).",
+                steps: [
+                    { icon: "fa-fire-extinguisher", text: "<strong>Trigger:</strong> Security agent attempts to 'quarantine_host' on a production database node." },
+                    { icon: "fa-hand", text: "<strong>HITL Gating:</strong> AgentWall detects a 'high' risk score and pauses for terminal approval." },
+                    { icon: "fa-check-circle", text: "<strong>Approval:</strong> Action is forwarded only after explicit human confirmation in the developer console." }
+                ],
+                value: "Prevent automated systems from causing massive operational outages through over-autonomy.",
+                policy: "version: \"2\"\ntools:\n  - name: \"quarantine_host\"\n    action: notify # Triggers human approval\n    risk: high"
+            }
+        };
+
+        function showTour(key) {
+            const tour = tours[key];
+            const content = document.getElementById('tour-content');
+
+            // Update tabs
+            document.querySelectorAll('.tour-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`tab-${key}`).classList.add('active');
+
+            // Render content
+            content.innerHTML = `
+                <div class="flex items-center gap-4 mb-6">
+                    <span class="bg-blue-600 px-3 py-1 rounded text-xs font-bold uppercase tracking-widest">Walkthrough</span>
+                    <h3 class="text-2xl font-bold">${tour.title}</h3>
+                </div>
+                <p class="text-slate-400 mb-8">${tour.scenario}</p>
+                <div class="space-y-6 mb-8">
+                    ${tour.steps.map(step => `
+                        <div class="flex items-start gap-4">
+                            <div class="bg-slate-800 p-3 rounded-lg text-blue-400"><i class="fas ${step.icon}"></i></div>
+                            <div class="text-slate-200">${step.text}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="flex flex-col md:flex-row gap-4 items-center">
+                    <div class="flex-1 p-4 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-200">
+                        <strong>Value:</strong> ${tour.value}
+                    </div>
+                    <button onclick="togglePolicy()" class="bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-xl font-bold transition flex items-center gap-2 border border-slate-700">
+                        <i class="fas fa-code"></i> View Policy
+                    </button>
+                </div>
+                <div id="policy-display" class="hidden mt-6 bg-black/50 rounded-xl p-6 border border-slate-800 font-mono text-sm overflow-x-auto">
+                    <pre class="text-blue-400">${tour.policy}</pre>
+                </div>
+            `;
+        }
+
+        function togglePolicy() {
+            const display = document.getElementById('policy-display');
+            display.classList.toggle('hidden');
+        }
+
+        const labs = {
+            validate: {
+                title: "Deep Parameter Inspection",
+                desc: "Edit the tool call below. AgentWall enforces schema limits in real-time.",
+                input: { method: "transfer_funds", params: { amount: 25000, currency: "USD" } },
+                policy: "parameters:\n  - name: \"amount\"\n    schema:\n      maximum: 10000",
+                run: (input) => input.params.amount > 10000 ? { ok: false, msg: "DENIED: amount 25000 exceeds maximum of 10000" } : { ok: true, msg: "ALLOWED: Parameter within safety bounds" }
+            },
+            identity: {
+                title: "OIDC Identity Binding",
+                desc: "Simulate a tool call with an untrusted identity provider.",
+                input: { jwt: { iss: "evil-actor.com", sub: "agent-007" } },
+                policy: "identity:\n  allowed_issuers:\n    - \"acme-corp.okta.com\"",
+                run: (input) => input.jwt.iss !== "acme-corp.okta.com" ? { ok: false, msg: "BLOCK: Untrusted Issuer 'evil-actor.com'. Security handshake failed." } : { ok: true, msg: "VERIFIED: Identity bound to trusted OIDC subject." }
+            },
+            promote: {
+                title: "Risk-Aware Promotion",
+                desc: "Policies with high risk scores require manual oversight before promotion.",
+                input: { policy_risk_score: 0.85, target: "production" },
+                policy: "promotion:\n  max_auto_promote_risk: 0.5",
+                run: (input) => input.policy_risk_score > 0.5 ? { ok: false, msg: "ABORTED: Risk score (0.85) too high. Manual sign-off required." } : { ok: true, msg: "PROMOTED: Policy signed and deployed to production." }
+            },
+            audit: {
+                title: "Tamper-Proof Chaining",
+                desc: "Watch the HMAC-SHA256 chain seal every tool decision.",
+                input: { action: "read_secrets", decision: "DENY" },
+                policy: "audit:\n  chaining: true\n  mode: fsync-durable",
+                run: (input) => ({ ok: true, msg: `LOGGED: [Hash: 0x${Math.random().toString(16).slice(2,10)}...] Decision durably sealed to disk.` })
+            }
+        };
+
+        let currentLab = 'validate';
+
+        function selectLab(key) {
+            currentLab = key;
+            document.querySelectorAll('.lab-btn').forEach(b => {
+                b.classList.remove('active', 'border-blue-500/50', 'shadow-lg', 'shadow-blue-500/10');
+                b.classList.add('border-slate-200', 'dark:border-slate-800');
+                b.querySelector('div > div:first-child').classList.replace('bg-blue-600', 'bg-blue-600/10');
+                b.querySelector('div > div:first-child').classList.replace('text-white', 'text-blue-600');
+            });
+            const activeBtn = document.getElementById(`lab-${key}`);
+            activeBtn.classList.add('active', 'border-blue-500/50', 'shadow-lg', 'shadow-blue-500/10');
+            activeBtn.querySelector('div > div:first-child').classList.replace('bg-blue-600/10', 'bg-blue-600');
+            activeBtn.querySelector('div > div:first-child').classList.replace('text-blue-600', 'text-white');
+            
+            document.getElementById('lab-status').innerText = `Ready: ${labs[key].title}`;
+            renderLab();
+        }
+
+        function renderLab() {
+            const lab = labs[currentLab];
+            const content = document.getElementById('lab-content');
+            content.innerHTML = `
+                <div class="grid md:grid-cols-2 gap-6 flex-1">
+                    <div class="flex flex-col">
+                        <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-bold">Incoming Agent Request (JSON)</label>
+                        <textarea id="lab-input" class="flex-1 bg-black/40 border border-slate-800 rounded-xl p-4 font-mono text-sm text-blue-400 outline-none focus:border-blue-500/50 transition resize-none">${JSON.stringify(lab.input, null, 2)}</textarea>
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-bold">Deterministic Policy (YAML)</label>
+                        <div class="flex-1 bg-slate-800/30 border border-slate-800 rounded-xl p-4 font-mono text-sm text-slate-400 overflow-hidden">
+                            <pre>${lab.policy}</pre>
+                        </div>
+                    </div>
+                </div>
+                <div id="lab-result" class="mt-6 p-4 bg-slate-800/50 rounded-xl border border-slate-800 min-h-[60px] flex items-center font-mono text-sm text-slate-400 italic">
+                    > Awaiting execution...
+                </div>
+                <button onclick="runLabSimulation()" class="mt-6 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2">
+                    <i class="fas fa-play"></i> Run Security Check
+                </button>
+            `;
+        }
+
+        function runLabSimulation() {
+            const lab = labs[currentLab];
+            const resultBox = document.getElementById('lab-result');
+            resultBox.innerHTML = '<span class="text-blue-400 animate-pulse">> INTERCEPTING... Running cryptographic handshake...</span>';
+            
+            setTimeout(() => {
+                try {
+                    const input = JSON.parse(document.getElementById('lab-input').value);
+                    const result = lab.run(input);
+                    const color = result.ok ? 'text-green-400' : 'text-red-400';
+                    const icon = result.ok ? 'fa-check-circle' : 'fa-times-circle';
+                    resultBox.innerHTML = `<span class="${color} font-bold"><i class="fas ${icon} mr-2"></i>${result.msg}</span>`;
+                } catch (e) {
+                    resultBox.innerHTML = '<span class="text-red-400 font-bold">> ERROR: Invalid JSON Input.</span>';
+                }
+            }, 800);
+        }
+
+        // Initialize first tour and lab
+        showTour('retail');
+        selectLab('validate');
+
+        // Theme Toggle Logic
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const htmlElement = document.documentElement;
+
+        themeToggleBtn.addEventListener('click', () => {
+            if (htmlElement.classList.contains('dark')) {
+                htmlElement.classList.remove('dark');
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+                localStorage.setItem('theme', 'light');
+            } else {
+                htmlElement.classList.add('dark');
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+
+        // Sync icon on load (dark is default)
+        if (htmlElement.classList.contains('dark')) {
+            themeIcon.classList.remove('fa-moon');
+            themeIcon.classList.add('fa-sun');
+        }
+    </script>
+</body>
+
+</html>
