@@ -14,14 +14,17 @@ VEXA AgentWall sits between an AI agent runtime and its MCP (Model Context Proto
 
 - [Why AgentWall?](#why-agentwall)
 - [Key Benefits](#key-benefits)
-- [Architecture](#architecture)
+- [Official Landing Page](#official-landing-page)
+- [Architecture & Enforcement Flow](#architecture--enforcement-flow)
+- [Demo UI](#demo-ui)
 - [Quickstart](#quickstart)
 - [Policy Reference](#policy-reference)
 - [CLI Reference](#cli-reference)
-- [Features (Phase 1 MVP)](#features-phase-1-mvp)
-- [Demo UI](#demo-ui)
-- [Security Guarantees & Known Limitations](#security-guarantees--known-limitations)
+- [Key Features](#key-features)
+- [Security & Limitations](#security--limitations)
 - [Building from Source](#building-from-source)
+- [Contributing](#contributing)
+- [Support](#support)
 - [License](#license)
 
 ---
@@ -47,7 +50,14 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 
 ---
 
-## Architecture
+## Official Landing Page
+
+For more information, product tours, and demo requests, visit:
+[https://vexasec.io/agentwall.html](https://vexasec.io/agentwall.html)
+
+---
+
+## Architecture & Enforcement Flow
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -71,43 +81,83 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Key design decisions:**
+### Key Design Decisions
 - **Deny-by-default** — only explicitly permitted tools/parameters pass through.
 - **Regex-anchored patterns** — all string parameters are validated against anchored regex (`^(?:...)$`) to prevent partial-match bypasses.
 - **Chained audit log** — each entry's HMAC includes the previous entry's hash, forming a tamper-evident chain.
 - **Kill modes** — on violation, the proxy can close the connection, SIGKILL the agent process, or both.
 
----
-
-## How It Works (Step-by-Step)
+### Operational Flow (Step-by-Step)
 
 VEXA AgentWall acts as a mandatory enforcement layer between your AI agent and its tools.
 
 ![How VEXA Proxy Works](images/vexa_proxy_how_it_works.jpg)
 
-### 1. Before the Agent Starts
-The `AGENTWALL_PROXY_URL` environment variable is set (e.g., `http://127.0.0.1:8080`). This happens in your shell, CI/CD pipeline, or Docker configuration.
-
-### 2. Agent Initialization
-When the AI agent (or IDE) starts, the MCP client library automatically checks for `AGENTWALL_PROXY_URL`. No code changes are required for most standard MCP implementations.
-
-### 3. Tool Execution Attempt
-When the agent decides to use a tool, it sends the JSON-RPC request to the proxy URL instead of the tool server directly.
-*   **Request:** `POST http://127.0.0.1:8080`
-*   **Payload:** `{"jsonrpc": "2.0", "method": "tools/call", "params": {...}}`
-
-### 4. Policy Evaluation & Enforcement
-The VEXA proxy receives the call and immediately flushes a log entry to disk. The policy engine then evaluates the call:
-*   **Validation:** Is the tool in the allowlist? Do parameters match the required regex patterns?
-*   **On Failure (DENY):** The proxy returns a JSON-RPC error `-32001`. If configured, it triggers a **kill switch** (closes the socket or sends `SIGKILL` to the agent).
-*   **On Success (ALLOW):** The call is forwarded to the actual MCP server, and the result is passed back to the agent.
-
----
+1. **Before the Agent Starts**: The `AGENTWALL_PROXY_URL` environment variable is set (e.g., `http://127.0.0.1:8080`). This happens in your shell, CI/CD pipeline, or Docker configuration.
+2. **Agent Initialization**: When the AI agent (or IDE) starts, the MCP client library automatically checks for `AGENTWALL_PROXY_URL`. No code changes are required for most standard MCP implementations.
+3. **Tool Execution Attempt**: When the agent decides to use a tool, it sends the JSON-RPC request to the proxy URL instead of the tool server directly.
+4. **Policy Evaluation & Enforcement**: The VEXA proxy receives the call and immediately flushes a log entry to disk. The policy engine then evaluates the call against the YAML policy. On failure, it triggers a kill switch; on success, it forwards the call to the tool server.
 
 > [!IMPORTANT]
 > **Why the agent has no choice but to use the proxy:**
 > 1. **SDK-Level Resolution:** Most MCP SDKs resolve the server URL from `AGENTWALL_PROXY_URL` at import time.
 > 2. **Network Egress Control:** Direct MCP access should be blocked at the OS or network level (e.g., `iptables` or K8s `NetworkPolicy`). Even if an agent tries to ignore the environment variable, it cannot reach the MCP server any other way.
+
+---
+
+## Demo UI
+
+AgentWall ships with a **local-first demo dashboard** for exploring its features interactively without writing any code.
+
+The demo UI is a zero-dependency single-page app (no npm, no build step) backed by a lightweight Python bridge server that relays commands to the `agentwall` binary.
+
+```
+demo-ui/
+├── index.html      # Single-page dashboard (open directly in browser)
+├── bridge.py       # Python bridge server (Flask) — relays API calls to the binary
+├── policy.example.yaml # Default demo policy template
+└── README.md       # Demo-specific setup guide
+```
+
+### Demo UI Features
+
+| Panel | Key | What It Does |
+|---|---|---|
+| **Policy Editor** | `01` | Live YAML editor with one-click pre-flight validation against built-in sample calls |
+| **Monitor & Auth** | `02` | Start/stop the proxy, watch real-time log stream via SSE, and simulate identity-bound calls |
+| **Policy Promotion** | `03` | Verify policy integrity, risk scores, and cryptographic signatures for production readiness |
+| **Audit History** | `04` | Browse all log entries with stats (total / allowed / denied / p95 latency) |
+| **Session Report** | `05` | Generate and view a session analytics report with blocked incidents and tool usage |
+
+### Quick Launch (macOS/Linux)
+
+```bash
+# 1. Install Python dependencies (one-time)
+pip install flask flask-cors
+
+# 2. Start the bridge server (from demo-ui folder)
+cd demo-ui
+python3 bridge.py --vexa-bin ../agentwall
+
+# 3. Open the UI — open index.html in your browser
+#    (e.g. 'open index.html' on macOS)
+```
+
+### Quick Launch (Windows)
+
+```powershell
+# 1. Install Python dependencies (one-time)
+pip install flask flask-cors
+
+# 2. Start the bridge server (from demo-ui folder)
+cd demo-ui
+python bridge.py --vexa-bin ..\agentwall.exe
+
+# 3. Open the UI — just double-click index.html in File Explorer
+#    or navigate to it in your browser
+```
+
+> See [`demo-ui/README.md`](demo-ui/README.md) for the full setup guide including all bridge server options.
 
 ---
 
@@ -308,8 +358,9 @@ SUBCOMMANDS:
 OPTIONS FOR 'start':
   --policy <PATH>          Path to policy YAML file
   --listen <ADDR>          Listen address (default: 127.0.0.1:8080)
+  --mcp-url <URL>          Upstream MCP server URL (default: http://127.0.0.1:3000)
   --log-path <PATH>        Path for the audit log file
-  --kill-mode <MODE>       Action on policy violation: connection | process | both
+  --kill-mode <MODE>       Action on policy violation: connection | process | both (default: connection)
   --dry-run                Log violations but do not enforce them
   --oidc-issuer <URL>      Override OIDC issuer for identity binding (FR-202)
   --report-path <PATH>     Path to write the session report JSON on shutdown
@@ -318,9 +369,14 @@ OPTIONS FOR 'test':
   --policy <PATH>          Policy YAML file to validate against
   <FIXTURE>                JSON file containing an array of tool calls to test
 
+OPTIONS FOR 'promote':
+  --policy <PATH>          Policy YAML file to promote
+  --key <PATH>             Path to Ed25519 private key (optional: generates temp key if absent)
+
 OPTIONS FOR 'report':
   <LOG_PATH>               Path to audit log file
-  --format <FORMAT>        Output format: json | text (default: text)
+  --format <FORMAT>        Output format: json | text (default: json)
+  --report-include-params  Include raw parameters in the report (WARNING: sensitive data)
 
 OPTIONS FOR 'init':
   --from-log <PATH>        Audit log to derive policy from
@@ -329,81 +385,22 @@ OPTIONS FOR 'init':
 
 ---
 
-## Features (Phase 1 & Phase 1.1)
+## Key Features
 
-| Feature | Reference | Description |
-|---|---|---|
-| Policy Config | FR-106 | Configurable policy paths with world-writable permission checks |
-| Rate Limiting | FR-107 | Token-bucket rate limiting per session (`--rate-limit`) |
-| Pre-flight Validation | FR-108 | `agentwall check` with fixture validation and exact `ALLOW/DENY` output |
-| Log Rotation | FR-109 | `fsync`-based rotation archiving to `.bak` files when `--log-max-bytes` is exceeded |
-| Dry-Run Mode | FR-110 | Policy enforcement simulation; violations logged as `DRY_RUN_DENY` but not blocked |
-| Session Report | FR-111 | `agentwall report` tool for post-session analytics in JSON or text formats |
-| Policy Generation | FR-112 | `agentwall init` dynamically scaffolds a `policy.yaml` from observed log calls |
-| Quickstart Mode | FR-113 | `--dry-run` works without a policy file to support fast developer onboarding |
-| Observability Report| FR-114 | Terminal-friendly session insights linking dry-run events to policy actions |
-| **Nested Validation** | **FR-201** | **JSON Schema validation (Draft 7 subset) for nested parameters with depth limiting.** |
-| **Identity Binding** | **FR-202** | **OIDC-bound JWT validation for tool calls with background JWK rotation.** |
-| **Promotion Suite** | **FR-204** | **`agentwall promote` for production readiness checks and cryptographic policy signing.** |
+| Feature | Description |
+|---|---|
+| **Nested Validation** | Full JSON Schema validation for nested parameters with depth limiting. |
+| **Identity Binding** | OIDC-bound JWT validation for tool calls with background JWK rotation. |
+| **Promotion Suite** | `agentwall promote` for production readiness checks and cryptographic signing. |
+| **Durable Audit** | Every decision is HMAC-SHA256 chained — tamper-evident and compliance-ready. |
+| **Rate Limiting** | Token-bucket rate limiting per session and per tool. |
+| **Dry-Run Mode** | Policy enforcement simulation for safe development and onboarding. |
+| **Policy Generation** | `agentwall init` scaffolds a policy from observed tool calls. |
+| **Zero-Dependency UI** | A local dashboard for real-time monitoring and policy testing. |
 
 ---
 
-## Demo UI
-
-AgentWall ships with a **local-first demo dashboard** for exploring its features interactively without writing any code.
-
-The demo UI is a zero-dependency single-page app (no npm, no build step) backed by a lightweight Python bridge server that relays commands to the `agentwall` binary.
-
-```
-demo-ui/
-├── index.html      # Single-page dashboard (open directly in browser)
-├── bridge.py       # Python bridge server (Flask) — relays API calls to the binary
-├── policy.example.yaml # Default demo policy template
-└── README.md       # Demo-specific setup guide
-```
-
-### Demo UI Features
-
-| Panel | Key | What It Does |
-|---|---|---|
-| **Policy Editor** | `01` | Live YAML editor with one-click pre-flight validation against built-in sample calls |
-| **Session Monitor** | `02` | Start/stop the proxy, watch real-time log stream via SSE, simulate tool calls |
-| **Audit History** | `03` | Browse all log entries with stats (total / allowed / denied / p95 latency) |
-| **Session Report** | `04` | Generate and view a session analytics report with blocked incidents and tool usage |
-
-### Quick Launch (macOS/Linux)
-
-```bash
-# 1. Install Python dependencies (one-time)
-pip install flask flask-cors
-
-# 2. Start the bridge server (from demo-ui folder)
-cd demo-ui
-python3 bridge.py --vexa-bin ../target/release/agentwall
-
-# 3. Open the UI — open index.html in your browser
-#    (e.g. 'open index.html' on macOS)
-```
-
-### Quick Launch (Windows)
-
-```powershell
-# 1. Install Python dependencies (one-time)
-pip install flask flask-cors
-
-# 2. Start the bridge server (from demo-ui folder)
-cd demo-ui
-python bridge.py --vexa-bin ..\target\release\agentwall.exe
-
-# 3. Open the UI — just double-click index.html in File Explorer
-#    or navigate to it in your browser
-```
-
-> See [`demo-ui/README.md`](demo-ui/README.md) for the full setup guide including all bridge server options.
-
----
-
-## Security Guarantees & Known Limitations
+## Security & Limitations
 
 ### What AgentWall Cannot Prevent
 
@@ -415,9 +412,9 @@ python bridge.py --vexa-bin ..\target\release\agentwall.exe
 
 | Mode | Behaviour | When to Use |
 |---|---|---|
-| `connection` | Closes the TCP socket immediately | K8s without `shareProcessNamespace` |
+| `connection` | Closes the TCP socket immediately | Default — K8s without `shareProcessNamespace` |
 | `process` | Sends `SIGKILL` to the agent's PID | Single-host deployments |
-| `both` | Closes socket **and** sends `SIGKILL`; falls back to connection-only if kill fails | Default — maximum enforcement |
+| `both` | Closes socket **and** sends `SIGKILL`; falls back to connection-only if kill fails | Maximum enforcement |
 
 > **Kubernetes Note:** PID namespaces are not shared by default. Set `shareProcessNamespace: true` in your pod spec if you want `process` or `both` kill mode to work.
 
@@ -448,6 +445,28 @@ cargo bench
 ```
 
 The compiled binary is `agentwall` (or `agentwall.exe` on Windows).
+
+---
+
+## Contributing
+
+We welcome contributions! Whether it's reporting a bug, improving documentation, or submitting a Pull Request, please check our [GitHub Issues](https://github.com/noviqtechnologies/agentwall/issues) to get started.
+
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/amazing-feature`).
+3. Commit your changes (`git commit -m 'Add some amazing feature'`).
+4. Push to the branch (`git push origin feature/amazing-feature`).
+5. Open a Pull Request.
+
+## Support
+
+- **Documentation**: coming soon
+- **Email Support**: [support@vexasec.io](mailto:support@vexasec.io)
+- **Issues**: [GitHub Issues](https://github.com/noviqtechnologies/agentwall/issues)
+
+## Security Policy
+
+If you discover a security vulnerability within VEXA AgentWall, please send an e-mail to [security@vexasec.io](mailto:support@vexasec.io). All security vulnerabilities will be promptly addressed.
 
 ---
 
