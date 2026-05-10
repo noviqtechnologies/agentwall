@@ -86,8 +86,8 @@ For more information, product tours, and demo requests, visit:
 ┌─────────────────────────────────────────────────────────┐
 │               VEXA AgentWall Proxy                      │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │ Policy Eval │  │ Rate Limiter │  │  Audit Logger │  │
-│  │  (YAML)     │  │(Token Bucket)│  │(HMAC-SHA256)  │  │
+│  │ Policy Eval │  │  Safe Mode   │  │  Audit Logger │  │
+│  │  (YAML)     │  │ (Global Reg) │  │(HMAC-SHA256)  │  │
 │  └─────────────┘  └──────────────┘  └───────────────┘  │
 └──────────────────────┬──────────────────────────────────┘
                        │  Allowed calls forwarded
@@ -106,6 +106,7 @@ AgentWall supports two distinct interception modes:
 
 ### Key Design Decisions
 - **Deny-by-default** — only explicitly permitted tools/parameters pass through.
+- **Safe Mode Protection** — out-of-the-box global rules blocking high-risk paths, exfiltration, and SSRF attempts even with no policy file.
 - **Regex-anchored patterns** — all string parameters are validated against anchored regex (`^(?:...)$`) to prevent partial-match bypasses.
 - **Chained audit log** — each entry's HMAC includes the previous entry's hash, forming a tamper-evident chain.
 - **Kill modes** — on violation, the proxy can close the connection, SIGKILL the agent process, or both.
@@ -124,6 +125,7 @@ VEXA AgentWall acts as a mandatory enforcement layer between your AI agent and i
        │                        │──┐ [Evaluation Phase]  │
        │                        │  │ Identity Check      │
        │                        │  │ Rate Limiting       │
+       │                        │  │ Global Safe Mode    │
        │                        │  │ Param Validation    │
        │                        │<─┘                     │
        │                        │                        │
