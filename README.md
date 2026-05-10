@@ -63,6 +63,7 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 | **Policy Generation** | `agentwall init` scaffolds a policy from observed tool calls. |
 | **Zero-Dependency UI** | A local dashboard for real-time monitoring and policy testing. |
 | **Bidirectional MCP Interception** | HTTP proxy + stdio wrap for full‑duplex tool calls (FR‑302). |
+| **Safe Mode** | Sensible out-of-the-box protection against high-risk paths and exfiltration (FR-303a). |
 
 ---
 

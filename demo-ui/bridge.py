@@ -244,7 +244,7 @@ def proxy_wrap_start():
 
 @app.route('/proxy/stop', methods=['POST'])
 def proxy_stop():
-    global proxy_process
+    global proxy_process, proxy_stdio_in, proxy_stdio_out
     with proxy_lock:
         if proxy_process is None or proxy_process.poll() is not None:
             return jsonify({"status": "not_running"})
@@ -564,8 +564,11 @@ def proxy_call_stdio():
             print(f"[DEBUG] Sending stdio call: {tool}")
             # Encode to UTF-8 and add newline
             payload_json = json.dumps(payload) + "\n"
-            proxy_stdio_in.write(payload_json.encode('utf-8'))
-            proxy_stdio_in.flush()
+            try:
+                proxy_stdio_in.write(payload_json.encode('utf-8'))
+                proxy_stdio_in.flush()
+            except OSError as e:
+                return jsonify({"error": "Failed to write to proxy (the process may have been killed by a previous security violation)."}), 500
             
             # Read response
             line_bytes = proxy_stdio_out.readline()

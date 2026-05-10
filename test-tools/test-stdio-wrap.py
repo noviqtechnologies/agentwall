@@ -46,16 +46,38 @@ def main():
     proc.stdin.write(json.dumps(call1) + "\n")
     proc.stdin.flush()
     
-    # Read response
+    # Read response 1
     resp1 = proc.stdout.readline()
     if resp1:
         print(f"Received resp 1: {resp1.strip()}")
     else:
-        print("No response on stdout.")
+        print("No response 1 on stdout.")
         err = proc.stderr.read()
         if err:
             print(f"AgentWall Stderr: {err}")
+            
+    # Test call 2: Safe Mode Violation (should be blocked)
+    call2 = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "read_file",
+            "arguments": {"path": "~/.ssh/id_rsa"}
+        }
+    }
     
+    print(f"Sending call 2: {call2['params']['name']} with sensitive path")
+    proc.stdin.write(json.dumps(call2) + "\n")
+    proc.stdin.flush()
+    
+    # Read response 2
+    resp2 = proc.stdout.readline()
+    if resp2:
+        print(f"Received resp 2: {resp2.strip()}")
+    else:
+        print("No response 2 on stdout.")
+        
     proc.terminate()
     proc.wait()
     print("Test finished.")

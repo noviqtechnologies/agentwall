@@ -61,6 +61,14 @@ pub enum Commands {
         /// Write session report on shutdown
         #[arg(long, env = "AGENTWALL_REPORT_PATH")]
         report_path: Option<String>,
+
+        /// Enable balanced security profile (placeholder for future graduated security)
+        #[arg(long, default_value_t = false)]
+        balanced: bool,
+
+        /// Enable strict security profile (placeholder for future graduated security)
+        #[arg(long, default_value_t = false)]
+        strict: bool,
     },
 
     /// Executes "Security Unit Tests" using a fixture file (FR-204)
@@ -149,5 +157,13 @@ pub enum Commands {
         /// Audit log output path
         #[arg(long, env = "AGENTWALL_LOG_PATH", default_value = "audit.log")]
         log_path: String,
+
+        /// Enable balanced security profile (placeholder for future graduated security)
+        #[arg(long, default_value_t = false)]
+        balanced: bool,
+
+        /// Enable strict security profile (placeholder for future graduated security)
+        #[arg(long, default_value_t = false)]
+        strict: bool,
     },
 }
