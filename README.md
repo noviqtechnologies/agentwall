@@ -50,6 +50,22 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 
 ---
 
+## Key Features
+
+| Feature | Description |
+|---|---|
+| **Nested Validation** | Full JSON Schema validation for nested parameters with depth limiting. |
+| **Identity Binding** | OIDC-bound JWT validation for tool calls with background JWK rotation. |
+| **Promotion Suite** | `agentwall promote` for production readiness checks and cryptographic signing. |
+| **Durable Audit** | Every decision is HMAC-SHA256 chained — tamper-evident and compliance-ready. |
+| **Rate Limiting** | Token-bucket rate limiting per session and per tool. |
+| **Dry-Run Mode** | Policy enforcement simulation for safe development and onboarding. |
+| **Policy Generation** | `agentwall init` scaffolds a policy from observed tool calls. |
+| **Zero-Dependency UI** | A local dashboard for real-time monitoring and policy testing. |
+| **Bidirectional MCP Interception** | HTTP proxy + stdio wrap for full‑duplex tool calls (FR‑302). |
+
+---
+
 ## Official Landing Page
 
 For more information, product tours, and demo requests, visit:
@@ -79,12 +95,13 @@ For more information, product tours, and demo requests, visit:
 │                  MCP Tool Servers                       │
 │        (filesystem, shell, search, database, …)         │
 └─────────────────────────────────────────────────────────┘
+```
 
 ### Transport Modes
 AgentWall supports two distinct interception modes:
 1. **HTTP Proxy Mode** (`agentwall start`): Intercepts MCP calls over HTTP.
 2. **Stdio Wrap Mode** (`agentwall wrap`): Wraps the agent executable, intercepting its standard input/output streams directly. This is ideal for CLI agents that don't support configuring a proxy URL.
-```
+
 
 ### Key Design Decisions
 - **Deny-by-default** — only explicitly permitted tools/parameters pass through.
@@ -96,17 +113,58 @@ AgentWall supports two distinct interception modes:
 
 VEXA AgentWall acts as a mandatory enforcement layer between your AI agent and its tools.
 
-![How VEXA Proxy Works](images/vexa_proxy_how_it_works.jpg)
+```text
+    AI AGENT             VEXA AGENTWALL             TOOL SERVER
+       │                        │                        │
+       │  (1) Tool Call Request │                        │
+       ├───────────────────────>│                        │
+       │  (HTTP or Stdio)       │                        │
+       │                        │                        │
+       │                        │──┐ [Evaluation Phase]  │
+       │                        │  │ Identity Check      │
+       │                        │  │ Rate Limiting       │
+       │                        │  │ Param Validation    │
+       │                        │<─┘                     │
+       │                        │                        │
+       │                        │──┐ [Durable Logging]   │
+       │                        │  │ Chained HMAC        │
+       │                        │  │ fsync to Disk       │
+       │                        │<─┘                     │
+       │                        │                        │
+       │       [IF ALLOWED]     │                        │
+       │                        │ (2) Forward Call       │
+       │                        ├───────────────────────>│
+       │                        │                        │
+       │                        │ (3) Return Result      │
+       │                        │<───────────────────────┤
+       │     (4) Tool Result    │                        │
+       │<───────────────────────┤                        │
+       │                        │                        │
+       │       [IF DENIED]      │                        │
+       │                        │                        │
+       │  (2) Policy Error      │                        │
+       │<───────────────────────┤                        │
+       │                        │──┐ [Enforcement]       │
+       │                        │  │ Trigger --kill-mode │
+       │                        │<─┘                     │
+       │                        │                        │
+```
 
-1. **Before the Agent Starts**: The `AGENTWALL_PROXY_URL` environment variable is set (e.g., `http://127.0.0.1:8080`). This happens in your shell, CI/CD pipeline, or Docker configuration.
-2. **Agent Initialization**: When the AI agent (or IDE) starts, the MCP client library automatically checks for `AGENTWALL_PROXY_URL`. No code changes are required for most standard MCP implementations.
-3. **Tool Execution Attempt**: When the agent decides to use a tool, it sends the JSON-RPC request to the proxy URL instead of the tool server directly.
-4. **Policy Evaluation & Enforcement**: The VEXA proxy receives the call and immediately flushes a log entry to disk. The policy engine then evaluates the call against the YAML policy. On failure, it triggers a kill switch; on success, it forwards the call to the tool server.
+
+1. **Deployment & Interception**:
+   - **HTTP Mode**: You set `AGENTWALL_PROXY_URL` (e.g., `http://127.0.0.1:8080`). The AI agent's MCP SDK redirects JSON-RPC traffic to the proxy listener.
+   - **Stdio Mode**: You launch your agent via `agentwall wrap --command "agent-exec"`. The proxy spawns the agent as a child process and intercepts its standard input/output streams.
+2. **Evaluation**: For every intercepted tool call, the policy engine evaluates the request against `policy.yaml`. This includes **Identity Binding** (JWT check), **Rate Limiting**, and **Nested Parameter Validation** (JSON Schema).
+3. **Durable Logging**: The decision (`allow` or `deny`) is written to the audit log. The entry is cryptographically chained (HMAC-SHA256) and **immediately flushed to disk** (`fsync`) before any action is taken.
+4. **Enforcement**:
+   - **On Success**: The call is forwarded to the upstream MCP server.
+   - **On Violation**: The call is blocked. The proxy returns a JSON-RPC error to the agent and, depending on the configured `--kill-mode`, may immediately terminate the agent process to prevent further unauthorized attempts.
 
 > [!IMPORTANT]
 > **Why the agent has no choice but to use the proxy:**
 > 1. **SDK-Level Resolution:** Most MCP SDKs resolve the server URL from `AGENTWALL_PROXY_URL` at import time.
-> 2. **Network Egress Control:** Direct MCP access should be blocked at the OS or network level (e.g., `iptables` or K8s `NetworkPolicy`). Even if an agent tries to ignore the environment variable, it cannot reach the MCP server any other way.
+> 2. **Stdio Pipe Ownership:** In `wrap` mode, the proxy owns the agent's input/output pipes; the agent has no direct way to communicate with tools except through these supervised channels.
+> 3. **Network Egress Control:** Direct MCP access should be blocked at the OS or network level (e.g., `iptables` or K8s `NetworkPolicy`). Even if an agent tries to ignore environment variables, it cannot reach the MCP server any other way.
 
 ---
 
@@ -395,20 +453,6 @@ OPTIONS FOR 'init':
   --output <PATH>          Output policy file path (default: policy.yaml)
 ```
 
----
-
-## Key Features
-
-| Feature | Description |
-|---|---|
-| **Nested Validation** | Full JSON Schema validation for nested parameters with depth limiting. |
-| **Identity Binding** | OIDC-bound JWT validation for tool calls with background JWK rotation. |
-| **Promotion Suite** | `agentwall promote` for production readiness checks and cryptographic signing. |
-| **Durable Audit** | Every decision is HMAC-SHA256 chained — tamper-evident and compliance-ready. |
-| **Rate Limiting** | Token-bucket rate limiting per session and per tool. |
-| **Dry-Run Mode** | Policy enforcement simulation for safe development and onboarding. |
-| **Policy Generation** | `agentwall init` scaffolds a policy from observed tool calls. |
-| **Zero-Dependency UI** | A local dashboard for real-time monitoring and policy testing. |
 
 ---
 
