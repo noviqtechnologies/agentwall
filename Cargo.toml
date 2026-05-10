@@ -85,3 +85,7 @@ harness = false
 [[bench]]
 name = "proxy_overhead"
 harness = false
+
+[[bench]]
+name = "safe_mode"
+harness = false

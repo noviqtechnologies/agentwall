@@ -22,6 +22,7 @@ pub struct ProxyState {
     pub policy_loaded: bool,
     pub rate_limiter: RateLimiter,
     pub http_client: reqwest::Client,
+    pub safe_mode_scanner: Arc<crate::policy::safe_mode::SafeModeScanner>,
     pub ready: bool,
 }
 
@@ -162,68 +163,100 @@ pub async fn evaluate_jsonrpc(
         }));
     }
 
-    // Policy evaluation
-    let policy = match &state.policy {
-        Some(p) => p,
-        None => {
-            if state.dry_run && !state.policy_loaded {
-                // FR-113: No policy in dry-run mode — allow-all sentinel.
-                // Log the call and forward it.
-                let _ = state.audit_logger.write_entry(
-                    "tool_allow",
-                    tool_name,
-                    Some(tool_params.clone()),
-                    None,
-                    Some(0.0),
-                    None,
-                );
-                logging::log_event(
-                    Level::Info,
-                    "tool_allow",
-                    json!({"tool": tool_name, "session": &state.session_id, "latency_ms": 0.0, "note": "no_policy_dry_run"}),
-                );
+    // Safe Mode Evaluation (FR-303a)
+    let safe_mode_threat = state.safe_mode_scanner.scan(&tool_params);
 
-                return ProxyAction::Forward;
+    // Policy evaluation
+    let start = Instant::now();
+    let eval_result = match &state.policy {
+        Some(policy) => {
+            Some(policy.evaluate(tool_name, &tool_params))
+        }
+        None => None,
+    };
+    let eval_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+    let final_eval = match (eval_result, safe_mode_threat) {
+        (Some(EvalResult::Allow), Some(threat)) => {
+            // Escape Hatch: User policy explicitly allowed this, overriding Safe Mode block.
+            logging::log_event(
+                Level::Warn,
+                "safe_mode_override",
+                json!({"tool": tool_name, "session": &state.session_id, "threat": threat.category.as_str(), "reason": "user_policy_override"}),
+            );
+            EvalResult::Allow
+        }
+        (Some(EvalResult::Allow), None) => EvalResult::Allow,
+        (Some(EvalResult::Deny { .. }), Some(threat)) => {
+            EvalResult::Deny {
+                reason_code: "safe_mode_deny".to_string(),
+                param_name: None,
+                param_value: None,
+                pattern: Some(threat.pattern),
+                json_pointer: Some(format!("{} Use 'agentwall policy allow {}' to override.", threat.reason, tool_name)),
             }
-            // No valid policy in enforcement mode — DENY all
-            return handle_deny(state, &id, tool_name, "no_valid_policy_loaded", None).await;
+        }
+        (Some(EvalResult::Deny { reason_code, param_name, param_value, pattern, json_pointer }), None) => {
+            EvalResult::Deny { reason_code, param_name, param_value, pattern, json_pointer }
+        }
+        (None, Some(threat)) => {
+            EvalResult::Deny {
+                reason_code: "safe_mode_deny".to_string(),
+                param_name: None,
+                param_value: None,
+                pattern: Some(threat.pattern),
+                json_pointer: Some(format!("{} Use 'agentwall policy allow {}' to override.", threat.reason, tool_name)),
+            }
+        }
+        (None, None) => {
+            if !state.policy_loaded {
+                // Out-Of-The-Box Safe Mode: No policy loaded, Safe Mode is clean.
+                EvalResult::Allow
+            } else {
+                // Policy was loaded but is missing/degraded
+                EvalResult::Deny {
+                    reason_code: "no_valid_policy_loaded".to_string(),
+                    param_name: None,
+                    param_value: None,
+                    pattern: None,
+                    json_pointer: None,
+                }
+            }
         }
     };
 
     // Identity Binding (FR-202)
     let mut subject = None;
-    if let Some(validator) = &policy.identity_validator {
-        // Fail-Closed: ensure keys are loaded
-        if !validator.is_ready().await {
-            return handle_deny(state, &id, tool_name, "identity_keys_not_ready", None).await;
-        }
-
-        let token = auth_header.and_then(|h| {
-            if h.starts_with("Bearer ") {
-                Some(h[7..].to_string())
-            } else {
-                None
+    if let Some(policy) = &state.policy {
+        if let Some(validator) = &policy.identity_validator {
+            // Fail-Closed: ensure keys are loaded
+            if !validator.is_ready().await {
+                return handle_deny(state, &id, tool_name, "identity_keys_not_ready", None).await;
             }
-        });
 
-        match token {
-            Some(t) => match validator.validate_token(&t).await {
-                Ok(sub) => subject = Some(sub),
-                Err(e) => {
-                    return handle_deny(state, &id, tool_name, &format!("identity_validation_failed: {}", e), None).await;
+            let token = auth_header.and_then(|h| {
+                if h.starts_with("Bearer ") {
+                    Some(h[7..].to_string())
+                } else {
+                    None
                 }
-            },
-            None => {
-                return handle_deny(state, &id, tool_name, "identity_token_missing", None).await;
+            });
+
+            match token {
+                Some(t) => match validator.validate_token(&t).await {
+                    Ok(sub) => subject = Some(sub),
+                    Err(e) => {
+                        return handle_deny(state, &id, tool_name, &format!("identity_validation_failed: {}", e), None).await;
+                    }
+                },
+                None => {
+                    return handle_deny(state, &id, tool_name, "identity_token_missing", None).await;
+                }
             }
         }
     }
 
-    let start = Instant::now();
-    let eval_result = policy.evaluate(tool_name, &tool_params);
-    let eval_ms = start.elapsed().as_secs_f64() * 1000.0;
-
-    match eval_result {
+    match final_eval {
         EvalResult::Allow => {
             // ALLOW path: log → fsync → forward
             let log_result = state.audit_logger.write_entry(

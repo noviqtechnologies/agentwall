@@ -6,12 +6,14 @@ tools:
   - name: "read_file"
     action: allow
     parameters:
-      path:
-        regex: "^/workspace/.*"
+      - name: "path"
+        type: string
+        pattern: "^/workspace/.*"
   - name: "query_database"
     action: allow
     parameters:
-      options:
+      - name: "options"
+        type: object
         schema:
           type: object
           properties:

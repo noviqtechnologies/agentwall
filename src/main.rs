@@ -23,6 +23,7 @@ use audit::logger::AuditLogger;
 use cli::{Cli, Commands};
 use kill::KillMode;
 use policy::loader::{load_policy, PolicyLoadResult};
+use policy::safe_mode::SafeModeScanner;
 use proxy::handler::ProxyState;
 
 #[tokio::main]
@@ -49,6 +50,8 @@ async fn main() {
             dry_run,
             kill_mode,
             log_path,
+            balanced: _,
+            strict: _,
         } => run_wrap(command, auto_detect, policy, dry_run, kill_mode, log_path).await,
         Commands::Start {
             policy,
@@ -63,6 +66,8 @@ async fn main() {
             log_max_bytes,
             oidc_issuer,
             report_path,
+            balanced: _,
+            strict: _,
         } => {
             run_start(
                 policy,
@@ -168,21 +173,15 @@ async fn run_start(
             }
         }
         None => {
-            if dry_run {
-                println!(
-                    "{} {}",
-                    "⚠".yellow(),
-                    "No policy specified. Starting in Dry-Run Quickstart mode.".yellow()
-                );
-                (None, "sha256:none".to_string(), vec![], false)
-            } else {
-                println!(
-                    "{} {}",
-                    "⚠".yellow(),
-                    "No policy specified. Enforcement mode will DENY all calls.".yellow()
-                );
-                (None, "sha256:none".to_string(), vec![], false)
+            println!(
+                "{} {}",
+                "🛡".green(),
+                "Safe Mode v1 enabled (Audit mode recommended). Blocking high-risk secrets & exfil.".green()
+            );
+            if !dry_run {
+                println!("{} {}", "ℹ".blue(), "Run with --dry-run to preview.".blue());
             }
+            (None, "sha256:none".to_string(), vec![], false)
         }
     };
 
@@ -237,6 +236,8 @@ async fn run_start(
             .unwrap_or(0)
     });
 
+    let safe_mode_scanner = Arc::new(SafeModeScanner::new().expect("Failed to compile SafeMode regexes"));
+
     let state = Arc::new(ProxyState {
         policy: compiled_policy,
         audit_logger: audit_logger.clone(),
@@ -248,6 +249,7 @@ async fn run_start(
         policy_loaded,
         rate_limiter: proxy::handler::RateLimiter::new(rate_limit_val),
         http_client: reqwest::Client::new(),
+        safe_mode_scanner,
         ready: true,
     });
 
@@ -398,6 +400,14 @@ async fn run_wrap(
             }
         }
         None => {
+            println!(
+                "{} {}",
+                "🛡".green(),
+                "Safe Mode v1 enabled (Audit mode recommended). Blocking high-risk secrets & exfil.".green()
+            );
+            if !dry_run {
+                println!("{} {}", "ℹ".blue(), "Run with --dry-run to preview.".blue());
+            }
             (None, "sha256:none".to_string(), vec![], false)
         }
     };
@@ -418,6 +428,8 @@ async fn run_wrap(
         }
     };
 
+    let safe_mode_scanner = Arc::new(SafeModeScanner::new().expect("Failed to compile SafeMode regexes"));
+
     let state = Arc::new(ProxyState {
         policy: compiled_policy,
         audit_logger,
@@ -434,6 +446,7 @@ async fn run_wrap(
         policy_loaded,
         rate_limiter: proxy::handler::RateLimiter::new(0),
         http_client: reqwest::Client::new(),
+        safe_mode_scanner,
         ready: true,
     });
 
