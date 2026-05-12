@@ -64,6 +64,9 @@ rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 shlex = "1.3"
 
+# OS-specific dirs (FR-304: agentwall wrap)
+dirs = "5"
+
 # CLI Aesthetics
 colored = "2"
 futures = "0.3.32"

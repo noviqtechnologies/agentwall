@@ -190,4 +190,28 @@ pub enum Commands {
         #[arg(long, default_value_t = 1048576)]
         max_scan_bytes: usize,
     },
+
+    /// Wrap Claude Desktop MCP servers with AgentWall (FR-304)
+    #[command(name = "wrap-claude")]
+    WrapClaude {
+        /// Preview what would change without writing (safe)
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+
+        /// Enable response scanning for secret detection (FR-303b)
+        #[arg(long, default_value_t = false)]
+        scan_responses: bool,
+
+        /// Block entire response on secret detection instead of redacting
+        #[arg(long, default_value_t = false)]
+        block_on_secrets: bool,
+    },
+
+    /// Restore Claude Desktop config from the most recent AgentWall backup (FR-304)
+    #[command(name = "unwrap-claude")]
+    UnwrapClaude {
+        /// Restore even if backup is missing — prints manual cleanup instructions
+        #[arg(long, default_value_t = false)]
+        force: bool,
+    },
 }

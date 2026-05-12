@@ -3,26 +3,37 @@ use serde_json::json;
 use agentwall::policy::engine::{CompiledParam, CompiledPolicy, CompiledTool, EvalResult};
 use agentwall::policy::schema::ParamType;
 
+/// Helper to build a minimal CompiledPolicy with default scan lists
+fn minimal_policy(tools: Vec<CompiledTool>, max_calls: u32) -> CompiledPolicy {
+    CompiledPolicy {
+        max_calls_per_second: max_calls,
+        tools,
+        identity_validator: None,
+        scannable_tools: vec![
+            "read_file".to_string(), "exec_command".to_string(),
+        ],
+        safe_tools: vec![
+            "tools/list".to_string(), "ping".to_string(),
+        ],
+    }
+}
+
 #[test]
 fn test_allowlist_evaluation() {
-    let policy = CompiledPolicy {
-        max_calls_per_second: 10,
-        tools: vec![
-            CompiledTool {
-                name: "allowed_tool".to_string(),
-                action: "allow".to_string(),
-                risk: None,
-                parameters: vec![],
-            },
-            CompiledTool {
-                name: "denied_tool".to_string(),
-                action: "deny".to_string(),
-                risk: None,
-                parameters: vec![],
-            },
-        ],
-        identity_validator: None,
-    };
+    let policy = minimal_policy(vec![
+        CompiledTool {
+            name: "allowed_tool".to_string(),
+            action: "allow".to_string(),
+            risk: None,
+            parameters: vec![],
+        },
+        CompiledTool {
+            name: "denied_tool".to_string(),
+            action: "deny".to_string(),
+            risk: None,
+            parameters: vec![],
+        },
+    ], 10);
 
     assert!(matches!(
         policy.evaluate("allowed_tool", &json!({})),
@@ -42,23 +53,19 @@ fn test_allowlist_evaluation() {
 
 #[test]
 fn test_regex_anchoring() {
-    let policy = CompiledPolicy {
-        max_calls_per_second: 10,
-        tools: vec![CompiledTool {
-            name: "regex_tool".to_string(),
-            action: "allow".to_string(),
-            risk: None,
-            parameters: vec![CompiledParam {
-                name: "path".to_string(),
-                param_type: ParamType::String,
-                pattern: Some(Regex::new(r"^(?:/workspace/.*)$").unwrap()),
-                schema: None,
-                max_length: None,
-                required: true,
-            }],
+    let policy = minimal_policy(vec![CompiledTool {
+        name: "regex_tool".to_string(),
+        action: "allow".to_string(),
+        risk: None,
+        parameters: vec![CompiledParam {
+            name: "path".to_string(),
+            param_type: ParamType::String,
+            pattern: Some(Regex::new(r"^(?:/workspace/.*)$").unwrap()),
+            schema: None,
+            max_length: None,
+            required: true,
         }],
-        identity_validator: None,
-    };
+    }], 10);
 
     assert!(matches!(
         policy.evaluate("regex_tool", &json!({"path": "/workspace/foo.txt"})),
@@ -73,23 +80,19 @@ fn test_regex_anchoring() {
 
 #[test]
 fn test_object_blind_passthrough_if_no_schema() {
-    let policy = CompiledPolicy {
-        max_calls_per_second: 10,
-        tools: vec![CompiledTool {
-            name: "obj_tool".to_string(),
-            action: "allow".to_string(),
-            risk: None,
-            parameters: vec![CompiledParam {
-                name: "data".to_string(),
-                param_type: ParamType::Object,
-                pattern: None,
-                schema: None,
-                max_length: None,
-                required: true,
-            }],
+    let policy = minimal_policy(vec![CompiledTool {
+        name: "obj_tool".to_string(),
+        action: "allow".to_string(),
+        risk: None,
+        parameters: vec![CompiledParam {
+            name: "data".to_string(),
+            param_type: ParamType::Object,
+            pattern: None,
+            schema: None,
+            max_length: None,
+            required: true,
         }],
-        identity_validator: None,
-    };
+    }], 10);
 
     assert!(matches!(
         policy.evaluate(
@@ -115,23 +118,19 @@ fn test_nested_schema_validation() {
     });
     let compiled_schema = Arc::new(JSONSchema::compile(&schema_json).unwrap());
 
-    let policy = CompiledPolicy {
-        max_calls_per_second: 0,
-        tools: vec![CompiledTool {
-            name: "query_db".to_string(),
-            action: "allow".to_string(),
-            risk: None,
-            parameters: vec![CompiledParam {
-                name: "options".to_string(),
-                param_type: ParamType::Object,
-                pattern: None,
-                schema: Some(compiled_schema),
-                max_length: None,
-                required: true,
-            }],
+    let policy = minimal_policy(vec![CompiledTool {
+        name: "query_db".to_string(),
+        action: "allow".to_string(),
+        risk: None,
+        parameters: vec![CompiledParam {
+            name: "options".to_string(),
+            param_type: ParamType::Object,
+            pattern: None,
+            schema: Some(compiled_schema),
+            max_length: None,
+            required: true,
         }],
-        identity_validator: None,
-    };
+    }], 0);
 
     // Valid call
     assert!(matches!(
@@ -143,7 +142,7 @@ fn test_nested_schema_validation() {
     match policy.evaluate("query_db", &json!({"options": {}})) {
         EvalResult::Deny { reason_code, json_pointer, .. } => {
             assert_eq!(reason_code, "schema_validation_failed");
-            assert_eq!(json_pointer, Some("".to_string())); // root of options fails required
+            assert_eq!(json_pointer, Some("".to_string()));
         }
         _ => panic!("Expected schema failure"),
     }
@@ -157,7 +156,7 @@ fn test_nested_schema_validation() {
         _ => panic!("Expected schema failure"),
     }
 
-    // Invalid: additional properties (defaulted to false in loader, but here we set it in schema)
+    // Invalid: additional properties
     match policy.evaluate("query_db", &json!({"options": {"limit": 10, "bogus": true}})) {
         EvalResult::Deny { reason_code, .. } => {
             assert_eq!(reason_code, "schema_validation_failed");
@@ -168,16 +167,12 @@ fn test_nested_schema_validation() {
 
 #[test]
 fn test_payload_size_limit() {
-    let policy = CompiledPolicy {
-        max_calls_per_second: 0,
-        tools: vec![CompiledTool {
-            name: "tool".to_string(),
-            action: "allow".to_string(),
-            risk: None,
-            parameters: vec![],
-        }],
-        identity_validator: None,
-    };
+    let policy = minimal_policy(vec![CompiledTool {
+        name: "tool".to_string(),
+        action: "allow".to_string(),
+        risk: None,
+        parameters: vec![],
+    }], 0);
 
     let large_params = json!({ "data": "a".repeat(110 * 1024) });
     match policy.evaluate("tool", &large_params) {

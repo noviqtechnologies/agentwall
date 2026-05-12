@@ -788,8 +788,21 @@ response_scanning:
                                 </div>
                                 <h4 style="color: var(--text-bright); margin-bottom: 8px;">System File Access</h4>
                                 <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
-                                    <b>Problem:</b> Agent reads sensitive system files like <code>/etc/shadow</code>.<br>
-                                    <b>Value:</b> Safe Mode blocks system path access with zero configuration.
+                                    <b>Problem:</b> Agent attempts to read /etc/shadow or system credentials.<br>
+                                    <b>Value:</b> Safe Mode blocks high-risk system paths by default.
+                                </p>
+                            </div>
+
+                            <!-- Scenario 7: One-Command Wrap (FR-304) -->
+                            <div class="card" style="cursor: pointer; border-left: 4px solid var(--accent); background: rgba(83, 155, 245, 0.05);" onclick="showToast('ℹ Simulating Wrap: agentwall wrap-claude');">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                    <span class="badge blue">One-Click Adoption</span>
+                                    <span style="font-size: 0.7rem; color: var(--text-muted);">FR-304</span>
+                                </div>
+                                <h4 style="color: var(--text-bright); margin-bottom: 8px;">Wrap Claude Desktop</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
+                                    <b>Problem:</b> Claude Desktop connects to MCP servers with zero governance.<br>
+                                    <b>Value:</b> One command (`wrap-claude`) intercepts all traffic through AgentWall in under 60 seconds.
                                 </p>
                             </div>
                         </div>

@@ -8,3 +8,4 @@ pub mod policy;
 pub mod promote;
 pub mod proxy;
 pub mod report;
+pub mod wrap;

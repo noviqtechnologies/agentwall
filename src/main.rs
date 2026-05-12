@@ -9,6 +9,7 @@ use agentwall::policy;
 use agentwall::promote;
 use agentwall::proxy;
 use agentwall::report;
+use agentwall::wrap;
 use agentwall::{log_error, log_warn};
 
 use colored::*;
@@ -121,6 +122,12 @@ async fn main() {
             report_include_params,
         } => run_report(&log_path, output.as_deref(), &format, report_include_params),
         Commands::Init { from_log, output } => init::run_init(&from_log, &output),
+        Commands::WrapClaude { dry_run, scan_responses, block_on_secrets: _ } => {
+            run_wrap_claude(dry_run, scan_responses)
+        }
+        Commands::UnwrapClaude { force } => {
+            run_unwrap_claude(force)
+        }
     };
 
     std::process::exit(exit_code);
@@ -576,4 +583,61 @@ async fn run_wrap(
     }
 
     0
+}
+
+// ─── FR-304: agentwall wrap-claude / unwrap-claude ──────────────────────────
+
+fn run_wrap_claude(dry_run: bool, scan_responses: bool) -> i32 {
+    if dry_run {
+        println!("{} {} {}", "🔍".blue(), "Mode:".bold(), "DRY-RUN (no writes)".yellow().bold());
+    } else {
+        println!("{} Wrapping Claude Desktop...", "ℹ".blue());
+    }
+
+    match wrap::claude::wrap_claude(dry_run, scan_responses) {
+        Ok(result) => {
+            if !dry_run {
+                wrap::claude::print_wrap_summary(&result);
+            }
+            0
+        }
+        Err(wrap::WrapError::AlreadyWrapped) => {
+            println!(
+                "{} {}",
+                "ℹ".blue(),
+                "Already wrapped. Run 'agentwall unwrap-claude' first if you want to re-wrap."
+            );
+            0 // Not an error — idempotent
+        }
+        Err(wrap::WrapError::NoMcpServers) => {
+            println!(
+                "{} No MCP servers found in Claude Desktop config. Nothing to wrap.",
+                "⚠".yellow()
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("{} {}", "✖".red(), e);
+            1
+        }
+    }
+}
+
+fn run_unwrap_claude(force: bool) -> i32 {
+    println!("{} Restoring Claude Desktop config...", "ℹ".blue());
+
+    match wrap::claude::unwrap_claude(force) {
+        Ok(result) => {
+            wrap::claude::print_unwrap_summary(&result);
+            0
+        }
+        Err(wrap::WrapError::NoBackupFound) if force => {
+            // Instructions already printed inside unwrap_claude
+            1
+        }
+        Err(e) => {
+            eprintln!("{} {}", "✖".red(), e);
+            1
+        }
+    }
 }
