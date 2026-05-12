@@ -63,7 +63,7 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 | **Policy Generation** | `agentwall init` scaffolds a policy from observed tool calls. |
 | **Zero-Dependency UI** | A local dashboard for real-time monitoring and policy testing. |
 | **Bidirectional MCP Interception** | HTTP proxy + stdio wrap for full‑duplex tool calls (FR‑302). |
-| **Safe Mode** | Sensible out-of-the-box security blocking high-signal threats (secrets, exfil, SSRF) with zero configuration. |
+| **Safe Mode** | Tool-aware, out-of-the-box security blocking 15 high-signal threats (SSH keys, exfil, SSRF) with zero configuration (FR-303a). |
 | **Response Scanning**| Opt-in scanning of tool outputs to detect and redact leaked secrets (AWS, GitHub, OpenAI, etc.) (FR-303b). |
 
 ---
@@ -107,7 +107,9 @@ AgentWall supports two distinct interception modes:
 
 ### Key Design Decisions
 - **Deny-by-default** — only explicitly permitted tools/parameters pass through.
-- **Safe Mode Protection** — out-of-the-box global rules blocking high-risk paths, exfiltration, and SSRF attempts even with no policy file.
+- **Tool-Aware Safe Mode** — out-of-the-box protection with 15 rules targeting specific parameters (path, command, url) to minimize false positives.
+- **Fail-closed request scanning** — any policy evaluation error on the request side results in an immediate block.
+- **Fail-open response scanning** — secret detection in tool outputs is non-breaking; matches are redacted but errors pass the response through.
 - **Regex-anchored patterns** — all string parameters are validated against anchored regex (`^(?:...)$`) to prevent partial-match bypasses.
 - **Chained audit log** — each entry's HMAC includes the previous entry's hash, forming a tamper-evident chain.
 - **Kill modes** — on violation, the proxy can close the connection, SIGKILL the agent process, or both.
@@ -200,6 +202,7 @@ demo-ui/
 | **Policy Promotion** | `03` | Verify policy integrity, risk scores, and cryptographic signatures for production readiness |
 | **Audit History** | `04` | Browse all log entries with stats (total / allowed / denied / p95 latency) |
 | **Session Report** | `05` | Generate and view a session analytics report with blocked incidents and tool usage |
+| **Stress Scenarios**| `06` | One-click simulations for SSH key theft, SSRF, Malicious Shell, System Secrets, and Redaction |
 
 ### Quick Launch (macOS/Linux)
 

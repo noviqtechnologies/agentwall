@@ -260,6 +260,12 @@ async fn run_start(
     });
 
     let safe_mode_scanner = Arc::new(SafeModeScanner::new().expect("Failed to compile SafeMode regexes"));
+    println!(
+        "{} Safe Mode v1 active — {} rules loaded. Run with {} to preview.",
+        "✔".green(),
+        safe_mode_scanner.rule_count.to_string().cyan(),
+        "--dry-run".yellow()
+    );
     
     // FR-303b: Initialize response scanner
     let response_scanner = Arc::new(policy::response_scanner::ResponseScanner::new().expect("Failed to compile ResponseScanner regexes"));
@@ -270,13 +276,15 @@ async fn run_start(
         (
             vec![
                 "read_file".to_string(), "exec_command".to_string(), "run_shell".to_string(), 
-                "run_command".to_string(), "http_get".to_string(), "list_files".to_string(), 
+                "run_command".to_string(), "http_get".to_string(), "http_post".to_string(), 
+                "list_files".to_string(), "database_query".to_string(),
                 "bash".to_string(), "execute".to_string(), "terminal".to_string(), 
                 "read".to_string(), "cat".to_string(), "shell".to_string(), 
                 "leak_secret".to_string(), "secret".to_string()
             ],
             vec![
-                "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string()
+                "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string(),
+                "calculator".to_string(), "weather".to_string(), "datetime".to_string(), "search".to_string(), "grep".to_string()
             ]
         )
     };
@@ -486,6 +494,11 @@ async fn run_wrap(
     };
 
     let safe_mode_scanner = Arc::new(SafeModeScanner::new().expect("Failed to compile SafeMode regexes"));
+    eprintln!(
+        "{} Safe Mode v1 active — {} rules loaded.",
+        "✔".green(),
+        safe_mode_scanner.rule_count.to_string().cyan()
+    );
 
     // FR-303b: Initialize response scanner
     let response_scanner = Arc::new(policy::response_scanner::ResponseScanner::new().expect("Failed to compile ResponseScanner regexes"));
@@ -496,13 +509,15 @@ async fn run_wrap(
         (
             vec![
                 "read_file".to_string(), "exec_command".to_string(), "run_shell".to_string(), 
-                "run_command".to_string(), "http_get".to_string(), "list_files".to_string(), 
+                "run_command".to_string(), "http_get".to_string(), "http_post".to_string(), 
+                "list_files".to_string(), "database_query".to_string(),
                 "bash".to_string(), "execute".to_string(), "terminal".to_string(), 
                 "read".to_string(), "cat".to_string(), "shell".to_string(), 
                 "leak_secret".to_string(), "secret".to_string()
             ],
             vec![
-                "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string()
+                "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string(),
+                "calculator".to_string(), "weather".to_string(), "datetime".to_string(), "search".to_string(), "grep".to_string()
             ]
         )
     };

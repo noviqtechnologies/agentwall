@@ -728,16 +728,16 @@ response_scanning:
                                 </p>
                             </div>
 
-                            <!-- Scenario 2 -->
-                            <div class="card" style="cursor: pointer; border-left: 4px solid var(--amber);" onclick="quickFill('read_file', '{\x22path\x22: \x22/etc/passwd\x22}'); document.getElementById('btn-call').click();">
+                            <!-- Scenario 2: SSH Key Theft -->
+                            <div class="card" style="cursor: pointer; border-left: 4px solid var(--red);" onclick="quickFill('read_file', '{\x22path\x22: \x22~/.ssh/id_rsa\x22}'); document.getElementById('btn-call').click();">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                                    <span class="badge amber">Privacy Breach</span>
-                                    <span style="font-size: 0.7rem; color: var(--text-muted);">NESTED VALIDATION</span>
+                                    <span class="badge red">Critical Risk</span>
+                                    <span style="font-size: 0.7rem; color: var(--text-muted);">SAFE MODE v1</span>
                                 </div>
-                                <h4 style="color: var(--text-bright); margin-bottom: 8px;">Unauthorized File Access</h4>
+                                <h4 style="color: var(--text-bright); margin-bottom: 8px;">SSH Key Theft</h4>
                                 <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
-                                    <b>Problem:</b> Agent attempts to read system configuration files or outside workspace.<br>
-                                    <b>Value:</b> Wall blocks the request based on exact parameter regex enforcement.
+                                    <b>Problem:</b> Agent reads private SSH keys from the home directory.<br>
+                                    <b>Value:</b> Safe Mode blocks .ssh/ paths automatically with zero config.
                                 </p>
                             </div>
 
@@ -754,7 +754,20 @@ response_scanning:
                                 </p>
                             </div>
 
-                            <!-- Scenario 4 -->
+                            <!-- Scenario 4: SSRF -->
+                            <div class="card" style="cursor: pointer; border-left: 4px solid var(--amber);" onclick="quickFill('http_get', '{\x22url\x22: \x22http://169.254.169.254/latest/meta-data/\x22}'); document.getElementById('btn-call').click();">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                    <span class="badge amber">Cloud Risk</span>
+                                    <span style="font-size: 0.7rem; color: var(--text-muted);">SAFE MODE v1</span>
+                                </div>
+                                <h4 style="color: var(--text-bright); margin-bottom: 8px;">SSRF Cloud Metadata</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
+                                    <b>Problem:</b> Agent fetches AWS/GCP metadata endpoint to steal IAM tokens.<br>
+                                    <b>Value:</b> Safe Mode blocks cloud metadata IPs and hostnames automatically.
+                                </p>
+                            </div>
+
+                            <!-- Scenario 5: Legitimate -->
                             <div class="card" style="cursor: pointer; border-left: 4px solid var(--green);" onclick="quickFill('read_file', '{\x22path\x22: \x22/workspace/src/main.py\x22}'); document.getElementById('btn-call').click();">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
                                     <span class="badge green">Safe Path</span>
@@ -763,7 +776,20 @@ response_scanning:
                                 <h4 style="color: var(--text-bright); margin-bottom: 8px;">Legitimate Collaboration</h4>
                                 <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
                                     <b>Problem:</b> Security often blocks productivity.<br>
-                                    <b>Value:</b> AgentWall enables safe, productive agent workflows with zero friction for allowed paths.
+                                    <b>Value:</b> AgentWall enables safe agent workflows with zero friction.
+                                </p>
+                            </div>
+
+                            <!-- Scenario 6: System Secrets -->
+                            <div class="card" style="cursor: pointer; border-left: 4px solid var(--amber);" onclick="quickFill('read_file', '{\x22path\x22: \x22/etc/shadow\x22}'); document.getElementById('btn-call').click();">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                    <span class="badge amber">Privacy Breach</span>
+                                    <span style="font-size: 0.7rem; color: var(--text-muted);">SAFE MODE v1</span>
+                                </div>
+                                <h4 style="color: var(--text-bright); margin-bottom: 8px;">System File Access</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
+                                    <b>Problem:</b> Agent reads sensitive system files like <code>/etc/shadow</code>.<br>
+                                    <b>Value:</b> Safe Mode blocks system path access with zero configuration.
                                 </p>
                             </div>
                         </div>

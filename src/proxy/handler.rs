@@ -167,8 +167,8 @@ pub async fn evaluate_jsonrpc(
         }));
     }
 
-    // Safe Mode Evaluation (FR-303a)
-    let safe_mode_threat = state.safe_mode_scanner.scan(&tool_params);
+    // Safe Mode Evaluation (FR-303a) — tool-aware scanning
+    let safe_mode_threat = state.safe_mode_scanner.scan_tool(tool_name, &tool_params);
 
     // Policy evaluation
     let start = Instant::now();
@@ -194,10 +194,10 @@ pub async fn evaluate_jsonrpc(
         (Some(EvalResult::Deny { .. }), Some(threat)) => {
             EvalResult::Deny {
                 reason_code: "safe_mode_deny".to_string(),
-                param_name: None,
+                param_name: Some(threat.param_name.clone()),
                 param_value: None,
-                pattern: Some(threat.pattern),
-                json_pointer: Some(format!("{} Use 'agentwall policy allow {}' to override.", threat.reason, tool_name)),
+                pattern: Some(threat.pattern_name.clone()),
+                json_pointer: Some(format!("{} Edit policy: agentwall edit-policy", threat.reason)),
             }
         }
         (Some(EvalResult::Deny { reason_code, param_name, param_value, pattern, json_pointer }), None) => {
@@ -206,10 +206,10 @@ pub async fn evaluate_jsonrpc(
         (None, Some(threat)) => {
             EvalResult::Deny {
                 reason_code: "safe_mode_deny".to_string(),
-                param_name: None,
+                param_name: Some(threat.param_name.clone()),
                 param_value: None,
-                pattern: Some(threat.pattern),
-                json_pointer: Some(format!("{} Use 'agentwall policy allow {}' to override.", threat.reason, tool_name)),
+                pattern: Some(threat.pattern_name.clone()),
+                json_pointer: Some(format!("{} Edit policy: agentwall edit-policy", threat.reason)),
             }
         }
         (None, None) => {

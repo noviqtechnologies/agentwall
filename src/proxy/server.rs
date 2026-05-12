@@ -266,7 +266,13 @@ fn scan_and_process_response(
                 logging::log_event(
                     logging::Level::Warn,
                     "response_scan_dry_run",
-                    serde_json::json!({"tool": tool_name, "session": &state.session_id, "action": "redact", "count": findings.len()}),
+                    serde_json::json!({
+                        "tool": tool_name, 
+                        "session": &state.session_id, 
+                        "would_action": "redact", 
+                        "pattern": findings.first().map(|f| f.pattern_name.clone()).unwrap_or_default(),
+                        "count": findings.len()
+                    }),
                 );
                 return response.clone();
             }
@@ -307,7 +313,13 @@ fn scan_and_process_response(
                 logging::log_event(
                     logging::Level::Warn,
                     "response_scan_dry_run",
-                    serde_json::json!({"tool": tool_name, "session": &state.session_id, "action": "block", "count": findings.len()}),
+                    serde_json::json!({
+                        "tool": tool_name, 
+                        "session": &state.session_id, 
+                        "would_action": "block", 
+                        "pattern": findings.first().map(|f| f.pattern_name.clone()).unwrap_or_default(),
+                        "count": findings.len()
+                    }),
                 );
                 return response.clone();
             }
