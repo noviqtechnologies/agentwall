@@ -50,7 +50,7 @@ impl IdentityValidator {
             issuer,
             audience,
             keys: DashMap::new(),
-            last_fetched: RwLock::new(Instant::now() - Duration::from_secs(3600)),
+            last_fetched: RwLock::new(Instant::now()),
             client: reqwest::Client::new(),
         })
     }

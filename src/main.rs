@@ -52,7 +52,21 @@ async fn main() {
             log_path,
             balanced: _,
             strict: _,
-        } => run_wrap(command, auto_detect, policy, dry_run, kill_mode, log_path).await,
+            scan_responses,
+            block_on_secrets,
+            max_scan_bytes,
+        } => run_wrap(
+            command,
+            auto_detect,
+            policy,
+            dry_run,
+            kill_mode,
+            log_path,
+            scan_responses,
+            block_on_secrets,
+            max_scan_bytes,
+        )
+        .await,
         Commands::Start {
             policy,
             listen,
@@ -68,6 +82,9 @@ async fn main() {
             report_path,
             balanced: _,
             strict: _,
+            scan_responses,
+            block_on_secrets,
+            max_scan_bytes,
         } => {
             run_start(
                 policy,
@@ -82,6 +99,9 @@ async fn main() {
                 log_max_bytes,
                 oidc_issuer,
                 report_path,
+                scan_responses,
+                block_on_secrets,
+                max_scan_bytes,
             )
             .await
         }
@@ -129,6 +149,9 @@ async fn run_start(
     log_max_bytes: u64,
     oidc_issuer: Option<String>,
     _report_path: Option<String>,
+    scan_responses: bool,
+    block_on_secrets: bool,
+    max_scan_bytes: usize,
 ) -> i32 {
     println!("{} Loading configuration...", "ℹ".blue());
 
@@ -237,6 +260,15 @@ async fn run_start(
     });
 
     let safe_mode_scanner = Arc::new(SafeModeScanner::new().expect("Failed to compile SafeMode regexes"));
+    
+    // FR-303b: Initialize response scanner
+    let response_scanner = Arc::new(policy::response_scanner::ResponseScanner::new().expect("Failed to compile ResponseScanner regexes"));
+    let response_scan_config = policy::response_scanner::ResponseScanConfig {
+        enabled: scan_responses,
+        block_mode: block_on_secrets,
+        dry_run,
+        max_scan_bytes,
+    };
 
     let state = Arc::new(ProxyState {
         policy: compiled_policy,
@@ -251,6 +283,8 @@ async fn run_start(
         http_client: reqwest::Client::new(),
         safe_mode_scanner,
         ready: true,
+        response_scanner,
+        response_scan_config,
     });
 
     if dry_run {
@@ -367,6 +401,9 @@ async fn run_wrap(
     dry_run: bool,
     kill_mode: String,
     log_path: String,
+    scan_responses: bool,
+    block_on_secrets: bool,
+    max_scan_bytes: usize,
 ) -> i32 {
     if auto_detect {
         println!("{} Auto-detect is not fully implemented yet (FR-301).", "ℹ".blue());
@@ -430,6 +467,15 @@ async fn run_wrap(
 
     let safe_mode_scanner = Arc::new(SafeModeScanner::new().expect("Failed to compile SafeMode regexes"));
 
+    // FR-303b: Initialize response scanner
+    let response_scanner = Arc::new(policy::response_scanner::ResponseScanner::new().expect("Failed to compile ResponseScanner regexes"));
+    let response_scan_config = policy::response_scanner::ResponseScanConfig {
+        enabled: scan_responses,
+        block_mode: block_on_secrets,
+        dry_run,
+        max_scan_bytes,
+    };
+
     let state = Arc::new(ProxyState {
         policy: compiled_policy,
         audit_logger,
@@ -448,6 +494,8 @@ async fn run_wrap(
         http_client: reqwest::Client::new(),
         safe_mode_scanner,
         ready: true,
+        response_scanner,
+        response_scan_config,
     });
 
     // Parse the command string

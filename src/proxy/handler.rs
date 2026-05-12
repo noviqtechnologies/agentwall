@@ -24,6 +24,10 @@ pub struct ProxyState {
     pub http_client: reqwest::Client,
     pub safe_mode_scanner: Arc<crate::policy::safe_mode::SafeModeScanner>,
     pub ready: bool,
+    /// FR-303b: Response scanner for secret detection
+    pub response_scanner: Arc<crate::policy::response_scanner::ResponseScanner>,
+    /// FR-303b: Response scan configuration
+    pub response_scan_config: crate::policy::response_scanner::ResponseScanConfig,
 }
 
 pub struct RateLimiter {

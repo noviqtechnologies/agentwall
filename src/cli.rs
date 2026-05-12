@@ -69,6 +69,18 @@ pub enum Commands {
         /// Enable strict security profile (placeholder for future graduated security)
         #[arg(long, default_value_t = false)]
         strict: bool,
+
+        /// Enable response scanning for secret detection (FR-303b)
+        #[arg(long, default_value_t = false)]
+        scan_responses: bool,
+
+        /// Block entire response on secret detection instead of redacting (FR-303b)
+        #[arg(long, default_value_t = false)]
+        block_on_secrets: bool,
+
+        /// Maximum response size to scan in bytes (FR-303b, default: 1MB)
+        #[arg(long, default_value_t = 1048576)]
+        max_scan_bytes: usize,
     },
 
     /// Executes "Security Unit Tests" using a fixture file (FR-204)
@@ -165,5 +177,17 @@ pub enum Commands {
         /// Enable strict security profile (placeholder for future graduated security)
         #[arg(long, default_value_t = false)]
         strict: bool,
+
+        /// Enable response scanning for secret detection (FR-303b)
+        #[arg(long, default_value_t = false)]
+        scan_responses: bool,
+
+        /// Block entire response on secret detection instead of redacting (FR-303b)
+        #[arg(long, default_value_t = false)]
+        block_on_secrets: bool,
+
+        /// Maximum response size to scan in bytes (FR-303b, default: 1MB)
+        #[arg(long, default_value_t = 1048576)]
+        max_scan_bytes: usize,
     },
 }

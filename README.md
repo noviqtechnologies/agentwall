@@ -64,6 +64,7 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 | **Zero-Dependency UI** | A local dashboard for real-time monitoring and policy testing. |
 | **Bidirectional MCP Interception** | HTTP proxy + stdio wrap for full‑duplex tool calls (FR‑302). |
 | **Safe Mode** | Sensible out-of-the-box security blocking high-signal threats (secrets, exfil, SSRF) with zero configuration. |
+| **Response Scanning**| Opt-in scanning of tool outputs to detect and redact leaked secrets (AWS, GitHub, OpenAI, etc.) (FR-303b). |
 
 ---
 
@@ -140,6 +141,11 @@ VEXA AgentWall acts as a mandatory enforcement layer between your AI agent and i
        │                        │                        │
        │                        │ (3) Return Result      │
        │                        │<───────────────────────┤
+       │                        │──┐ [Response Scan]     │
+       │                        │  │ Secret Detection    │
+       │                        │  │ Redaction / Block   │
+       │                        │<─┘                     │
+       │                        │                        │
        │     (4) Tool Result    │                        │
        │<───────────────────────┤                        │
        │                        │                        │
@@ -431,12 +437,18 @@ OPTIONS FOR 'start':
   --dry-run                Log violations but do not enforce them
   --oidc-issuer <URL>      Override OIDC issuer for identity binding (FR-202)
   --report-path <PATH>     Path to write the session report JSON on shutdown
+  --scan-responses         Enable response scanning for secret detection
+  --block-on-secrets       Block entire response on secret detection instead of redacting
+  --max-scan-bytes <BYTES> Maximum response size to scan (default: 1MB)
 
 OPTIONS FOR 'wrap':
   --command <CMD>          The full command to execute and wrap (e.g., 'python agent.py')
   --policy <PATH>          Path to policy YAML file
   --log-path <PATH>        Path for the audit log file
   --kill-mode <MODE>       Action on policy violation: connection | process | both (default: connection)
+  --scan-responses         Enable response scanning for secret detection
+  --block-on-secrets       Block entire response on secret detection instead of redacting
+  --max-scan-bytes <BYTES> Maximum response size to scan (default: 1MB)
 
 OPTIONS FOR 'test':
   --policy <PATH>          Policy YAML file to validate against

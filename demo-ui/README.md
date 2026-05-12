@@ -147,29 +147,48 @@ The built-in check fixtures test:
 
 ---
 
-### 02 — Session Monitor
+### 01 — Security Control Center
 
-Start and stop the `agentwall` proxy and watch it enforce policy in real time.
+Start and stop the `agentwall` proxy and watch it enforce policy in real time using real-world scenarios.
 
-#### Proxy Controls
+#### System Controls
 
 | Field | Description |
 |---|---|
-| **Listen Address** | The `host:port` the proxy binds to (e.g., `127.0.0.1:8080`) |
-| **Kill Mode** | `both` (default), `connection`, or `process` — action taken on a policy violation |
-| **Start Proxy** | Calls `POST /proxy/start` → spawns `agentwall start` as a subprocess |
-| **Stop Proxy** | Calls `POST /proxy/stop` → gracefully terminates the process |
+| **Protection Enforcement** | Choose between Hard Enforcement (Kill Process) or Soft Enforcement (Drop Connection). |
+| **Active DLP Scanning** | Enables real-time secret detection and redaction (FR-303b). |
+| **GO LIVE** | Spawns the AgentWall proxy in your chosen mode (Cloud or Local). |
+| **SHUTDOWN** | Gracefully terminates the proxy session. |
 
-#### NEW: Stdio Wrap Mode (FR-302)
+#### Security Stress Test Scenarios
 
-AgentWall now supports **Bidirectional MCP Interception** for agents that communicate with tools via `stdin`/`stdout`.
+Instead of manually typing JSON, the Control Center provides one-click scenarios to demonstrate value:
+- **Credential Exfiltration**: Simulates a tool leaking an AWS key to test **Response Scanning**.
+- **Unauthorized File Access**: Tests **Nested Validation** by attempting to read sensitive paths.
+- **Malicious Shell Command**: Triggers **Safe Mode v1** by running a dangerous `curl | sh` pattern.
+- **Legitimate Collaboration**: Demonstrates zero-friction access for approved workflows.
 
-1.  Toggle the mode in the **Session Monitor** to **Stdio Wrap**.
-2.  Enter the command you want to wrap (e.g., `python test-tools/mock-stdio-server.py`).
-3.  Click **Start Proxy** → AgentWall spawns the command and intercepts its pipes.
-4.  Use **Simulate Tool Call** → The bridge sends the call to AgentWall's `stdin`, AgentWall evaluates it, forwards to the mock server, and returns the result.
+---
 
-This mode allows AgentWall to be used as a transparent "wrapper" around any MCP server, providing governance without requiring network configuration.
+### 02 — Governance Rules (Policy Editor)
+
+Edit your YAML security policy live in the browser.
+
+| Action | What Happens |
+|---|---|
+| **Edit the YAML** | Modify the policy live. Support for **Schema v2** is active. |
+| **Save Policy** | Writes the YAML to the `--policy` file on disk. |
+
+---
+
+### 04 — Compliance & Forensic Vault
+
+A unified view for auditing and reporting.
+
+- **Forensic Journal**: A real-time, tamper-evident record of every security decision.
+- **HMAC Chain Verification**: Click **Verify Integrity** to cryptographically prove the logs haven't been altered.
+- **Executive Summary**: Generate high-level reports showing total threats blocked and risk contributors.
+
 
 The sidebar status dot and badge update every 2 seconds to reflect the current proxy state (`STOPPED` / `RUNNING` / `READY` / `INITIALIZING`).
 

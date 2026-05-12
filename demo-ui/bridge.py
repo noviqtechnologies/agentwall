@@ -49,14 +49,18 @@ signal.signal(signal.SIGTERM, cleanup)
 # Suppress Flask development server banner and logs
 cli.show_server_banner = lambda *args: None
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+log.setLevel(logging.INFO)
 
 app = Flask(__name__, static_folder='.')
 CORS(app)
 
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')
+    resp = send_from_directory('.', 'index.html')
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
 
 cfg = {}
 
@@ -131,6 +135,9 @@ def proxy_start():
     dry_run = data.get('dry_run', False)
     report_path = data.get('report_path', cfg['report_path'])
     oidc_issuer = data.get('oidc_issuer')
+    scan_responses = data.get('scan_responses', False)
+    block_on_secrets = data.get('block_on_secrets', False)
+    max_scan_bytes = data.get('max_scan_bytes')
 
     with proxy_lock:
         if proxy_process is not None and proxy_process.poll() is None:
@@ -148,6 +155,12 @@ def proxy_start():
             cmd.append('--dry-run')
         if oidc_issuer:
             cmd.extend(['--oidc-issuer', oidc_issuer])
+        if scan_responses:
+            cmd.append('--scan-responses')
+        if block_on_secrets:
+            cmd.append('--block-on-secrets')
+        if max_scan_bytes:
+            cmd.extend(['--max-scan-bytes', str(max_scan_bytes)])
 
         try:
             proxy_process = subprocess.Popen(
@@ -189,6 +202,9 @@ def proxy_wrap_start():
     log_path = data.get('log_path', cfg['log_path'])
     kill_mode = data.get('kill_mode', 'process')
     dry_run = data.get('dry_run', False)
+    scan_responses = data.get('scan_responses', False)
+    block_on_secrets = data.get('block_on_secrets', False)
+    max_scan_bytes = data.get('max_scan_bytes')
 
     if not command:
         return jsonify({"error": "No command provided"}), 400
@@ -211,6 +227,12 @@ def proxy_wrap_start():
             cmd.extend(['--policy', policy_path])
         if dry_run:
             cmd.append('--dry-run')
+        if scan_responses:
+            cmd.append('--scan-responses')
+        if block_on_secrets:
+            cmd.append('--block-on-secrets')
+        if max_scan_bytes:
+            cmd.extend(['--max-scan-bytes', str(max_scan_bytes)])
 
         try:
             # Use binary mode (text=False) and handle encoding manually for better stability on Windows
@@ -627,4 +649,4 @@ if __name__ == '__main__':
     t = threading.Thread(target=log_tailer_daemon, daemon=True)
     t.start()
     
-    app.run(host='127.0.0.1', port=args.port, threaded=True, debug=False)
+    app.run(host='0.0.0.0', port=args.port, threaded=True, debug=False)
