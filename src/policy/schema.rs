@@ -25,6 +25,9 @@ pub struct PolicyFile {
     /// Optional session configuration.
     pub session: Option<SessionConfig>,
 
+    /// FR-303b: Response scanning configuration.
+    pub response_scanning: Option<ResponseScanningConfig>,
+
     /// Tool allowlist. Empty = all denied.
     pub tools: Option<Vec<ToolRule>>,
 }
@@ -35,6 +38,16 @@ pub struct PolicyFile {
 pub struct IdentityConfig {
     pub issuer: String,
     pub audience: String,
+}
+
+/// Response scanning configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResponseScanningConfig {
+    /// Tools whose output should be scanned for secrets.
+    pub scannable_tools: Option<Vec<String>>,
+    /// Tools whose output is guaranteed safe and should never be scanned.
+    pub safe_tools: Option<Vec<String>>,
 }
 
 /// Session-level configuration.

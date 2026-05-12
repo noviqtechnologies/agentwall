@@ -65,6 +65,8 @@ pub struct ResponseScanConfig {
     pub block_mode: bool,
     pub dry_run: bool,
     pub max_scan_bytes: usize,
+    pub scannable_tools: Vec<String>,
+    pub safe_tools: Vec<String>,
 }
 
 impl Default for ResponseScanConfig {
@@ -74,6 +76,8 @@ impl Default for ResponseScanConfig {
             block_mode: false,
             dry_run: false,
             max_scan_bytes: 1_048_576, // 1MB
+            scannable_tools: vec![],
+            safe_tools: vec![],
         }
     }
 }
@@ -86,21 +90,7 @@ struct PatternDef {
 }
 
 /// High-risk tools whose output should be scanned
-const SCANNABLE_TOOLS: &[&str] = &[
-    "read_file", "exec_command", "run_shell", "run_command",
-    "http_get", "list_files", "bash", "execute", "terminal",
-    "read", "cat", "shell", "leak_secret", "secret",
-];
 
-/// Content fields to extract and scan from JSON-RPC result
-const CONTENT_FIELDS: &[&str] = &[
-    "content", "stdout", "result", "data", "text",
-];
-
-/// Known safe tools — skip entirely
-const SAFE_TOOL_WHITELIST: &[&str] = &[
-    "tools/list", "get_schema", "get_metadata", "ping",
-];
 
 /// The 10 regex patterns (mapping to 7 PRD categories)
 const PATTERN_DEFS: &[(&str, &str)] = &[
@@ -171,10 +161,10 @@ impl ResponseScanner {
         }
 
         // Tool-aware filtering
-        if SAFE_TOOL_WHITELIST.iter().any(|t| tool_name.eq_ignore_ascii_case(t)) {
+        if config.safe_tools.iter().any(|t| tool_name.eq_ignore_ascii_case(t)) {
             return ScanResult::Pass;
         }
-        if !is_scannable_tool(tool_name) {
+        if !is_scannable_tool(tool_name, &config.scannable_tools) {
             return ScanResult::Pass;
         }
 
@@ -308,10 +298,15 @@ impl ResponseScanner {
 }
 
 /// Check if a tool name matches any scannable tool pattern.
-fn is_scannable_tool(tool_name: &str) -> bool {
+fn is_scannable_tool(tool_name: &str, scannable_list: &[String]) -> bool {
     let lower = tool_name.to_ascii_lowercase();
-    SCANNABLE_TOOLS.iter().any(|t| lower.contains(t))
+    scannable_list.iter().any(|t| lower.contains(&t.to_ascii_lowercase()))
 }
+
+/// Content fields to extract and scan from JSON-RPC result
+const CONTENT_FIELDS: &[&str] = &[
+    "content", "stdout", "result", "data", "text",
+];
 
 /// Extract content field strings from a JSON-RPC response.
 /// Returns Vec<(field_path, content_string)>.
@@ -395,6 +390,8 @@ mod tests {
             block_mode: false,
             dry_run: false,
             max_scan_bytes: 1_048_576,
+            scannable_tools: vec!["read_file".to_string(), "exec_command".to_string()],
+            safe_tools: vec!["tools/list".to_string()],
         }
     }
 

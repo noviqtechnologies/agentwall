@@ -263,11 +263,31 @@ async fn run_start(
     
     // FR-303b: Initialize response scanner
     let response_scanner = Arc::new(policy::response_scanner::ResponseScanner::new().expect("Failed to compile ResponseScanner regexes"));
+    
+    let (sc_tools, sf_tools) = if let Some(p) = &compiled_policy {
+        (p.scannable_tools.clone(), p.safe_tools.clone())
+    } else {
+        (
+            vec![
+                "read_file".to_string(), "exec_command".to_string(), "run_shell".to_string(), 
+                "run_command".to_string(), "http_get".to_string(), "list_files".to_string(), 
+                "bash".to_string(), "execute".to_string(), "terminal".to_string(), 
+                "read".to_string(), "cat".to_string(), "shell".to_string(), 
+                "leak_secret".to_string(), "secret".to_string()
+            ],
+            vec![
+                "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string()
+            ]
+        )
+    };
+
     let response_scan_config = policy::response_scanner::ResponseScanConfig {
         enabled: scan_responses,
         block_mode: block_on_secrets,
         dry_run,
         max_scan_bytes,
+        scannable_tools: sc_tools,
+        safe_tools: sf_tools,
     };
 
     let state = Arc::new(ProxyState {
@@ -469,11 +489,31 @@ async fn run_wrap(
 
     // FR-303b: Initialize response scanner
     let response_scanner = Arc::new(policy::response_scanner::ResponseScanner::new().expect("Failed to compile ResponseScanner regexes"));
+    
+    let (sc_tools, sf_tools) = if let Some(p) = &compiled_policy {
+        (p.scannable_tools.clone(), p.safe_tools.clone())
+    } else {
+        (
+            vec![
+                "read_file".to_string(), "exec_command".to_string(), "run_shell".to_string(), 
+                "run_command".to_string(), "http_get".to_string(), "list_files".to_string(), 
+                "bash".to_string(), "execute".to_string(), "terminal".to_string(), 
+                "read".to_string(), "cat".to_string(), "shell".to_string(), 
+                "leak_secret".to_string(), "secret".to_string()
+            ],
+            vec![
+                "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string()
+            ]
+        )
+    };
+
     let response_scan_config = policy::response_scanner::ResponseScanConfig {
         enabled: scan_responses,
         block_mode: block_on_secrets,
         dry_run,
         max_scan_bytes,
+        scannable_tools: sc_tools,
+        safe_tools: sf_tools,
     };
 
     let state = Arc::new(ProxyState {

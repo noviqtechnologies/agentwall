@@ -12,6 +12,8 @@ pub struct CompiledPolicy {
     pub tools: Vec<CompiledTool>,
     pub max_calls_per_second: u32,
     pub identity_validator: Option<Arc<super::identity::IdentityValidator>>,
+    pub scannable_tools: Vec<String>,
+    pub safe_tools: Vec<String>,
 }
 
 impl std::fmt::Debug for CompiledPolicy {
@@ -20,6 +22,8 @@ impl std::fmt::Debug for CompiledPolicy {
             .field("tools", &self.tools)
             .field("max_calls_per_second", &self.max_calls_per_second)
             .field("identity_validator", &self.identity_validator.as_ref().map(|_| "Some(IdentityValidator)"))
+            .field("scannable_tools", &self.scannable_tools)
+            .field("safe_tools", &self.safe_tools)
             .finish()
     }
 }

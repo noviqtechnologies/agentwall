@@ -601,7 +601,15 @@ tools:
       - name: "path"
         type: string
         pattern: "^/workspace/.*"
-        required: true</textarea>
+        required: true
+
+  - name: "leak_secret"
+    action: allow
+    risk: low
+
+response_scanning:
+  scannable_tools: ["read_file", "exec_command", "run_shell", "leak_secret"]
+  safe_tools: ["tools/list", "ping"]</textarea>
                 </div>
                 <div id="lint-chips" style="margin-top: 16px; display: flex; gap: 10px;"></div>
                 

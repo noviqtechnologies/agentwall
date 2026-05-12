@@ -297,11 +297,41 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
         None
     };
 
+    let (scannable_tools, safe_tools) = if let Some(scanning) = policy_file.response_scanning {
+        (
+            scanning.scannable_tools.unwrap_or_else(|| vec![
+                "read_file".to_string(), "exec_command".to_string(), "run_shell".to_string(), 
+                "run_command".to_string(), "http_get".to_string(), "list_files".to_string(), 
+                "bash".to_string(), "execute".to_string(), "terminal".to_string(), 
+                "read".to_string(), "cat".to_string(), "shell".to_string(), 
+                "leak_secret".to_string(), "secret".to_string()
+            ]),
+            scanning.safe_tools.unwrap_or_else(|| vec![
+                "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string()
+            ])
+        )
+    } else {
+        (
+            vec![
+                "read_file".to_string(), "exec_command".to_string(), "run_shell".to_string(), 
+                "run_command".to_string(), "http_get".to_string(), "list_files".to_string(), 
+                "bash".to_string(), "execute".to_string(), "terminal".to_string(), 
+                "read".to_string(), "cat".to_string(), "shell".to_string(), 
+                "leak_secret".to_string(), "secret".to_string()
+            ],
+            vec![
+                "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string()
+            ]
+        )
+    };
+
     PolicyLoadResult::Loaded {
         policy: CompiledPolicy {
             tools: compiled_tools,
             max_calls_per_second,
             identity_validator,
+            scannable_tools,
+            safe_tools,
         },
         raw_hash,
         warnings,

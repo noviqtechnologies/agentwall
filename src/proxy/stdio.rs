@@ -37,9 +37,9 @@ pub async fn run_stdio_bridge(
     let mut agent_reader = FramedRead::new(agent_stdin, JsonRpcCodec);
     let mut agent_writer = FramedWrite::new(agent_stdout, JsonRpcCodec);
 
-    // FR-303b: Track the last forwarded tool name for response correlation
-    // MCP stdio is strictly sequential (one request → one response), so this is safe.
-    let mut last_forwarded_tool: String = String::new();
+    // FR-303b: Track forwarded tools by their JSON-RPC ID for response correlation.
+    // This prevents out-of-order responses from being scanned against the wrong tool context.
+    let mut forwarded_requests: std::collections::HashMap<serde_json::Value, String> = std::collections::HashMap::new();
 
     loop {
         tokio::select! {
@@ -57,8 +57,10 @@ pub async fn run_stdio_bridge(
                         let action = evaluate_jsonrpc(&state, &json, None).await;
                         match action {
                             ProxyAction::Forward => {
-                                // Track the tool name for response scanning
-                                last_forwarded_tool = tool_name;
+                                // Track the tool name for response scanning using its ID
+                                if let Some(id) = json.get("id") {
+                                    forwarded_requests.insert(id.clone(), tool_name);
+                                }
                                 if let Err(e) = upstream_writer.send(json).await {
                                     eprintln!("Error sending to upstream: {}", e);
                                     break;
@@ -96,7 +98,11 @@ pub async fn run_stdio_bridge(
                 match msg {
                     Some(Ok(json)) => {
                         // FR-303b: Scan response for secrets before forwarding to agent
-                        let processed = stdio_scan_response(&state, &json, &last_forwarded_tool);
+                        // Correlate with the original tool name using the response ID
+                        let id = json.get("id").cloned().unwrap_or(serde_json::Value::Null);
+                        let tool_name = forwarded_requests.remove(&id).unwrap_or_default();
+                        
+                        let processed = stdio_scan_response(&state, &json, &tool_name);
                         if let Err(e) = agent_writer.send(processed).await {
                             eprintln!("Error sending to agent: {}", e);
                             break;
