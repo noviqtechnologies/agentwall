@@ -1,5 +1,6 @@
 /target
 docs/
+scratch/
 
 # Audit Logs and Backups (FR-104, FR-109)
 *.log
@@ -49,6 +50,7 @@ __pycache__/
 
 # Tooling artifacts
 test-tools/**/target/
+node_modules/
 
 # Environment variables
 .env
