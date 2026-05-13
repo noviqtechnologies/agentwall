@@ -35,27 +35,18 @@ impl Decoder for JsonRpcCodec {
                 Ok(None)
             }
             Some(Err(e)) => {
-                // Try to recover by finding next newline or bracket if parsing fails,
-                // but for now, just return error to close the stream.
-                // In MCP, messages are usually newline delimited or properly framed.
-                // If it's just whitespace at the start, serde_json handles it.
-                // However, trailing garbage or incomplete data might cause non-EOF errors.
-                
-                // Let's implement a simple newline fallback if we fail.
-                // MCP stdio is typically newline delimited JSON (NDJSON).
+                // If parsing fails, try to find the next newline and skip the "garbage"
                 if let Some(i) = src.iter().position(|&b| b == b'\n') {
-                    let line = src.split_to(i + 1);
-                    // Try parsing the line
-                    match serde_json::from_slice::<Value>(&line) {
-                        Ok(v) => return Ok(Some(v)),
-                        Err(_) => {
-                            // If line fails, it might be partial garbage, just continue to next line
-                            return Ok(None);
-                        }
-                    }
+                    src.advance(i + 1);
+                    // Recursively call decode to find the next valid JSON
+                    return self.decode(src);
                 }
 
-                // If not EOF and no newline, we might be stuck. We'll return an error if it's completely invalid.
+                if e.is_eof() {
+                    return Ok(None);
+                }
+                
+                // If it's a hard error and no newline in sight, we have to stop
                 Err(io::Error::new(io::ErrorKind::InvalidData, e))
             }
         }

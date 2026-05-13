@@ -12,6 +12,91 @@ use crate::policy::response_scanner::ScanResult;
 use crate::proxy::codec::JsonRpcCodec;
 use crate::proxy::handler::{evaluate_jsonrpc, ProxyAction, ProxyState};
 
+/// Resolves a command name to an absolute path, handling Windows extensions and cmd /C wrapping if necessary.
+pub fn resolve_command(program: &str) -> (String, Vec<String>) {
+    #[cfg(not(windows))]
+    {
+        (program.to_string(), vec![])
+    }
+
+    #[cfg(windows)]
+    {
+        use std::env;
+        use std::path::PathBuf;
+
+        let mut final_program = program.to_string();
+        let mut found = false;
+
+        let path = PathBuf::from(program);
+        if path.is_absolute() && path.exists() {
+            final_program = program.to_string();
+            found = true;
+        } else {
+            // Try with common extensions FIRST on Windows
+            for ext in &["exe", "cmd", "bat", "ps1"] {
+                let with_ext = if program.to_lowercase().ends_with(&format!(".{}", ext)) {
+                    program.to_string()
+                } else {
+                    format!("{}.{}", program, ext)
+                };
+                
+                if let Ok(p) = which_windows(&with_ext) {
+                    final_program = p;
+                    found = true;
+                    break;
+                }
+            }
+
+            // Fallback to as-is if no extension found
+            if !found {
+                if let Ok(p) = which_windows(program) {
+                    final_program = p;
+                    found = true;
+                }
+            }
+        }
+
+        if !found {
+            return (program.to_string(), vec![]);
+        }
+
+        // If it's a script, we MUST use cmd /C on Windows
+        let lower = final_program.to_lowercase();
+        if lower.ends_with(".cmd") || lower.ends_with(".bat") || !lower.ends_with(".exe") {
+            // On Windows, if it's not an .exe, it's likely a script that needs cmd /C or is a shell script
+            return ("cmd".to_string(), vec!["/C".to_string(), final_program]);
+        }
+        
+        if lower.ends_with(".ps1") {
+            return ("powershell".to_string(), vec!["-ExecutionPolicy".to_string(), "Bypass".to_string(), "-File".to_string(), final_program]);
+        }
+
+        (final_program, vec![])
+    }
+}
+
+#[cfg(windows)]
+fn which_windows(program: &str) -> Result<String, ()> {
+    use std::env;
+    use std::path::Path;
+
+    // Check current directory first
+    if Path::new(program).exists() {
+        return Ok(program.to_string());
+    }
+
+    // Check PATH
+    if let Ok(path_var) = env::var("PATH") {
+        for p in env::split_paths(&path_var) {
+            let full_path = p.join(program);
+            if full_path.exists() {
+                return Ok(full_path.to_string_lossy().to_string());
+            }
+        }
+    }
+    Err(())
+}
+
 pub async fn run_stdio_bridge(
     state: Arc<ProxyState>,
     mut command: Command,

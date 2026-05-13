@@ -456,6 +456,9 @@
         <div class="nav-item" data-target="panel-3">
             <span class="nav-icon">04</span> Audit & Compliance
         </div>
+        <div class="nav-item" data-target="panel-6">
+            <span class="nav-icon">05</span> One-Click Setup
+        </div>
     </div>
     <div class="sidebar-footer">
         <span id="sb-status-dot" class="status-dot stopped"></span>
@@ -793,18 +796,6 @@ response_scanning:
                                 </p>
                             </div>
 
-                            <!-- Scenario 7: One-Command Wrap (FR-304) -->
-                            <div class="card" style="cursor: pointer; border-left: 4px solid var(--accent); background: rgba(83, 155, 245, 0.05);" onclick="showToast('ℹ Simulating Wrap: agentwall wrap-claude');">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                                    <span class="badge blue">One-Click Adoption</span>
-                                    <span style="font-size: 0.7rem; color: var(--text-muted);">FR-304</span>
-                                </div>
-                                <h4 style="color: var(--text-bright); margin-bottom: 8px;">Wrap Claude Desktop</h4>
-                                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
-                                    <b>Problem:</b> Claude Desktop connects to MCP servers with zero governance.<br>
-                                    <b>Value:</b> One command (`wrap-claude`) intercepts all traffic through AgentWall in under 60 seconds.
-                                </p>
-                            </div>
                         </div>
 
                         <!-- Technical Sandbox (Hidden by default) -->
@@ -933,6 +924,85 @@ response_scanning:
                         <span class="badge green">✓</span> Cryptographic Policy Signature generated
                     </li>
                 </ul>
+            </div>
+        </div>
+
+        <!-- Panel 6: One-Click Setup (FR-304) -->
+        <div id="panel-6" class="panel">
+            <h2 style="font-size: 1.8rem; margin-bottom: 8px;">One-Click Adoption Suite</h2>
+            <p style="color: var(--text-muted); margin-bottom: 32px; font-size: 0.95rem;">Zero-config security for your existing AI tool ecosystems.</p>
+
+            <div style="display: grid; grid-template-columns: 1fr 350px; gap: 32px;">
+                <!-- Step-by-Step Guide -->
+                <div>
+                    <div class="card" style="padding: 32px; border-left: 4px solid var(--accent);">
+                        <h3 style="margin-bottom: 24px;">🚀 Securing Claude Desktop in 4 Steps</h3>
+                        
+                        <div style="display: flex; gap: 20px; margin-bottom: 32px;">
+                            <div style="width: 40px; height: 40px; background: var(--accent); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;">1</div>
+                            <div>
+                                <h4 style="margin-bottom: 8px;">Environment Detection</h4>
+                                <p style="font-size: 0.9rem; color: var(--text-muted);">AgentWall automatically locates your <code>claude_desktop_config.json</code> on Windows, macOS, or Linux. No path configuration required.</p>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 20px; margin-bottom: 32px;">
+                            <div style="width: 40px; height: 40px; background: var(--sidebar-bg); border: 1px solid var(--border-color); color: var(--text-bright); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;">2</div>
+                            <div style="flex: 1;">
+                                <h4 style="margin-bottom: 8px;">Dry-Run Validation</h4>
+                                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">Preview the transformation without writing any files. See exactly how your MCP servers will be protected.</p>
+                                <code style="display: block; background: #0d1117; padding: 12px; border-radius: 6px; font-size: 0.85rem; color: var(--green);">agentwall wrap-claude --dry-run</code>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 20px; margin-bottom: 32px;">
+                            <div style="width: 40px; height: 40px; background: var(--sidebar-bg); border: 1px solid var(--border-color); color: var(--text-bright); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;">3</div>
+                            <div style="flex: 1;">
+                                <h4 style="margin-bottom: 8px;">Atomic Application</h4>
+                                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">AgentWall mutates the config, injects the security sidecar, and creates a timestamped backup for safety.</p>
+                                <code style="display: block; background: #0d1117; padding: 12px; border-radius: 6px; font-size: 0.85rem; color: var(--accent);">agentwall wrap-claude</code>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 20px;">
+                            <div style="width: 40px; height: 40px; background: var(--sidebar-bg); border: 1px solid var(--border-color); color: var(--text-bright); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;">4</div>
+                            <div>
+                                <h4 style="margin-bottom: 8px;">Enforcement Verification</h4>
+                                <p style="font-size: 0.9rem; color: var(--text-muted);">Restart Claude Desktop. All tool traffic is now intercepted with **Safe Mode v1** active by default.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Sidebar -->
+                <div>
+                    <div class="card" style="background: rgba(83, 155, 245, 0.05); border: 1px solid var(--accent);">
+                        <h3 style="font-size: 0.9rem; color: var(--accent); margin-bottom: 16px;">READY TO ADOPT?</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 20px;">One command secures all MCP servers including Filesystem, Memory, and Brave Search.</p>
+                        
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">TARGET ECOSYSTEM</label>
+                            <div class="badge muted" style="width: 100%; justify-content: center; padding: 10px;">Claude Desktop (detected)</div>
+                        </div>
+
+                        <button class="btn btn-primary" style="width: 100%; margin-bottom: 12px;" onclick="showToast('✓ Backup created: claude_desktop_config.json.bak\n✓ Wrapped 3 servers.');">
+                            RUN WRAP SIMULATION
+                        </button>
+                        
+                        <button class="btn" style="width: 100%; border: 1px solid var(--border-color);" onclick="showToast('ℹ Restoring original configuration from backup...');">
+                            ROLLBACK CHANGES
+                        </button>
+                    </div>
+
+                    <div class="card" style="margin-top: 24px;">
+                        <h3 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">RESOURCES</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 8px;"><a href="#" style="color: var(--accent); font-size: 0.8rem; text-decoration: none;">📄 FR-304 PRD Specs</a></li>
+                            <li style="margin-bottom: 8px;"><a href="#" style="color: var(--accent); font-size: 0.8rem; text-decoration: none;">🛡️ Safe Mode Rule List</a></li>
+                            <li style="margin-bottom: 8px;"><a href="#" style="color: var(--accent); font-size: 0.8rem; text-decoration: none;">📦 Backup Management</a></li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

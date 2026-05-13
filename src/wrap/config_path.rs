@@ -12,12 +12,34 @@ pub fn claude_config_path() -> Result<PathBuf, WrapError> {
         "linux" => dirs::config_dir().ok_or_else(|| {
             WrapError::ConfigNotFound("Cannot resolve ~/.config".to_string())
         })?,
-        "windows" => dirs::data_local_dir().ok_or_else(|| {
-            WrapError::ConfigNotFound("Cannot resolve %APPDATA%".to_string())
-        })?,
+        "windows" => {
+            let standard = dirs::data_dir()
+                .ok_or_else(|| WrapError::ConfigNotFound("Cannot resolve %APPDATA%".to_string()))?
+                .join("Claude")
+                .join("claude_desktop_config.json");
+
+            if standard.exists() {
+                standard
+            } else {
+                // Fallback for Microsoft Store version
+                let user_name = std::env::var("USERNAME").unwrap_or_else(|_| "user".to_string());
+                let store_path = PathBuf::from(format!(
+                    "C:\\Users\\{}\\AppData\\Local\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude\\claude_desktop_config.json",
+                    user_name
+                ));
+                if store_path.exists() {
+                    store_path
+                } else {
+                    return Err(WrapError::ConfigNotFound(format!(
+                        "Tested standard path ({}) and Microsoft Store path",
+                        standard.display()
+                    )));
+                }
+            }
+        }
         other => return Err(WrapError::UnsupportedOs(other.to_string())),
     };
-    Ok(base.join("Claude").join("claude_desktop_config.json"))
+    Ok(base)
 }
 
 /// Returns the path to the ~/.agentwall/ config directory.

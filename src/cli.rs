@@ -214,4 +214,24 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         force: bool,
     },
+
+    /// Internal command used by Claude Desktop to proxy tool calls (FR-304)
+    #[command(name = "stdio-proxy", hide = true)]
+    StdioProxy {
+        /// Trailing arguments: -- <command> <args...>
+        #[arg(last = true)]
+        args: Vec<String>,
+
+        /// Enable response scanning for secret detection
+        #[arg(long, default_value_t = false)]
+        scan_responses: bool,
+
+        /// Block entire response on secret detection instead of redacting
+        #[arg(long, default_value_t = false)]
+        block_on_secrets: bool,
+
+        /// Maximum response size to scan in bytes
+        #[arg(long, default_value_t = 1048576)]
+        max_scan_bytes: usize,
+    },
 }

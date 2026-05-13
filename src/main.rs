@@ -36,6 +36,7 @@ async fn main() {
         Commands::Report { .. } => true,
         Commands::Test { .. } => true,
         Commands::Wrap { .. } => true,
+        Commands::StdioProxy { .. } => true,
         _ => false,
     };
 
@@ -128,6 +129,9 @@ async fn main() {
         Commands::UnwrapClaude { force } => {
             run_unwrap_claude(force)
         }
+        Commands::StdioProxy { args, scan_responses, block_on_secrets, max_scan_bytes } => {
+            run_stdio_proxy(args, scan_responses, block_on_secrets, max_scan_bytes).await
+        }
     };
 
     std::process::exit(exit_code);
@@ -141,6 +145,94 @@ fn print_banner() {
         "MCP Security Proxy".cyan()
     );
     println!("{}", "=".repeat(60).cyan());
+}
+
+async fn run_stdio_proxy(
+    args: Vec<String>,
+    scan_responses: bool,
+    block_on_secrets: bool,
+    max_scan_bytes: usize,
+) -> i32 {
+    if args.is_empty() {
+        eprintln!("{} No command provided to stdio-proxy.", "✖".red());
+        return 1;
+    }
+
+    let session_secret: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    // Resolve log path relative to binary (ensures writability when run from Claude)
+    let bin_path = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("agentwall.exe"));
+    let log_path = bin_path.parent().unwrap_or(std::path::Path::new(".")).join("audit.log");
+
+    let audit_logger = match AuditLogger::new(
+        log_path,
+        session_id.clone(),
+        session_secret,
+        104857600, // 100MB
+    ) {
+        Ok(l) => Arc::new(l),
+        Err(e) => {
+            eprintln!("{} Cannot create audit logger: {}", "✖".red(), e);
+            return 1;
+        }
+    };
+
+    let safe_mode_scanner = Arc::new(SafeModeScanner::new().expect("Failed to compile SafeMode regexes"));
+    let response_scanner = Arc::new(policy::response_scanner::ResponseScanner::new().expect("Failed to compile ResponseScanner regexes"));
+    
+    let response_scan_config = policy::response_scanner::ResponseScanConfig {
+        enabled: scan_responses,
+        block_mode: block_on_secrets,
+        dry_run: false,
+        max_scan_bytes,
+        scannable_tools: vec![
+            "read_file".to_string(), "exec_command".to_string(), "run_shell".to_string(), 
+            "run_command".to_string(), "http_get".to_string(), "http_post".to_string(), 
+            "list_files".to_string(), "database_query".to_string(),
+            "bash".to_string(), "execute".to_string(), "terminal".to_string(), 
+            "read".to_string(), "cat".to_string(), "shell".to_string(), 
+            "leak_secret".to_string(), "secret".to_string()
+        ],
+        safe_tools: vec![
+            "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string(),
+            "calculator".to_string(), "weather".to_string(), "datetime".to_string(), "search".to_string(), "grep".to_string()
+        ],
+    };
+
+    let state = Arc::new(ProxyState {
+        policy: None, // Safe Mode only for Claude wrap
+        audit_logger,
+        session_id,
+        kill_mode: KillMode::Process,
+        agent_pid: None,
+        upstream_url: "".to_string(),
+        dry_run: false,
+        policy_loaded: false,
+        rate_limiter: proxy::handler::RateLimiter::new(0),
+        http_client: reqwest::Client::new(),
+        safe_mode_scanner,
+        ready: true,
+        response_scanner,
+        response_scan_config,
+    });
+
+    let mut parts = args.clone();
+    let program = parts.remove(0);
+    let (resolved_program, prefix_args) = proxy::stdio::resolve_command(&program);
+    
+    let mut final_args = prefix_args;
+    final_args.extend(parts);
+
+    let mut cmd = tokio::process::Command::new(resolved_program);
+    cmd.args(final_args);
+
+    if let Err(e) = proxy::stdio::run_stdio_bridge(state, cmd).await {
+        eprintln!("{} Stdio proxy error: {}", "✖".red(), e);
+        return 1;
+    }
+
+    0
 }
 
 async fn run_start(
@@ -574,8 +666,12 @@ async fn run_wrap(
     }
 
     let program = parts.remove(0);
-    let mut cmd = tokio::process::Command::new(program);
-    cmd.args(parts);
+    let (resolved_program, prefix_args) = proxy::stdio::resolve_command(&program);
+    let mut cmd = tokio::process::Command::new(resolved_program);
+    
+    let mut final_args = prefix_args;
+    final_args.extend(parts);
+    cmd.args(final_args);
 
     if let Err(e) = proxy::stdio::run_stdio_bridge(state, cmd).await {
         eprintln!("{} Stdio proxy error: {}", "✖".red(), e);

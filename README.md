@@ -8,6 +8,9 @@
 
 VEXA AgentWall sits between an AI agent runtime and its MCP (Model Context Protocol) tool servers. It intercepts every JSON-RPC tool call, evaluates it against a YAML-defined policy, and either allows or denies the call — while writing a cryptographically chained, tamper-evident audit log of every decision.
 
+**🚀 New in v1.1:** [One-Command Wrap](#protecting-claude-desktop-fr-304) — Protect your entire Claude Desktop installation in under 60 seconds.
+
+
 ---
 
 ## Table of Contents
@@ -46,6 +49,7 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 | 🔌 **Agent-Agnostic** | Works as a transparent sidecar; no agent code changes required. |
 | ⚡ **Ultra-Lightweight** | Single Rust binary, zero external runtime dependencies, <10ms latency overhead. |
 | 🔄 **Operational Resilience** | Token-bucket rate limiting prevents runaway loops and API flooding. |
+| 🔌 **One-Command Wrap** | Secure Claude Desktop in <60s with zero manual JSON editing (FR-304). |
 | 🧪 **Frictionless Development** | Dry-run mode and a pre-flight `check` tool let you iterate safely. |
 
 ---
@@ -65,6 +69,7 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 | **Bidirectional MCP Interception** | HTTP proxy + stdio wrap for full‑duplex tool calls (FR‑302). |
 | **Safe Mode** | Tool-aware, out-of-the-box security blocking 15 high-signal threats (SSH keys, exfil, SSRF) with zero configuration (FR-303a). |
 | **Response Scanning**| Opt-in scanning of tool outputs to detect and redact leaked secrets (AWS, GitHub, OpenAI, etc.) (FR-303b). |
+| **One-Command Wrap** | Atomic configuration mutation for Claude Desktop with automatic backup & restore (FR-304). |
 
 ---
 
@@ -85,7 +90,7 @@ For more information, product tours, and demo requests, visit:
                        │  JSON-RPC over HTTP or Stdio (Wrap mode)
                        ▼
 ┌─────────────────────────────────────────────────────────┐
-│               VEXA AgentWall Proxy                      │
+│               AgentWall Proxy                      │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
 │  │ Policy Eval │  │  Safe Mode   │  │  Audit Logger │  │
 │  │  (YAML)     │  │ (Global Reg) │  │(HMAC-SHA256)  │  │
@@ -103,9 +108,15 @@ For more information, product tours, and demo requests, visit:
 2. **Stdio Wrap Mode** (`agentwall wrap`): Wraps the agent executable, intercepting its standard input/output streams directly. This is ideal for CLI agents that don't support configuring a proxy URL.
 3. **One-Command Wrap** (`agentwall wrap-claude`): Automatically wraps all MCP servers in your Claude Desktop configuration — no manual JSON editing required.
 
-### Protecting Claude Desktop (FR-304)
+### Protecting Claude Desktop
 
 AgentWall can automatically wrap all MCP servers in your Claude Desktop installation in under 60 seconds.
+
+#### Prerequisites
+1. **Claude Desktop installed**: Supports both standalone and Microsoft Store versions.
+2. **MCP Servers configured**: You must have at least one server in your Claude config (click "Edit Config" in Claude to verify).
+3. **Binary in a stable location**: AgentWall uses its own absolute path to wrap servers. Keep `agentwall.exe` in a permanent directory (not a temp folder).
+4. **Tools in PATH**: If your tools use `uv`, `node`, or `npx`, ensure they are available in your system PATH.
 
 ```bash
 # Preview changes (safe — no writes)

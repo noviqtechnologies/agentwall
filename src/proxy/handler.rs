@@ -89,32 +89,17 @@ pub async fn evaluate_jsonrpc(
     let method = body.get("method").and_then(|m| m.as_str()).unwrap_or("");
     let params = body.get("params").cloned().unwrap_or(Value::Null);
 
-    // Route by MCP method
-    if method == "tools/list" || method.starts_with("notifications/") {
-        // Transparent proxy — no policy evaluation
+    // Whitelist standard MCP lifecycle and discovery methods (FR-304)
+    if method == "initialize" 
+        || method == "notifications/initialized" 
+        || method == "ping"
+        || method == "tools/list" 
+        || method.starts_with("notifications/")
+        || method.starts_with("resources/")
+        || method.starts_with("prompts/")
+    {
+        // Transparent proxy — no policy evaluation for lifecycle and discovery
         return ProxyAction::Forward;
-    }
-
-    if method.starts_with("resources/") || method.starts_with("prompts/") {
-        // Reject — not supported in Phase 1
-        let _ = state.audit_logger.write_entry(
-            "tool_deny",
-            method,
-            None,
-            Some("method_not_supported".to_string()),
-            None,
-            None,
-        );
-        logging::log_event(
-            Level::Warn,
-            "tool_deny",
-            json!({"tool": method, "session": &state.session_id, "reason": "method_not_supported"}),
-        );
-        return ProxyAction::Respond(make_error(
-            &id,
-            JSONRPC_METHOD_NOT_FOUND,
-            "Method not supported in Phase 1",
-        ));
     }
 
     if method != "tools/call" {
