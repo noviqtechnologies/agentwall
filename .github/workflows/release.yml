@@ -15,13 +15,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: agentwall-linux
-            asset_name: agentwall-v1.0.5-linux.zip
+            asset_name: agentwall-v1.0.6-linux.zip
           - os: macos-latest
             artifact_name: agentwall-macos
-            asset_name: agentwall-v1.0.5-macos.zip
+            asset_name: agentwall-v1.0.6-macos.zip
           - os: windows-latest
             artifact_name: agentwall-windows
-            asset_name: agentwall-v1.0.5-windows.zip
+            asset_name: agentwall-v1.0.6-windows.zip
 
     steps:
       - name: Checkout code
