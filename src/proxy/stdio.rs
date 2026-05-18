@@ -21,7 +21,7 @@ pub fn resolve_command(program: &str) -> (String, Vec<String>) {
 
     #[cfg(windows)]
     {
-        use std::env;
+        
         use std::path::PathBuf;
 
         let mut final_program = program.to_string();

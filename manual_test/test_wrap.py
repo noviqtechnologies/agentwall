@@ -57,17 +57,17 @@ def test_wrap_claude_cycle():
         # Note: Since the binary is hardcoded to look at specific OS paths,
         # a full end-to-end test on a mock file requires the binary to accept a path override.
         # Let's check if we added a path override to the CLI. 
-        # (Looking back at my implementation plan, I didn't add --config-path for wrap-claude).
+        # (Looking back at my implementation plan, I didn't add --config-path for wrap claude).
         # I should probably add it to make testing easier.
         
         print("Verification: Check help output for new commands")
-        res = run_agentwall(["wrap-claude", "--help"])
-        assert "wrap-claude" in res.stdout or "wrap-claude" in res.stderr
-        print("[OK] wrap-claude help found")
+        res = run_agentwall(["wrap", "claude", "--help"])
+        assert "claude" in res.stdout or "claude" in res.stderr
+        print("[OK] wrap claude help found")
         
-        res = run_agentwall(["unwrap-claude", "--help"])
-        assert "unwrap-claude" in res.stdout or "unwrap-claude" in res.stderr
-        print("[OK] unwrap-claude help found")
+        res = run_agentwall(["unwrap", "claude", "--help"])
+        assert "claude" in res.stdout or "claude" in res.stderr
+        print("[OK] unwrap claude help found")
 
 if __name__ == "__main__":
     if not AGENTWALL_BIN.exists():

@@ -106,7 +106,7 @@ For more information, product tours, and demo requests, visit:
 
 1. **HTTP Proxy Mode** (`agentwall start`): Intercepts MCP calls over HTTP.
 2. **Stdio Wrap Mode** (`agentwall wrap`): Wraps the agent executable, intercepting its standard input/output streams directly. This is ideal for CLI agents that don't support configuring a proxy URL.
-3. **One-Command Wrap** (`agentwall wrap-claude`): Automatically wraps all MCP servers in your Claude Desktop configuration — no manual JSON editing required.
+3. **One-Command Wrap** (`agentwall wrap claude`): Automatically wraps all MCP servers in your Claude Desktop configuration — no manual JSON editing required.
 
 ### Protecting Claude Desktop
 
@@ -120,13 +120,13 @@ AgentWall can automatically wrap all MCP servers in your Claude Desktop installa
 
 ```bash
 # Preview changes (safe — no writes)
-agentwall wrap-claude --dry-run
+agentwall wrap claude --dry-run
 
 # Apply the wrap
-agentwall wrap-claude
+agentwall wrap claude
 
 # Restore original config
-agentwall unwrap-claude
+agentwall unwrap claude
 ```
 
 Restart Claude Desktop after wrapping. All tool calls will now flow through AgentWall with **Safe Mode v1** active (15 high-signal rules) by default.

@@ -189,31 +189,20 @@ pub enum Commands {
         /// Maximum response size to scan in bytes (FR-303b, default: 1MB)
         #[arg(long, default_value_t = 1048576)]
         max_scan_bytes: usize,
+
+        /// Target to wrap (e.g. claude)
+        #[command(subcommand)]
+        target: Option<WrapTarget>,
     },
 
-    /// Wrap Claude Desktop MCP servers with AgentWall (FR-304)
-    #[command(name = "wrap-claude")]
-    WrapClaude {
-        /// Preview what would change without writing (safe)
-        #[arg(long, default_value_t = false)]
-        dry_run: bool,
-
-        /// Enable response scanning for secret detection (FR-303b)
-        #[arg(long, default_value_t = false)]
-        scan_responses: bool,
-
-        /// Block entire response on secret detection instead of redacting
-        #[arg(long, default_value_t = false)]
-        block_on_secrets: bool,
+    /// Restore AgentWall wrappers
+    Unwrap {
+        /// Target to unwrap (e.g. claude)
+        #[command(subcommand)]
+        target: UnwrapTarget,
     },
 
-    /// Restore Claude Desktop config from the most recent AgentWall backup (FR-304)
-    #[command(name = "unwrap-claude")]
-    UnwrapClaude {
-        /// Restore even if backup is missing — prints manual cleanup instructions
-        #[arg(long, default_value_t = false)]
-        force: bool,
-    },
+
 
     /// Internal command used by Claude Desktop to proxy tool calls (FR-304)
     #[command(name = "stdio-proxy", hide = true)]
@@ -233,5 +222,33 @@ pub enum Commands {
         /// Maximum response size to scan in bytes
         #[arg(long, default_value_t = 1048576)]
         max_scan_bytes: usize,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WrapTarget {
+    /// Wrap Claude Desktop MCP servers with AgentWall (FR-304)
+    Claude {
+        /// Preview what would change without writing (safe)
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+
+        /// Enable response scanning for secret detection (FR-303b)
+        #[arg(long, default_value_t = false)]
+        scan_responses: bool,
+
+        /// Block entire response on secret detection instead of redacting
+        #[arg(long, default_value_t = false)]
+        block_on_secrets: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum UnwrapTarget {
+    /// Restore Claude Desktop config from the most recent AgentWall backup (FR-304)
+    Claude {
+        /// Restore even if backup is missing — prints manual cleanup instructions
+        #[arg(long, default_value_t = false)]
+        force: bool,
     },
 }

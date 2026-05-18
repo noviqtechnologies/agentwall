@@ -57,18 +57,25 @@ async fn main() {
             scan_responses,
             block_on_secrets,
             max_scan_bytes,
-        } => run_wrap(
-            command,
-            auto_detect,
-            policy,
-            dry_run,
-            kill_mode,
-            log_path,
-            scan_responses,
-            block_on_secrets,
-            max_scan_bytes,
-        )
-        .await,
+            target,
+        } => {
+            if let Some(cli::WrapTarget::Claude { dry_run, scan_responses, block_on_secrets: _ }) = target {
+                run_wrap_claude(dry_run, scan_responses)
+            } else {
+                run_wrap(
+                    command,
+                    auto_detect,
+                    policy,
+                    dry_run,
+                    kill_mode,
+                    log_path,
+                    scan_responses,
+                    block_on_secrets,
+                    max_scan_bytes,
+                )
+                .await
+            }
+        }
         Commands::Start {
             policy,
             listen,
@@ -123,10 +130,7 @@ async fn main() {
             report_include_params,
         } => run_report(&log_path, output.as_deref(), &format, report_include_params),
         Commands::Init { from_log, output } => init::run_init(&from_log, &output),
-        Commands::WrapClaude { dry_run, scan_responses, block_on_secrets: _ } => {
-            run_wrap_claude(dry_run, scan_responses)
-        }
-        Commands::UnwrapClaude { force } => {
+        Commands::Unwrap { target: cli::UnwrapTarget::Claude { force } } => {
             run_unwrap_claude(force)
         }
         Commands::StdioProxy { args, scan_responses, block_on_secrets, max_scan_bytes } => {
@@ -681,7 +685,7 @@ async fn run_wrap(
     0
 }
 
-// ─── FR-304: agentwall wrap-claude / unwrap-claude ──────────────────────────
+// ─── FR-304: agentwall wrap claude / unwrap claude ──────────────────────────
 
 fn run_wrap_claude(dry_run: bool, scan_responses: bool) -> i32 {
     if dry_run {
@@ -701,7 +705,7 @@ fn run_wrap_claude(dry_run: bool, scan_responses: bool) -> i32 {
             println!(
                 "{} {}",
                 "ℹ".blue(),
-                "Already wrapped. Run 'agentwall unwrap-claude' first if you want to re-wrap."
+                "Already wrapped. Run 'agentwall unwrap claude' first if you want to re-wrap."
             );
             0 // Not an error — idempotent
         }

@@ -10,6 +10,7 @@ scratch/
 # Reports
 session-report.json
 report.json
+matrix_results.json
 
 # IDEs and OS
 .idea/
@@ -22,12 +23,15 @@ Thumbs.db
 # Compiled artifacts in root
 vexa
 vexa.exe
+agent
+agent.exe
 agentwall
 agentwall.exe
 *.pdb
 *.zip
 vexa-mvp1/
 agentwall-pkg/
+Cargo.lock
 
 # Manual test runs
 manual_test/*.log

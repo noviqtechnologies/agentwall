@@ -6,12 +6,18 @@ use super::WrapError;
 /// Returns the absolute path to claude_desktop_config.json for the current OS.
 pub fn claude_config_path() -> Result<PathBuf, WrapError> {
     let base = match std::env::consts::OS {
-        "macos" => dirs::data_dir().ok_or_else(|| {
-            WrapError::ConfigNotFound("Cannot resolve ~/Library/Application Support".to_string())
-        })?,
-        "linux" => dirs::config_dir().ok_or_else(|| {
-            WrapError::ConfigNotFound("Cannot resolve ~/.config".to_string())
-        })?,
+        "macos" => dirs::data_dir()
+            .ok_or_else(|| {
+                WrapError::ConfigNotFound("Cannot resolve ~/Library/Application Support".to_string())
+            })?
+            .join("Claude")
+            .join("claude_desktop_config.json"),
+        "linux" => dirs::config_dir()
+            .ok_or_else(|| {
+                WrapError::ConfigNotFound("Cannot resolve ~/.config".to_string())
+            })?
+            .join("Claude")
+            .join("claude_desktop_config.json"),
         "windows" => {
             let standard = dirs::data_dir()
                 .ok_or_else(|| WrapError::ConfigNotFound("Cannot resolve %APPDATA%".to_string()))?

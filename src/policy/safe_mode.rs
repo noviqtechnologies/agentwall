@@ -66,15 +66,15 @@ struct RuleDef {
 /// The 15 Safe Mode rules per PRD v5.1 §3.
 const RULE_DEFS: &[(&str, &str, &str, &str)] = &[
     // ── A. Sensitive File Paths ──
-    ("SSH Directory",        "SensitiveFiles", "FilePath", r"(?:^|/)\.ssh/"),
+    ("SSH Directory",        "SensitiveFiles", "FilePath", r"(?:^|[/\\])\.ssh[/\\]"),
     ("Private Key (RSA)",    "SensitiveFiles", "FilePath", r"id_rsa"),
     ("Private Key (Ed25519)","SensitiveFiles", "FilePath", r"id_ed25519"),
     ("Private Key (ECDSA)",  "SensitiveFiles", "FilePath", r"id_ecdsa"),
-    ("Environment File",     "SecretsConfig",  "FilePath", r"(?:^|/)\.env"),
-    ("AWS Credentials",      "SecretsConfig",  "FilePath", r"(?:^|/)\.aws/credentials"),
-    ("Kubeconfig",           "SecretsConfig",  "FilePath", r"(?:\.kube/config|/etc/kubernetes/admin\.conf)"),
+    ("Environment File",     "SecretsConfig",  "FilePath", r"(?:^|[/\\])\.env"),
+    ("AWS Credentials",      "SecretsConfig",  "FilePath", r"(?:^|[/\\])\.aws[/\\]credentials"),
+    ("Kubeconfig",           "SecretsConfig",  "FilePath", r"(?:\.kube[/\\]config|/etc/kubernetes/admin\.conf)"),
     ("System Shadow",        "SystemPaths",    "FilePath", r"/etc/shadow"),
-    ("Docker Config",        "SystemPaths",    "FilePath", r"(?:^|/)\.docker/config\.json"),
+    ("Docker Config",        "SystemPaths",    "FilePath", r"(?:^|[/\\])\.docker[/\\]config\.json"),
     ("Docker Socket",        "SystemPaths",    "FilePath", r"docker\.sock"),
 
     // ── B. Exfiltration & Dangerous Commands ──
@@ -87,9 +87,10 @@ const RULE_DEFS: &[(&str, &str, &str, &str)] = &[
     ("Cloud Metadata SSRF",  "NetworkSSRF", "Url", r"169\.254\.169\.254|metadata\.google\.internal|instance-data"),
 ];
 
-/// Tool name → which parameters to scan.
-/// Tools not in this list receive NO request-side scanning in v1.
-const FILE_TOOLS: &[&str] = &["read_file", "write_file", "edit_file", "list_files"];
+const FILE_TOOLS: &[&str] = &[
+    "read_file", "read_text_file", "write_file", "write_text_file",
+    "edit_file", "list_files", "list_directory", "view_file", "read", "write"
+];
 const COMMAND_TOOLS: &[&str] = &["exec_command", "run_shell", "bash", "run_command", "execute", "terminal", "shell"];
 const URL_TOOLS: &[&str] = &["fetch", "http_get", "http_post", "http_request"];
 
@@ -517,6 +518,29 @@ mod tests {
         let s = scanner();
         // MCP sends params as { name: "read_file", arguments: { path: "..." } }
         let m = s.scan_tool("read_file", &json!({"arguments": {"path": "/etc/shadow"}})).unwrap();
+        assert_eq!(m.category, ThreatCategory::SystemPaths);
+    }
+
+    #[test]
+    fn windows_backslash_paths_blocked() {
+        let s = scanner();
+        // SSH
+        let m = s.scan_tool("read_file", &json!({"path": "C:\\Users\\user\\.ssh\\id_rsa"})).unwrap();
+        assert_eq!(m.category, ThreatCategory::SensitiveFiles);
+        // Environment file
+        let m = s.scan_tool("read_file", &json!({"path": "C:\\Users\\user\\.env"})).unwrap();
+        assert_eq!(m.category, ThreatCategory::SecretsConfig);
+        // Environment file via read_text_file tool name
+        let m = s.scan_tool("read_text_file", &json!({"path": "C:\\Users\\user\\.env"})).unwrap();
+        assert_eq!(m.category, ThreatCategory::SecretsConfig);
+        // AWS
+        let m = s.scan_tool("read_file", &json!({"path": "C:\\Users\\user\\.aws\\credentials"})).unwrap();
+        assert_eq!(m.category, ThreatCategory::SecretsConfig);
+        // Kubeconfig
+        let m = s.scan_tool("read_file", &json!({"path": "C:\\Users\\user\\.kube\\config"})).unwrap();
+        assert_eq!(m.category, ThreatCategory::SecretsConfig);
+        // Docker config
+        let m = s.scan_tool("read_file", &json!({"path": "C:\\Users\\user\\.docker\\config.json"})).unwrap();
         assert_eq!(m.category, ThreatCategory::SystemPaths);
     }
 

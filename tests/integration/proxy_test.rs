@@ -40,14 +40,16 @@ tools:
     // The Python test-tools logic serves as the true integration test when run
     // via a bash script in CI. Here we use the vexa check CLI.
 
-    let mut cmd = Command::cargo_bin("vexa").unwrap();
-    cmd.arg("check")
+    let mut cmd = Command::cargo_bin("agentwall").unwrap();
+    cmd.arg("test")
         .arg("--policy")
         .arg(policy_file.path())
         .arg(fixture_file.path());
 
     cmd.assert()
         .code(1) // Should exit 1 because one is denied
-        .stdout(predicates::str::contains("ALLOW\tread_file"))
-        .stdout(predicates::str::contains("DENY\texec_shell"));
+        .stdout(predicates::str::contains("ALLOW"))
+        .stdout(predicates::str::contains("read_file"))
+        .stdout(predicates::str::contains("DENY"))
+        .stdout(predicates::str::contains("exec_shell"));
 }

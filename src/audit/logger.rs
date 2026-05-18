@@ -5,26 +5,26 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::Sha256;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::sync::mpsc;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Initial prev_hmac for the first entry: 64 hex zeros
 pub const ZERO_HMAC: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
-/// A single audit log entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
     pub ts: String,
     pub session_id: String,
-    pub event: String, // tool_allow | tool_deny | tool_dry_run_deny | log_rotation_seed | dry_run_active
+    pub event: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub params: Option<Value>, // redacted for DENY
+    pub params: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -37,18 +37,13 @@ pub struct AuditEntry {
     pub hmac: Option<String>,
 }
 
-/// The audit logger manages the HMAC chain and file writes
 pub struct AuditLogger {
-    file: Mutex<Option<File>>,
-    session_secret: Vec<u8>,
+    sender: mpsc::UnboundedSender<AuditEntry>,
+    is_broken: Arc<AtomicBool>,
+    entry_count: Arc<AtomicU64>,
     session_id: String,
-    entry_index: Mutex<u64>,
-    prev_hmac: Mutex<String>,
-    pub log_path: PathBuf,
-    max_bytes: u64,
 }
 
-/// Error from audit operations
 #[derive(Debug)]
 pub enum AuditError {
     IoError(std::io::Error),
@@ -65,44 +60,162 @@ impl std::fmt::Display for AuditError {
 }
 
 impl AuditLogger {
-    /// Create a new audit logger.
-    /// session_secret is generated at proxy startup and never written to disk.
     pub fn new(
         log_path: PathBuf,
         session_id: String,
         session_secret: Vec<u8>,
         max_bytes: u64,
     ) -> Result<Self, AuditError> {
-        let file = OpenOptions::new()
+        let (tx, mut rx) = mpsc::unbounded_channel::<AuditEntry>();
+        let is_broken = Arc::new(AtomicBool::new(false));
+        let is_broken_clone = is_broken.clone();
+        let entry_count = Arc::new(AtomicU64::new(0));
+        let entry_count_clone = entry_count.clone();
+
+        let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&log_path)
             .map_err(AuditError::IoError)?;
 
+        std::thread::spawn(move || {
+            let mut current_idx = 0u64;
+            let mut prev_hmac = ZERO_HMAC.to_string();
+
+            while let Some(mut entry) = rx.blocking_recv() {
+                entry.entry_index = current_idx;
+                entry.prev_hmac = prev_hmac.clone();
+
+                let canonical = serde_json::to_string(&entry).expect("audit entry must serialize");
+                let mut mac = HmacSha256::new_from_slice(&session_secret).expect("HMAC key length is valid");
+                mac.update(canonical.as_bytes());
+                let hmac_hex = hex::encode(mac.finalize().into_bytes());
+
+                entry.hmac = Some(hmac_hex.clone());
+
+                let line = match serde_json::to_string(&entry) {
+                    Ok(l) => l,
+                    Err(_) => continue,
+                };
+
+                if writeln!(file, "{}", line).is_err() {
+                    is_broken_clone.store(true, Ordering::Relaxed);
+                    break;
+                }
+                if file.flush().is_err() {
+                    is_broken_clone.store(true, Ordering::Relaxed);
+                    break;
+                }
+                if file.sync_all().is_err() {
+                    is_broken_clone.store(true, Ordering::Relaxed);
+                    break;
+                }
+
+                let mut rotated = false;
+                if max_bytes > 0 {
+                    if let Ok(metadata) = file.metadata() {
+                        if metadata.len() >= max_bytes {
+                            rotated = true;
+                        }
+                    }
+                }
+
+                if rotated {
+                    let ts_compact = Utc::now().format("%Y%m%dT%H%M%S%.9f").to_string();
+                    let rand_suffix: u16 = rand::random();
+                    let mut backup_path = log_path.clone();
+                    backup_path.set_file_name(format!(
+                        "{}.{}_{:04x}.bak",
+                        log_path.file_name().unwrap().to_string_lossy(),
+                        ts_compact,
+                        rand_suffix
+                    ));
+
+                    drop(file);
+
+                    let mut rename_result = std::fs::rename(&log_path, &backup_path);
+                    if rename_result.is_err() {
+                        for _ in 0..10 {
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            rename_result = std::fs::rename(&log_path, &backup_path);
+                            if rename_result.is_ok() { break; }
+                        }
+                    }
+                    if rename_result.is_err() {
+                        is_broken_clone.store(true, Ordering::Relaxed);
+                        break;
+                    }
+
+                    match OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&log_path)
+                    {
+                        Ok(new_file) => {
+                            file = new_file;
+                            
+                            let mut seed_entry = AuditEntry {
+                                ts: Utc::now().to_rfc3339(),
+                                session_id: entry.session_id.clone(),
+                                event: "log_rotation_seed".to_string(),
+                                tool_name: None,
+                                params: None,
+                                reason: None,
+                                latency_ms: None,
+                                subject: None,
+                                entry_index: 0,
+                                prev_hmac: hmac_hex,
+                                hmac: None,
+                            };
+                            
+                            let seed_canonical = serde_json::to_string(&seed_entry).unwrap();
+                            let mut mac = HmacSha256::new_from_slice(&session_secret).expect("HMAC");
+                            mac.update(seed_canonical.as_bytes());
+                            let seed_hmac = hex::encode(mac.finalize().into_bytes());
+                            seed_entry.hmac = Some(seed_hmac.clone());
+                            let seed_line = serde_json::to_string(&seed_entry).unwrap();
+
+                            if writeln!(file, "{}", seed_line).is_err() ||
+                               file.flush().is_err() ||
+                               file.sync_all().is_err() {
+                                is_broken_clone.store(true, Ordering::Relaxed);
+                                break;
+                            }
+                            
+                            prev_hmac = seed_hmac;
+                            current_idx = 1;
+
+                            crate::logging::log_event(
+                                crate::logging::Level::Info,
+                                "log_rotated",
+                                serde_json::json!({
+                                    "archived": backup_path.to_string_lossy(),
+                                    "new_log": log_path.to_string_lossy()
+                                }),
+                            );
+                        }
+                        Err(_) => {
+                            is_broken_clone.store(true, Ordering::Relaxed);
+                            break;
+                        }
+                    }
+                } else {
+                    prev_hmac = hmac_hex;
+                    current_idx += 1;
+                }
+                
+                entry_count_clone.store(current_idx, Ordering::Relaxed);
+            }
+        });
+
         Ok(Self {
-            file: Mutex::new(Some(file)),
-            session_secret,
+            sender: tx,
+            is_broken,
+            entry_count,
             session_id,
-            entry_index: Mutex::new(0),
-            prev_hmac: Mutex::new(ZERO_HMAC.to_string()),
-            log_path,
-            max_bytes,
         })
     }
 
-    /// Compute HMAC-SHA256 of the canonical JSON of an entry (without the hmac field).
-    fn compute_hmac(&self, entry: &AuditEntry) -> String {
-        // Canonical JSON: sorted keys via serde_json with sorted maps
-        let canonical = serde_json::to_string(entry).expect("audit entry must serialize");
-
-        let mut mac =
-            HmacSha256::new_from_slice(&self.session_secret).expect("HMAC key length is valid");
-        mac.update(canonical.as_bytes());
-        hex::encode(mac.finalize().into_bytes())
-    }
-
-    /// Write an audit entry with HMAC chain. Performs fsync before returning.
-    /// Returns the completed entry on success.
     pub fn write_entry(
         &self,
         event: &str,
@@ -111,11 +224,15 @@ impl AuditLogger {
         reason: Option<String>,
         latency_ms: Option<f64>,
         subject: Option<String>,
-    ) -> Result<AuditEntry, AuditError> {
-        let mut idx = self.entry_index.lock().unwrap();
-        let mut prev = self.prev_hmac.lock().unwrap();
+    ) -> Result<(), AuditError> {
+        if self.is_broken.load(Ordering::Relaxed) {
+            return Err(AuditError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Audit log is broken/disk full",
+            )));
+        }
 
-        let mut entry = AuditEntry {
+        let entry = AuditEntry {
             ts: Utc::now().to_rfc3339(),
             session_id: self.session_id.clone(),
             event: event.to_string(),
@@ -124,117 +241,24 @@ impl AuditLogger {
             reason,
             latency_ms,
             subject,
-            entry_index: *idx,
-            prev_hmac: prev.clone(),
-            hmac: None, // computed below
+            // Filled by background thread:
+            entry_index: 0,
+            prev_hmac: "".to_string(),
+            hmac: None,
         };
 
-        // Compute HMAC over entry without hmac field
-        let hmac_hex = self.compute_hmac(&entry);
-        entry.hmac = Some(hmac_hex.clone());
-
-        // Serialize to JSON line
-        let line = serde_json::to_string(&entry)
-            .map_err(|e| AuditError::SerializationError(e.to_string()))?;
-
-        // Write + fsync (NFR-204: non-negotiable)
-        let mut file_opt = self.file.lock().unwrap();
-        let mut file = file_opt.take().expect("Audit file handle must be present");
-        
-        writeln!(file, "{}", line).map_err(AuditError::IoError)?;
-        file.flush().map_err(AuditError::IoError)?;
-        file.sync_all().map_err(AuditError::IoError)?;
-
-        let mut rotated = false;
-        if self.max_bytes > 0 {
-            if let Ok(metadata) = file.metadata() {
-                if metadata.len() >= self.max_bytes {
-                    rotated = true;
-                }
-            }
-        }
-        
-        let prev_hmac_for_seed = hmac_hex.clone();
-
-        if rotated {
-            // Log rotation
-            let ts_compact = Utc::now().format("%Y%m%dT%H%M%S%.9f").to_string();
-            let rand_suffix: u16 = rand::random();
-            let mut backup_path = self.log_path.clone();
-            backup_path.set_file_name(format!(
-                "{}.{}_{:04x}.bak",
-                self.log_path.file_name().unwrap().to_string_lossy(),
-                ts_compact,
-                rand_suffix
-            ));
-
-            // Close current file by dropping it
-            drop(file);
-            
-            // Rename with retry (Windows can be picky about timing)
-            let mut rename_result = std::fs::rename(&self.log_path, &backup_path);
-            if rename_result.is_err() {
-                for _ in 0..10 {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                    rename_result = std::fs::rename(&self.log_path, &backup_path);
-                    if rename_result.is_ok() { break; }
-                }
-            }
-            rename_result.map_err(AuditError::IoError)?;
-
-            // Open new file
-            let new_file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&self.log_path)
-                .map_err(AuditError::IoError)?;
-            
-            let mut seed_entry = AuditEntry {
-                ts: Utc::now().to_rfc3339(),
-                session_id: self.session_id.clone(),
-                event: "log_rotation_seed".to_string(),
-                tool_name: None,
-                params: None,
-                reason: None,
-                latency_ms: None,
-                subject: None,
-                entry_index: 0,
-                prev_hmac: prev_hmac_for_seed,
-                hmac: None,
-            };
-            let seed_hmac = self.compute_hmac(&seed_entry);
-            seed_entry.hmac = Some(seed_hmac.clone());
-            let seed_line = serde_json::to_string(&seed_entry).unwrap();
-            
-            let mut new_file_handle = new_file;
-            writeln!(new_file_handle, "{}", seed_line).map_err(AuditError::IoError)?;
-            new_file_handle.flush().map_err(AuditError::IoError)?;
-            new_file_handle.sync_all().map_err(AuditError::IoError)?;
-
-            *file_opt = Some(new_file_handle);
-            *prev = seed_hmac;
-            *idx = 1;
-
-            crate::logging::log_event(
-                crate::logging::Level::Info,
-                "log_rotated",
-                serde_json::json!({
-                    "archived": backup_path.to_string_lossy(),
-                    "new_log": self.log_path.to_string_lossy()
-                }),
-            );
-        } else {
-            // Put file back
-            *file_opt = Some(file);
-            *prev = hmac_hex;
-            *idx += 1;
+        if self.sender.send(entry).is_err() {
+            self.is_broken.store(true, Ordering::Relaxed);
+            return Err(AuditError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Audit channel closed",
+            )));
         }
 
-        Ok(entry)
+        Ok(())
     }
 
-    /// Get current entry count
     pub fn entry_count(&self) -> u64 {
-        *self.entry_index.lock().unwrap()
+        self.entry_count.load(Ordering::Relaxed)
     }
 }
