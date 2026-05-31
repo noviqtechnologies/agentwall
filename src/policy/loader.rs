@@ -325,6 +325,21 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
         )
     };
 
+    // FR-306: Extract firewall configuration
+    let firewall_config = policy_file.firewall.clone();
+    if let Some(ref fw) = firewall_config {
+        if fw.enabled {
+            logging::log_event(
+                Level::Info,
+                "firewall_enabled",
+                serde_json::json!({
+                    "max_attempts": fw.cycle_detection.max_attempts,
+                    "action": format!("{:?}", fw.cycle_detection.action)
+                }),
+            );
+        }
+    }
+
     PolicyLoadResult::Loaded {
         policy: CompiledPolicy {
             tools: compiled_tools,
@@ -332,6 +347,7 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
             identity_validator,
             scannable_tools,
             safe_tools,
+            firewall: firewall_config,
         },
         raw_hash,
         warnings,

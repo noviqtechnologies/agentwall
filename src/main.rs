@@ -219,6 +219,7 @@ async fn run_stdio_proxy(
         ready: true,
         response_scanner,
         response_scan_config,
+        tool_history: std::sync::Mutex::new(Vec::new()),
     });
 
     let mut parts = args.clone();
@@ -416,6 +417,7 @@ async fn run_start(
         ready: true,
         response_scanner,
         response_scan_config,
+        tool_history: std::sync::Mutex::new(Vec::new()),
     });
 
     if dry_run {
@@ -654,6 +656,7 @@ async fn run_wrap(
         ready: true,
         response_scanner,
         response_scan_config,
+        tool_history: std::sync::Mutex::new(Vec::new()),
     });
 
     // Parse the command string

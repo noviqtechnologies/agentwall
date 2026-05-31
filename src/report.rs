@@ -151,6 +151,32 @@ pub fn generate_report(
             "rate_limited" => {
                 rate_limited += 1;
             }
+            "firewall_cycle_block" => {
+                // FR-306: Count as denied
+                denied += 1;
+                denied_calls.push(DeniedCall {
+                    ts: entry.ts.clone(),
+                    tool: entry.tool_name.clone().unwrap_or_default(),
+                    reason: entry.reason.clone().unwrap_or_else(|| "firewall_cycle_block".to_string()),
+                    params_redacted: !include_params,
+                    params: if include_params {
+                        entry.params.clone()
+                    } else {
+                        None
+                    },
+                });
+            }
+            "firewall_cycle_override" => {
+                // FR-306: Developer overrode — count as allowed
+                allowed += 1;
+                let t_name = entry.tool_name.clone().unwrap_or_default();
+                let tool_stats = tools_map.entry(t_name.clone()).or_insert_with(|| ToolUsed {
+                    name: t_name,
+                    call_count: 0,
+                    first_called: entry.ts.clone(),
+                });
+                tool_stats.call_count += 1;
+            }
             _ => {}
         }
     }

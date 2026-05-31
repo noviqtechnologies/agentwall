@@ -796,6 +796,19 @@ response_scanning:
                                 </p>
                             </div>
 
+                            <!-- Scenario 7: Runaway Loop Prevention -->
+                            <div class="card" style="cursor: pointer; border-left: 4px solid var(--red);" onclick="runLoopPreventionScenario();">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                    <span class="badge red">Agent Loop</span>
+                                    <span style="font-size: 0.7rem; color: var(--text-muted);">FIREWALL MVP</span>
+                                </div>
+                                <h4 style="color: var(--text-bright); margin-bottom: 8px;">Runaway Loop Prevention</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
+                                    <b>Problem:</b> Agent gets stuck in a recursive tool-calling loop, wasting LLM tokens.<br>
+                                    <b>Value:</b> Firewall intercepts consecutive identical calls to force a pivot or block.
+                                </p>
+                            </div>
+
                         </div>
 
                         <!-- Technical Sandbox (Hidden by default) -->
@@ -1290,6 +1303,18 @@ el('btn-proxy-stop').onclick = async () => {
 function quickFill(tool, params) {
     el('call-tool').value = tool;
     el('call-params').value = params;
+}
+
+async function runLoopPreventionScenario() {
+    quickFill('read_file', '{\x22path\x22: \x22/workspace/src/loop.py\x22}');
+    // Execute call 1
+    await el('btn-call').onclick();
+    await new Promise(r => setTimeout(r, 650));
+    // Execute call 2
+    await el('btn-call').onclick();
+    await new Promise(r => setTimeout(r, 650));
+    // Execute call 3 (should trigger cycle detection block/pivot_error)
+    await el('btn-call').onclick();
 }
 
 el('btn-call').onclick = async () => {

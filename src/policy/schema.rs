@@ -28,8 +28,81 @@ pub struct PolicyFile {
     /// FR-303b: Response scanning configuration.
     pub response_scanning: Option<ResponseScanningConfig>,
 
+    /// FR-306: Agent Firewall — cycle detection and loop prevention.
+    pub firewall: Option<FirewallConfig>,
+
     /// Tool allowlist. Empty = all denied.
     pub tools: Option<Vec<ToolRule>>,
+}
+
+/// FR-306: Action to take when a cycle is detected.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CycleAction {
+    /// Return a custom JSON-RPC error (-32010) telling the agent to try a different approach.
+    PivotError,
+    /// Return a standard policy violation error (-32001) and trigger kill mode.
+    Block,
+    /// Pause and ask the developer interactively (falls back to block in non-TTY).
+    PauseInteractive,
+}
+
+impl Default for CycleAction {
+    fn default() -> Self {
+        CycleAction::PivotError
+    }
+}
+
+/// FR-306: Cycle detection configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CycleDetectionConfig {
+    /// Number of consecutive identical calls before triggering. Default: 3.
+    #[serde(default = "default_max_attempts")]
+    pub max_attempts: u32,
+
+    /// What to do when a cycle is detected. Default: pivot_error.
+    #[serde(default)]
+    pub action: CycleAction,
+}
+
+impl Default for CycleDetectionConfig {
+    fn default() -> Self {
+        Self {
+            max_attempts: default_max_attempts(),
+            action: CycleAction::default(),
+        }
+    }
+}
+
+fn default_max_attempts() -> u32 {
+    3
+}
+
+/// FR-306: Top-level firewall configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FirewallConfig {
+    /// Master toggle. Default: true.
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+
+    /// Cycle detection settings.
+    #[serde(default)]
+    pub cycle_detection: CycleDetectionConfig,
+}
+
+impl Default for FirewallConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_enabled(),
+            cycle_detection: CycleDetectionConfig::default(),
+        }
+    }
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 /// Identity configuration (OIDC).

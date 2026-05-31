@@ -15,6 +15,7 @@ fn minimal_policy(tools: Vec<CompiledTool>, max_calls: u32) -> CompiledPolicy {
         safe_tools: vec![
             "tools/list".to_string(), "ping".to_string(),
         ],
+        firewall: None,
     }
 }
 

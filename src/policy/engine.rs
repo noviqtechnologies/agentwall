@@ -14,6 +14,8 @@ pub struct CompiledPolicy {
     pub identity_validator: Option<Arc<super::identity::IdentityValidator>>,
     pub scannable_tools: Vec<String>,
     pub safe_tools: Vec<String>,
+    /// FR-306: Agent Firewall configuration (cycle detection).
+    pub firewall: Option<super::schema::FirewallConfig>,
 }
 
 impl std::fmt::Debug for CompiledPolicy {
@@ -24,6 +26,7 @@ impl std::fmt::Debug for CompiledPolicy {
             .field("identity_validator", &self.identity_validator.as_ref().map(|_| "Some(IdentityValidator)"))
             .field("scannable_tools", &self.scannable_tools)
             .field("safe_tools", &self.safe_tools)
+            .field("firewall", &self.firewall)
             .finish()
     }
 }

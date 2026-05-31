@@ -8,6 +8,51 @@ use crate::audit::logger::AuditLogger;
 use crate::kill::KillMode;
 use crate::logging::{self, Level};
 use crate::policy::engine::{CompiledPolicy, EvalResult};
+use crate::policy::schema::CycleAction;
+
+/// FR-306: A fingerprint of a tool call for cycle detection.
+/// Stores the tool name and a hash of the canonicalized arguments.
+#[derive(Clone, PartialEq, Debug)]
+pub struct ToolCallFingerprint {
+    pub tool_name: String,
+    pub args_hash: u64,
+}
+
+impl ToolCallFingerprint {
+    pub fn new(tool_name: &str, args: &Value) -> Self {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+
+        // Canonicalize: serialize to sorted JSON string for deterministic comparison.
+        let canonical = canonical_json(args);
+        let mut hasher = DefaultHasher::new();
+        canonical.hash(&mut hasher);
+        Self {
+            tool_name: tool_name.to_string(),
+            args_hash: hasher.finish(),
+        }
+    }
+}
+
+/// Produce a canonical JSON string with sorted object keys for deterministic hashing.
+fn canonical_json(value: &Value) -> String {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let entries: Vec<String> = keys
+                .iter()
+                .map(|k| format!("{:?}:{}", k, canonical_json(&map[*k])))
+                .collect();
+            format!("{{{}}}", entries.join(","))
+        }
+        Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(canonical_json).collect();
+            format!("[{}]", items.join(","))
+        }
+        _ => value.to_string(),
+    }
+}
 
 /// Shared proxy state
 pub struct ProxyState {
@@ -28,6 +73,8 @@ pub struct ProxyState {
     pub response_scanner: Arc<crate::policy::response_scanner::ResponseScanner>,
     /// FR-303b: Response scan configuration
     pub response_scan_config: crate::policy::response_scanner::ResponseScanConfig,
+    /// FR-306: Sliding window of recent tool call fingerprints (bounded to 5).
+    pub tool_history: std::sync::Mutex<Vec<ToolCallFingerprint>>,
 }
 
 pub struct RateLimiter {
@@ -71,6 +118,11 @@ impl RateLimiter {
 /// JSON-RPC error codes
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
 const JSONRPC_POLICY_VIOLATION: i64 = -32001;
+/// FR-306: Custom error code for firewall cycle detection.
+const JSONRPC_FIREWALL_CYCLE: i64 = -32010;
+
+/// FR-306: Max entries in the tool call history sliding window.
+const TOOL_HISTORY_MAX: usize = 5;
 
 pub enum ProxyAction {
     Forward,
@@ -150,6 +202,125 @@ pub async fn evaluate_jsonrpc(
                 }
             }
         }));
+    }
+
+    // FR-306: Cycle Detection (Agent Firewall)
+    let cycle_action_to_take = {
+        let firewall_cfg = state.policy.as_ref().and_then(|p| p.firewall.as_ref());
+        let effective_cfg = firewall_cfg.cloned().unwrap_or_default();
+
+        if effective_cfg.enabled {
+            let fingerprint = ToolCallFingerprint::new(tool_name, &tool_params);
+            let mut history = state.tool_history.lock().unwrap();
+
+            // Append and bound the window
+            history.push(fingerprint.clone());
+            let len = history.len();
+            if len > TOOL_HISTORY_MAX {
+                history.drain(..len - TOOL_HISTORY_MAX);
+            }
+
+            let max_attempts = effective_cfg.cycle_detection.max_attempts as usize;
+            if max_attempts > 0 && history.len() >= max_attempts {
+                let tail = &history[history.len() - max_attempts..];
+                let all_identical = tail.iter().all(|f| *f == fingerprint);
+
+                if all_identical {
+                    // Clear history so agent gets a fresh start or on developer override
+                    history.clear();
+                    Some((effective_cfg.cycle_detection.action, max_attempts))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    if let Some((action, max_attempts)) = cycle_action_to_take {
+        // Cycle detected
+        let _ = state.audit_logger.write_entry(
+            "firewall_cycle_block",
+            tool_name,
+            None,
+            Some(format!(
+                "cycle_detected: {} consecutive identical calls (max_attempts={})",
+                max_attempts, max_attempts
+            )),
+            None,
+            None,
+        );
+        logging::log_event(
+            Level::Warn,
+            "firewall_cycle_block",
+            json!({
+                "tool": tool_name,
+                "session": &state.session_id,
+                "consecutive_calls": max_attempts,
+                "action": format!("{:?}", action)
+            }),
+        );
+
+        match action {
+            CycleAction::PivotError => {
+                return ProxyAction::Respond(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": JSONRPC_FIREWALL_CYCLE,
+                        "message": format!(
+                            "AgentWall: Cycle detected — tool '{}' called {} times with identical arguments. Try a different approach.",
+                            tool_name, max_attempts
+                        ),
+                        "data": {
+                            "session_id": &state.session_id,
+                            "tool": tool_name,
+                            "cycle_length": max_attempts
+                        }
+                    }
+                }));
+            }
+            CycleAction::Block => {
+                return handle_deny(
+                    state, &id, tool_name,
+                    &format!("firewall_cycle_block: {} consecutive identical calls", max_attempts),
+                    None,
+                ).await;
+            }
+            CycleAction::PauseInteractive => {
+                // In non-TTY environments, fall back to block.
+                // Attempt console I/O via platform-specific paths.
+                let user_allowed = try_interactive_pause(tool_name, max_attempts);
+                if user_allowed {
+                    let _ = state.audit_logger.write_entry(
+                        "firewall_cycle_override",
+                        tool_name,
+                        None,
+                        Some("developer_override".to_string()),
+                        None,
+                        None,
+                    );
+                    logging::log_event(
+                        Level::Warn,
+                        "firewall_cycle_override",
+                        json!({
+                            "tool": tool_name,
+                            "session": &state.session_id
+                        }),
+                    );
+                    // Fall through to normal evaluation
+                } else {
+                    return handle_deny(
+                        state, &id, tool_name,
+                        &format!("firewall_cycle_block: {} consecutive identical calls (interactive_denied)", max_attempts),
+                        None,
+                    ).await;
+                }
+            }
+        }
     }
 
     // Safe Mode Evaluation (FR-303a) — tool-aware scanning
@@ -384,4 +555,72 @@ fn make_error(id: &Value, code: i64, message: &str) -> Value {
             "message": message
         }
     })
+}
+
+/// FR-306: Attempt to pause and ask the developer via the system console.
+/// Returns true if the user typed 'y' to allow the call through.
+/// Returns false if the user denied, or if console I/O is not available (non-TTY).
+fn try_interactive_pause(tool_name: &str, consecutive_calls: usize) -> bool {
+    use std::io::{BufRead, Write};
+
+    // Do not block when running under cargo tests/CI
+    if std::env::var("CARGO_MANIFEST_DIR").is_ok() {
+        return false;
+    }
+
+    // Try to open the system console directly (not stdin, which may be owned by JSON-RPC).
+    #[cfg(target_os = "windows")]
+    let console_result = {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .open("CONIN$")
+            .and_then(|reader| {
+                let mut stderr = std::io::stderr();
+                writeln!(
+                    stderr,
+                    "\n⚠️  AgentWall Firewall: Cycle detected — tool '{}' called {} times with identical arguments.",
+                    tool_name, consecutive_calls
+                ).ok();
+                writeln!(stderr, "   Allow this call? (y/N): ").ok();
+                stderr.flush().ok();
+
+                let mut line = String::new();
+                let mut buf_reader = std::io::BufReader::new(reader);
+                buf_reader.read_line(&mut line)?;
+                Ok(line.trim().eq_ignore_ascii_case("y"))
+            })
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let console_result = {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .open("/dev/tty")
+            .and_then(|reader| {
+                let mut stderr = std::io::stderr();
+                writeln!(
+                    stderr,
+                    "\n⚠️  AgentWall Firewall: Cycle detected — tool '{}' called {} times with identical arguments.",
+                    tool_name, consecutive_calls
+                ).ok();
+                writeln!(stderr, "   Allow this call? (y/N): ").ok();
+                stderr.flush().ok();
+
+                let mut line = String::new();
+                let mut buf_reader = std::io::BufReader::new(reader);
+                buf_reader.read_line(&mut line)?;
+                Ok(line.trim().eq_ignore_ascii_case("y"))
+            })
+    };
+
+    match console_result {
+        Ok(allowed) => allowed,
+        Err(_) => {
+            // Non-TTY environment — cannot interact. Log warning and fall back to block.
+            eprintln!(
+                "⚠️  AgentWall: pause_interactive requested but no TTY available. Falling back to block."
+            );
+            false
+        }
+    }
 }

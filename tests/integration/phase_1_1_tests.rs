@@ -42,6 +42,10 @@ fn test_phase_1_1_init_from_log() {
         )
         .unwrap();
 
+    // Drop the logger to flush the background writer
+    drop(logger);
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
     // Generate the policy
     let generated_policy = generate_policy_from_log(log_file.path()).unwrap();
 
@@ -90,6 +94,10 @@ fn test_phase_1_1_developer_observability_report() {
             None,
         )
         .unwrap();
+
+    // Drop the logger to flush the background writer
+    drop(logger);
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     let report = generate_report(
         log_file.path(),

@@ -85,6 +85,10 @@ fn test_session_report_generation() {
     logger.write_entry("tool_deny", "exec_shell", None, Some("action is deny".to_string()), None, None).unwrap();
     logger.write_entry("rate_limited", "read_file", None, None, None, None).unwrap();
 
+    // Drop the logger to flush the background writer
+    drop(logger);
+    std::thread::sleep(Duration::from_millis(200));
+
     let report = generate_report(
         &log_path,
         false,

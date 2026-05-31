@@ -60,3 +60,10 @@ tools:
         # TODO: add pattern constraint for this parameter
         # pattern: ".*"  # Example: restrict to safe values
 
+# FR-306: Agent Firewall Cycle Detection and Loop Prevention
+firewall:
+  enabled: true
+  cycle_detection:
+    max_attempts: 3
+    action: pivot_error  # Options: pivot_error, block, pause_interactive
+

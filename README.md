@@ -70,6 +70,7 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 | **Safe Mode** | Tool-aware, out-of-the-box security blocking 15 high-signal threats (SSH keys, exfil, SSRF) with zero configuration (FR-303a). |
 | **Response Scanning**| Opt-in scanning of tool outputs to detect and redact leaked secrets (AWS, GitHub, OpenAI, etc.) (FR-303b). |
 | **One-Command Wrap** | Atomic configuration mutation for Claude Desktop with automatic backup & restore (FR-304). |
+| **Agent Firewall**   | Deterministic tool cycle detection (detecting loops N times) and interactive pauses (FR-306). |
 
 ---
 
@@ -430,6 +431,23 @@ tools:
             limit: { type: integer, maximum: 100 }
           required: ["query"]
 ```
+
+### Agent Firewall (Cycle Detection)
+
+To protect against runaway agent loops (wasting LLM context budget), configure the `firewall` block:
+
+```yaml
+firewall:
+  enabled: true                 # Master switch (default: true)
+  cycle_detection:
+    max_attempts: 3             # Number of consecutive identical calls before action (default: 3)
+    action: pivot_error         # Action: pivot_error, block, or pause_interactive (default: pivot_error)
+```
+
+#### Firewall Actions:
+- **`pivot_error`** (Default): Returns a custom JSON-RPC error code `-32010` to the agent, prompting it to change its course instead of recursing infinitely.
+- **`block`**: Returns the standard policy block error code `-32001` and triggers the configured session kill behavior (e.g. terminating the agent).
+- **`pause_interactive`**: Prompts the developer in real-time on the console (stdin/stderr) to allow/deny the specific call. If stdout/stdin are non-TTY (e.g., inside Claude Desktop), it safely falls back to blocking.
 
 ### Pattern Auto-Anchoring
 

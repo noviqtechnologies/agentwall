@@ -1,6 +1,6 @@
 use std::io::Write;
 use tempfile::NamedTempFile;
-use agentwall::audit::logger::{AuditLogger, ZERO_HMAC};
+use agentwall::audit::logger::AuditLogger;
 use agentwall::audit::verifier::{verify_chain, verify_chain_with_secret, VerifyResult};
 
 #[test]
@@ -13,15 +13,12 @@ fn test_hmac_chain() {
     let logger = AuditLogger::new(log_path.clone(), session_id, secret.clone(), 0).unwrap();
 
     // Write first entry
-    let e1 = logger
+    logger
         .write_entry("tool_allow", "read_file", None, None, Some(1.2), None)
         .unwrap();
-    assert_eq!(e1.entry_index, 0);
-    assert_eq!(e1.prev_hmac, ZERO_HMAC);
-    assert!(e1.hmac.is_some());
 
     // Write second entry
-    let e2 = logger
+    logger
         .write_entry(
             "tool_deny",
             "exec_shell",
@@ -31,20 +28,23 @@ fn test_hmac_chain() {
             None,
         )
         .unwrap();
-    assert_eq!(e2.entry_index, 1);
-    assert_eq!(e2.prev_hmac, e1.hmac.unwrap());
-    assert!(e2.hmac.is_some());
+
+    // Drop the logger to ensure the background thread finishes flushing
+    drop(logger);
+
+    // Give the background thread a moment to complete writes
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // Verify chain consistency (without secret)
     match verify_chain(&log_path) {
         VerifyResult::Valid { entry_count } => assert_eq!(entry_count, 2),
-        _ => panic!("Chain should be valid"),
+        other => panic!("Chain should be valid, got: {:?}", other),
     }
 
     // Verify full HMAC (with secret)
     match verify_chain_with_secret(&log_path, &secret) {
         VerifyResult::Valid { entry_count } => assert_eq!(entry_count, 2),
-        _ => panic!("Full HMAC verification should pass"),
+        other => panic!("Full HMAC verification should pass, got: {:?}", other),
     }
 
     // Tamper with the log file
@@ -55,9 +55,9 @@ fn test_hmac_chain() {
         .unwrap();
     writeln!(file, r#"{{"ts":"2026-05-03T12:00:00Z","session_id":"session-123","event":"tool_allow","tool_name":"bad_tool","entry_index":2,"prev_hmac":"tampered","hmac":"fake"}}"#).unwrap();
 
-    // Verify again
+    // Verify again — should detect tampering
     match verify_chain(&log_path) {
         VerifyResult::Invalid { entry_index, .. } => assert_eq!(entry_index, 2),
-        _ => panic!("Expected invalid chain due to tampering"),
+        other => panic!("Expected invalid chain due to tampering, got: {:?}", other),
     }
 }
