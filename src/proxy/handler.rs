@@ -395,11 +395,7 @@ pub async fn evaluate_jsonrpc(
             }
 
             let token = auth_header.and_then(|h| {
-                if h.starts_with("Bearer ") {
-                    Some(h[7..].to_string())
-                } else {
-                    None
-                }
+                h.strip_prefix("Bearer ").map(|s| s.to_string())
             });
 
             match token {

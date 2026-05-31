@@ -159,8 +159,10 @@ mod tests {
             exp: now + 3600,
         };
 
-        let mut header = Header::default();
-        header.kid = Some(kid.to_string());
+        let header = Header {
+            kid: Some(kid.to_string()),
+            ..Default::default()
+        };
 
         let token = encode(&header, &claims, &encoding_key).unwrap();
 
@@ -186,8 +188,10 @@ mod tests {
             exp: now - 120, // Expired beyond 60s clock skew
         };
 
-        let mut header = Header::default();
-        header.kid = Some("test-kid".to_string());
+        let header = Header {
+            kid: Some("test-kid".to_string()),
+            ..Default::default()
+        };
 
         let token = encode(&header, &claims, &EncodingKey::from_secret(key_secret)).unwrap();
 

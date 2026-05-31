@@ -49,7 +49,6 @@ fn test_hmac_chain() {
 
     // Tamper with the log file
     let mut file = std::fs::OpenOptions::new()
-        .write(true)
         .append(true)
         .open(&log_path)
         .unwrap();

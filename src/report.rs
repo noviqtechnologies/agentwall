@@ -184,7 +184,7 @@ pub fn generate_report(
     let total = allowed + denied + dry_run_denied + rate_limited;
 
     let mut tools_used: Vec<ToolUsed> = tools_map.into_values().collect();
-    tools_used.sort_by(|a, b| b.call_count.cmp(&a.call_count)); // sort by frequency
+    tools_used.sort_by_key(|b| std::cmp::Reverse(b.call_count)); // sort by frequency
 
     Ok(SessionReport {
         schema_version: "1".to_string(),
@@ -260,7 +260,7 @@ pub fn format_text_report(report: &SessionReport) -> String {
     if report.summary.rate_limited > 0 {
         out.push_str(&format!("  {}   {} rate limited\n", "⏳".blue(), report.summary.rate_limited.to_string().blue()));
     }
-    out.push_str("\n");
+    out.push('\n');
 
     // Tools Table
     out.push_str(&format!("  {}\n", "Tools Observed:".bold().underline()));
@@ -276,7 +276,7 @@ pub fn format_text_report(report: &SessionReport) -> String {
             ));
         }
     }
-    out.push_str("\n");
+    out.push('\n');
 
     // Violations List
     if !report.denied_calls.is_empty() {
@@ -302,7 +302,7 @@ pub fn format_text_report(report: &SessionReport) -> String {
                 params_str
             ));
         }
-        out.push_str("\n");
+        out.push('\n');
     }
 
     // Warnings

@@ -52,7 +52,7 @@ fn test_log_rotation_and_seed() {
     let dir = log_path.parent().unwrap();
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
-        if path.extension().map_or(false, |ext| ext == "bak") {
+        if path.extension().is_some_and(|ext| ext == "bak") {
             bak_found = true;
             break;
         }

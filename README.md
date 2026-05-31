@@ -48,7 +48,7 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 | 🔐 **Cryptographic Auditability** | Every decision is HMAC-SHA256 chained — tamper-evident and compliance-ready. |
 | 🔌 **Agent-Agnostic** | Works as a transparent sidecar; no agent code changes required. |
 | ⚡ **Ultra-Lightweight** | Single Rust binary, zero external runtime dependencies, <10ms latency overhead. |
-| 🔄 **Operational Resilience** | Token-bucket rate limiting prevents runaway loops and API flooding. |
+| 🔄 **Operational Resilience** | Rate limiting and deterministic cycle detection prevent runaway loops, API flooding, and budget waste. |
 | 🔌 **One-Command Wrap** | Secure Claude Desktop in <60s with zero manual JSON editing (FR-304). |
 | 🧪 **Frictionless Development** | Dry-run mode and a pre-flight `check` tool let you iterate safely. |
 
@@ -70,7 +70,7 @@ AgentWall provides a **zero-trust enforcement boundary** with zero changes requi
 | **Safe Mode** | Tool-aware, out-of-the-box security blocking 15 high-signal threats (SSH keys, exfil, SSRF) with zero configuration (FR-303a). |
 | **Response Scanning**| Opt-in scanning of tool outputs to detect and redact leaked secrets (AWS, GitHub, OpenAI, etc.) (FR-303b). |
 | **One-Command Wrap** | Atomic configuration mutation for Claude Desktop with automatic backup & restore (FR-304). |
-| **Agent Firewall**   | Deterministic tool cycle detection (detecting loops N times) and interactive pauses (FR-306). |
+| **Agent Firewall**   | Deterministic tool cycle detection (arguments-aware detection up to 5 attempts) and interactive console/TTY overrides (FR-306). |
 
 ---
 
@@ -444,10 +444,34 @@ firewall:
     action: pivot_error         # Action: pivot_error, block, or pause_interactive (default: pivot_error)
 ```
 
+#### Deterministic Cycle Detection Logic
+1. **Tool Call Fingerprinting**: Every incoming `tools/call` request has its arguments canonicalized (sorted object keys, serialized to JSON) and hashed alongside the tool name to compute a deterministic fingerprint.
+2. **Sliding History Window**: The proxy maintains a sliding history of the last 5 tool calls (hardcoded as `TOOL_HISTORY_MAX = 5`). 
+   > [!WARNING]
+   > **Configuration Constraint:** Because the sliding history window is bounded to 5, setting `max_attempts` to any value greater than `5` will prevent the loop detector from ever triggering. For cycle detection to function, `max_attempts` must be configured between `1` and `5` (inclusive).
+3. **State Reset**: Once a cycle is detected and handled (or bypassed via developer override), the history window is cleared to give the agent a clean slate.
+
 #### Firewall Actions:
-- **`pivot_error`** (Default): Returns a custom JSON-RPC error code `-32010` to the agent, prompting it to change its course instead of recursing infinitely.
+- **`pivot_error`** (Default): Returns a custom JSON-RPC error code `-32010` to the agent, prompting it to change its course instead of recursing.
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": "<id>",
+    "error": {
+      "code": -32010,
+      "message": "AgentWall: Cycle detected — tool '<tool_name>' called <N> times with identical arguments. Try a different approach.",
+      "data": {
+        "session_id": "<session_id>",
+        "tool": "<tool_name>",
+        "cycle_length": <N>
+      }
+    }
+  }
+  ```
 - **`block`**: Returns the standard policy block error code `-32001` and triggers the configured session kill behavior (e.g. terminating the agent).
-- **`pause_interactive`**: Prompts the developer in real-time on the console (stdin/stderr) to allow/deny the specific call. If stdout/stdin are non-TTY (e.g., inside Claude Desktop), it safely falls back to blocking.
+- **`pause_interactive`**: Prompts the developer in real-time on the console (stdin/stderr) to allow/deny the specific call.
+  - To prevent interfering with JSON-RPC stdio communications in wrapped environments, the proxy directly opens the system console (`CONIN$` on Windows, `/dev/tty` on Unix/macOS) instead of standard input (`stdin`).
+  - If console/TTY access is unavailable (e.g. running in automated CI environments or inside non-interactive services), it logs a warning and gracefully falls back to `block` behavior.
 
 ### Pattern Auto-Anchoring
 

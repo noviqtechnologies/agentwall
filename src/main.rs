@@ -31,14 +31,13 @@ use proxy::handler::ProxyState;
 async fn main() {
     let cli = Cli::parse();
     
-    // Suppress banner for commands that output machine-readable formats (FR-204)
-    let suppress_banner = match &cli.command {
-        Commands::Report { .. } => true,
-        Commands::Test { .. } => true,
-        Commands::Wrap { .. } => true,
-        Commands::StdioProxy { .. } => true,
-        _ => false,
-    };
+    let suppress_banner = matches!(
+        &cli.command,
+        Commands::Report { .. }
+            | Commands::Test { .. }
+            | Commands::Wrap { .. }
+            | Commands::StdioProxy { .. }
+    );
 
     if !suppress_banner {
         print_banner();
@@ -706,9 +705,8 @@ fn run_wrap_claude(dry_run: bool, scan_responses: bool) -> i32 {
         }
         Err(wrap::WrapError::AlreadyWrapped) => {
             println!(
-                "{} {}",
-                "ℹ".blue(),
-                "Already wrapped. Run 'agentwall unwrap claude' first if you want to re-wrap."
+                "{} Already wrapped. Run 'agentwall unwrap claude' first if you want to re-wrap.",
+                "ℹ".blue()
             );
             0 // Not an error — idempotent
         }
