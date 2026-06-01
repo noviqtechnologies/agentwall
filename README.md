@@ -1,618 +1,343 @@
-# VEXA AgentWall
+# Vexa AgentWall
 
-> **Local-first sidecar proxy enforcing deterministic security policies for autonomous AI agents over MCP.**
+**Enterprise security gateway for AI agent tool calls over MCP.**
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.5-brightgreen.svg)]()
-[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)]()
+Vexa AgentWall is a self-hosted, **centrally deployed** enforcement layer for the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). Every JSON-RPC tool call is authenticated with OIDC, evaluated against a version-controlled allowlist policy, and recorded in a tamper-evident audit trail with real-time export to your SIEM.
 
-VEXA AgentWall sits between an AI agent runtime and its MCP (Model Context Protocol) tool servers. It intercepts every JSON-RPC tool call, evaluates it against a YAML-defined policy, and either allows or denies the call — while writing a cryptographically chained, tamper-evident audit log of every decision.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.6-green.svg)](Cargo.toml)
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 
-**🚀 New in v1.1:** [One-Command Wrap](#protecting-claude-desktop-fr-304) — Protect your entire Claude Desktop installation in under 60 seconds.
-
+[Website](https://vexasec.io/agentwall.html) · [Report an issue](https://github.com/noviqtechnologies/agentwall/issues) · [Security](mailto:security@vexasec.io)
 
 ---
 
-## Table of Contents
+## Table of contents
 
-- [Why AgentWall?](#why-agentwall)
-- [Key Benefits](#key-benefits)
-- [Official Landing Page](#official-landing-page)
-- [Architecture & Enforcement Flow](#architecture--enforcement-flow)
-- [Demo UI](#demo-ui)
-- [Quickstart](#quickstart)
-- [Policy Reference](#policy-reference)
-- [CLI Reference](#cli-reference)
-- [Key Features](#key-features)
-- [Security & Limitations](#security--limitations)
-- [Building from Source](#building-from-source)
+- [Why AgentWall](#why-agentwall)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick start](#quick-start)
+- [Deployment](#deployment)
+- [Policy management](#policy-management)
+- [Command-line interface](#command-line-interface)
+- [Operations](#operations)
+- [Security model](#security-model)
 - [Contributing](#contributing)
-- [Support](#support)
 - [License](#license)
 
 ---
 
-## Why AgentWall?
+## Why Vexa AgentWall
 
-Autonomous AI agents can call tools with real-world consequences — writing files, executing shell commands, making network requests. Without an enforcement layer, a hallucinated tool call or a compromised agent can cause irreversible damage.
+AI agents that invoke tools can read sensitive data, execute commands, and reach internal services. General API gateways and prompt-layer controls do not provide a dedicated **tool-call enforcement boundary** with identity-bound audit trails.
 
-AgentWall provides a **zero-trust enforcement boundary** with zero changes required to your agent code.
+Vexa AgentWall is built for platform and security teams deploying agents at scale:
 
----
+| Capability | What you get |
+|------------|----------------|
+| **Centralized enforcement** | One organizational gateway (Kubernetes or Docker Compose)—not a per-process sidecar. |
+| **Identity** | Every session requires a valid OIDC JWT (Okta, Microsoft Entra ID, or any JWKS provider). |
+| **Policy** | Deny-by-default YAML allowlists with JSON Schema for nested parameters—no blind object pass-through. |
+| **Audit** | HMAC-chained logs, offline verification, and export to Splunk, Datadog, or OpenSearch. |
+| **Operations** | Health probes and Prometheus metrics from day one. |
 
-## Key Benefits
-
-| Benefit | Description |
-|---|---|
-| 🛡️ **Zero-Trust by Default** | Explicit allow-list policy. Everything not permitted is denied. |
-| 🔐 **Cryptographic Auditability** | Every decision is HMAC-SHA256 chained — tamper-evident and compliance-ready. |
-| 🔌 **Agent-Agnostic** | Works as a transparent sidecar; no agent code changes required. |
-| ⚡ **Ultra-Lightweight** | Single Rust binary, zero external runtime dependencies, <10ms latency overhead. |
-| 🔄 **Operational Resilience** | Rate limiting and deterministic cycle detection prevent runaway loops, API flooding, and budget waste. |
-| 🔌 **One-Command Wrap** | Secure Claude Desktop in <60s with zero manual JSON editing (FR-304). |
-| 🧪 **Frictionless Development** | Dry-run mode and a pre-flight `check` tool let you iterate safely. |
+> **Network prerequisite:** Route all agent egress through the gateway (for example, Kubernetes `NetworkPolicy`) and block direct access to MCP servers. The gateway enforces only the traffic it sees.
 
 ---
 
-## Key Features
+## Features
 
-| Feature | Description |
-|---|---|
-| **Nested Validation** | Full JSON Schema validation for nested parameters with depth limiting. |
-| **Identity Binding** | OIDC-bound JWT validation for tool calls with background JWK rotation. |
-| **Promotion Suite** | `agentwall promote` for production readiness checks and cryptographic signing. |
-| **Durable Audit** | Every decision is HMAC-SHA256 chained — tamper-evident and compliance-ready. |
-| **Rate Limiting** | Token-bucket rate limiting per session and per tool. |
-| **Dry-Run Mode** | Policy enforcement simulation for safe development and onboarding. |
-| **Policy Generation** | `agentwall init` scaffolds a policy from observed tool calls. |
-| **Zero-Dependency UI** | A local dashboard for real-time monitoring and policy testing. |
-| **Bidirectional MCP Interception** | HTTP proxy + stdio wrap for full‑duplex tool calls (FR‑302). |
-| **Safe Mode** | Tool-aware, out-of-the-box security blocking 15 high-signal threats (SSH keys, exfil, SSRF) with zero configuration (FR-303a). |
-| **Response Scanning**| Opt-in scanning of tool outputs to detect and redact leaked secrets (AWS, GitHub, OpenAI, etc.) (FR-303b). |
-| **One-Command Wrap** | Atomic configuration mutation for Claude Desktop with automatic backup & restore (FR-304). |
-| **Agent Firewall**   | Deterministic tool cycle detection (arguments-aware detection up to 5 attempts) and interactive console/TTY overrides (FR-306). |
+### Gateway (multi-tenant)
 
----
+- **HTTP MCP proxy** — JSON-RPC 2.0; concurrent agent sessions with per-session isolation.
+- **Policy engine** — Schema v2 YAML; typed parameters; auto-anchored regex; **required** inline JSON Schema for `object` parameters.
+- **Default-deny** — Invalid or permissive policy configurations fail at startup; unlisted tools are blocked.
+- **Connection-level enforcement** — On violation, the gateway returns a JSON-RPC error and terminates the MCP session (no remote process kill).
 
-## Official Landing Page
+### Security
 
-For more information, product tours, and demo requests, visit:
-[https://vexasec.io/agentwall.html](https://vexasec.io/agentwall.html)
+- **OIDC authentication** — RS256/ES256 JWT validation with JWKS caching and background key rotation.
+- **Structural validators** — Opt-in `path_traversal`, `url_scheme_allowlist`, `sql_injection_basic`, `shell_injection_basic`, and custom `regex` per parameter.
+- **Response scanning** — Optional secret detection and redaction in tool outputs (`--scan-responses`).
+
+### Observability
+
+- **Probes** — `GET /healthz`, `GET /readyz`
+- **Metrics** — Prometheus-compatible `GET /metrics`
+- **SIEM export** — Splunk HEC, Datadog Logs, OpenSearch, or local-only fallback
 
 ---
 
-## Architecture & Enforcement Flow
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     AI Agent Runtime                    │
-│            (any framework: LangChain, AutoGPT, …)       │
-└──────────────────────┬──────────────────────────────────┘
-                       │  JSON-RPC over HTTP or Stdio (Wrap mode)
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│               AgentWall Proxy                      │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │ Policy Eval │  │  Safe Mode   │  │  Audit Logger │  │
-│  │  (YAML)     │  │ (Global Reg) │  │(HMAC-SHA256)  │  │
-│  └─────────────┘  └──────────────┘  └───────────────┘  │
-└──────────────────────┬──────────────────────────────────┘
-                       │  Allowed calls forwarded
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│                  MCP Tool Servers                       │
-│        (filesystem, shell, search, database, …)         │
-└─────────────────────────────────────────────────────────┘
+  AI Agent A ──┐
+  AI Agent B ──┼──►  Vexa AgentWall          ──►  MCP Tool Servers
+  AI Agent C ──┘     (central gateway)            (GitHub, DB, FS, …)
+                     OIDC · Policy · Audit
+                              │
+                              ▼
+                         Enterprise SIEM
 ```
 
-1. **HTTP Proxy Mode** (`agentwall start`): Intercepts MCP calls over HTTP.
-2. **Stdio Wrap Mode** (`agentwall wrap`): Wraps the agent executable, intercepting its standard input/output streams directly. This is ideal for CLI agents that don't support configuring a proxy URL.
-3. **One-Command Wrap** (`agentwall wrap claude`): Automatically wraps all MCP servers in your Claude Desktop configuration — no manual JSON editing required.
+**Per-request flow:** OIDC validation → rate limiting → policy + structural validators → durable audit write → forward to upstream MCP → optional response scan.
 
-### Protecting Claude Desktop
-
-AgentWall can automatically wrap all MCP servers in your Claude Desktop installation in under 60 seconds.
-
-#### Prerequisites
-1. **Claude Desktop installed**: Supports both standalone and Microsoft Store versions.
-2. **MCP Servers configured**: You must have at least one server in your Claude config (click "Edit Config" in Claude to verify).
-3. **Binary in a stable location**: AgentWall uses its own absolute path to wrap servers. Keep `agentwall.exe` in a permanent directory (not a temp folder).
-4. **Tools in PATH**: If your tools use `uv`, `node`, or `npx`, ensure they are available in your system PATH.
-
-```bash
-# Preview changes (safe — no writes)
-agentwall wrap claude --dry-run
-
-# Apply the wrap
-agentwall wrap claude
-
-# Restore original config
-agentwall unwrap claude
-```
-
-Restart Claude Desktop after wrapping. All tool calls will now flow through AgentWall with **Safe Mode v1** active (15 high-signal rules) by default.
-
-
-### Key Design Decisions
-- **Deny-by-default** — only explicitly permitted tools/parameters pass through.
-- **Tool-Aware Safe Mode** — out-of-the-box protection with 15 rules targeting specific parameters (path, command, url) to minimize false positives.
-- **Fail-closed request scanning** — any policy evaluation error on the request side results in an immediate block.
-- **Fail-open response scanning** — secret detection in tool outputs is non-breaking; matches are redacted but errors pass the response through.
-- **Regex-anchored patterns** — all string parameters are validated against anchored regex (`^(?:...)$`) to prevent partial-match bypasses.
-- **Chained audit log** — each entry's HMAC includes the previous entry's hash, forming a tamper-evident chain.
-- **Kill modes** — on violation, the proxy can close the connection, SIGKILL the agent process, or both.
-
-### Operational Flow (Step-by-Step)
-
-VEXA AgentWall acts as a mandatory enforcement layer between your AI agent and its tools.
-
-```text
-    AI AGENT             VEXA AGENTWALL             TOOL SERVER
-       │                        │                        │
-       │  (1) Tool Call Request │                        │
-       ├───────────────────────>│                        │
-       │  (HTTP or Stdio)       │                        │
-       │                        │                        │
-       │                        │──┐ [Evaluation Phase]  │
-       │                        │  │ Identity Check      │
-       │                        │  │ Rate Limiting       │
-       │                        │  │ Global Safe Mode    │
-       │                        │  │ Param Validation    │
-       │                        │<─┘                     │
-       │                        │                        │
-       │                        │──┐ [Durable Logging]   │
-       │                        │  │ Chained HMAC        │
-       │                        │  │ fsync to Disk       │
-       │                        │<─┘                     │
-       │                        │                        │
-       │       [IF ALLOWED]     │                        │
-       │                        │ (2) Forward Call       │
-       │                        ├───────────────────────>│
-       │                        │                        │
-       │                        │ (3) Return Result      │
-       │                        │<───────────────────────┤
-       │                        │──┐ [Response Scan]     │
-       │                        │  │ Secret Detection    │
-       │                        │  │ Redaction / Block   │
-       │                        │<─┘                     │
-       │                        │                        │
-       │     (4) Tool Result    │                        │
-       │<───────────────────────┤                        │
-       │                        │                        │
-       │       [IF DENIED]      │                        │
-       │                        │                        │
-       │  (2) Policy Error      │                        │
-       │<───────────────────────┤                        │
-       │                        │──┐ [Enforcement]       │
-       │                        │  │ Trigger --kill-mode │
-       │                        │<─┘                     │
-       │                        │                        │
-```
-
-
-1. **Deployment & Interception**:
-   - **HTTP Mode**: You set `AGENTWALL_PROXY_URL` (e.g., `http://127.0.0.1:8080`). The AI agent's MCP SDK redirects JSON-RPC traffic to the proxy listener.
-   - **Stdio Mode**: You launch your agent via `agentwall wrap --command "agent-exec"`. The proxy spawns the agent as a child process and intercepts its standard input/output streams.
-2. **Evaluation**: For every intercepted tool call, the policy engine evaluates the request against `policy.yaml`. This includes **Identity Binding** (JWT check), **Rate Limiting**, and **Nested Parameter Validation** (JSON Schema).
-3. **Durable Logging**: The decision (`allow` or `deny`) is written to the audit log. The entry is cryptographically chained (HMAC-SHA256) and **immediately flushed to disk** (`fsync`) before any action is taken.
-4. **Enforcement**:
-   - **On Success**: The call is forwarded to the upstream MCP server.
-   - **On Violation**: The call is blocked. The proxy returns a JSON-RPC error to the agent and, depending on the configured `--kill-mode`, may immediately terminate the agent process to prevent further unauthorized attempts.
-
-> [!IMPORTANT]
-> **Why the agent has no choice but to use the proxy:**
-> 1. **SDK-Level Resolution:** Most MCP SDKs resolve the server URL from `AGENTWALL_PROXY_URL` at import time.
-> 2. **Stdio Pipe Ownership:** In `wrap` mode, the proxy owns the agent's input/output pipes; the agent has no direct way to communicate with tools except through these supervised channels.
-> 3. **Network Egress Control:** Direct MCP access should be blocked at the OS or network level (e.g., `iptables` or K8s `NetworkPolicy`). Even if an agent tries to ignore environment variables, it cannot reach the MCP server any other way.
+Configure agents with your gateway endpoint and OIDC bearer tokens—for example, `AGENTWALL_PROXY_URL` or your ingress URL.
 
 ---
 
-## Demo UI
+## Quick start
 
-AgentWall ships with a **local-first demo dashboard** for exploring its features interactively without writing any code.
-
-The demo UI is a zero-dependency single-page app (no npm, no build step) backed by a lightweight Python bridge server that relays commands to the `agentwall` binary.
-
-```
-demo-ui/
-├── index.html      # Single-page dashboard (open directly in browser)
-├── bridge.py       # Python bridge server (Flask) — relays API calls to the binary
-├── policy.example.yaml # Default demo policy template
-└── README.md       # Demo-specific setup guide
-```
-
-### Demo UI Features
-
-| Panel | Key | What It Does |
-|---|---|---|
-| **Policy Editor** | `01` | Live YAML editor with one-click pre-flight validation against built-in sample calls |
-| **Monitor & Auth** | `02` | Start/stop the proxy, watch real-time log stream via SSE, and simulate identity-bound calls |
-| **Policy Promotion** | `03` | Verify policy integrity, risk scores, and cryptographic signatures for production readiness |
-| **Audit History** | `04` | Browse all log entries with stats (total / allowed / denied / p95 latency) |
-| **Session Report** | `05` | Generate and view a session analytics report with blocked incidents and tool usage |
-| **Stress Scenarios**| `06` | One-click simulations for SSH key theft, SSRF, Malicious Shell, System Secrets, and Redaction |
-
-### Quick Launch (macOS/Linux)
-
-```bash
-# 1. Install Python dependencies (one-time)
-pip install flask flask-cors
-
-# 2. Start the bridge server (from demo-ui folder)
-cd demo-ui
-python3 bridge.py --vexa-bin ../agentwall
-
-# 3. Open the UI — open index.html in your browser
-#    (e.g. 'open index.html' on macOS)
-```
-
-### Quick Launch (Windows)
-
-```powershell
-# 1. Install Python dependencies (one-time)
-pip install flask flask-cors
-
-# 2. Start the bridge server (from demo-ui folder)
-cd demo-ui
-python bridge.py --vexa-bin ..\agentwall.exe
-
-# 3. Open the UI — just double-click index.html in File Explorer
-#    or navigate to it in your browser
-```
-
-> See [`demo-ui/README.md`](demo-ui/README.md) for the full setup guide including all bridge server options.
-
----
-
-## Quickstart
-
-The recommended path starts locally in dry-run mode — no CI/CD, no DevOps, no pipeline changes. 
+Evaluate AgentWall locally using the Docker Compose stack that mirrors production components (gateway, OIDC, SIEM mock, sample MCP server):
 
 ### Prerequisites
 
-- **Rust Toolchain**: `cargo` and `rustc` (v1.75+). Install from [rustup.rs](https://rustup.rs/).
-- **Python 3.8+**: Required for running the included simulation scripts and the Demo UI bridge.
-- **Git**: To clone and manage the repository.
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose, **or**
+- [Rust](https://rustup.rs/) 1.75+ to build from source
 
-**Step 1 — Clone the repository**
+### Docker Compose
 
 ```bash
 git clone https://github.com/noviqtechnologies/agentwall.git
 cd agentwall
+docker compose up --build
 ```
 
-**Step 2 — Build the binary**
+After services are healthy, obtain a development JWT and send a tool call:
 
-Before you start, build the project and move the binary to the root for easier access:
+```bash
+export TOKEN=$(curl -s "http://localhost:8081/token?sub=agent-dev" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-*macOS/Linux (Bash):*
+curl -s -X POST http://localhost:8080/ \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "read_file",
+      "arguments": { "path": "/workspace/test.txt" }
+    },
+    "id": 1
+  }'
+```
+
+See [`docker-compose.yml`](docker-compose.yml) for service definitions and environment defaults.
+
+### Build from source
+
 ```bash
 cargo build --release
-cp target/release/agentwall .
+
+./target/release/agentwall lint policy.example.yaml
+
+./target/release/agentwall start \
+  --policy policy.example.yaml \
+  --listen 0.0.0.0:8080 \
+  --log-path audit.log \
+  --oidc-issuer https://your-idp.example.com \
+  --siem-backend splunk \
+  --siem-endpoint https://splunk.example.com:8088/services/collector/event \
+  --siem-token "$SPLUNK_HEC_TOKEN"
 ```
 
-*Windows (PowerShell):*
-```powershell
-cargo build
-copy target\debug\agentwall.exe .
-```
-
-**Step 3 — Start in dry-run mode without a policy**
-
-Open a terminal and start the proxy.
-
-*Bash:*
-```bash
-./agentwall start --dry-run --listen 127.0.0.1:8080 --log-path audit.log &
-# Wait for proxy
-until curl -sf http://127.0.0.1:8080/healthz; do sleep 0.1; done
-```
-
-*PowerShell:*
-```powershell
-Start-Process -FilePath ".\agentwall.exe" -ArgumentList "start", "--dry-run", "--listen", "127.0.0.1:8080", "--log-path", "audit.log"
-```
-
-**Step 4 — Point your agent at the proxy (or simulate a call)**
-
-To test the proxy immediately, you can use the provided quickstart agent script.
-
-*Bash:*
-```bash
-# Set environment variable
-export AGENTWALL_PROXY_URL=http://127.0.0.1:8080
-
-# Simulate a tool call
-curl -X POST http://127.0.0.1:8080 -H "Content-Type: application/json" -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "read_file", "arguments": {"path": "test.txt"}}, "id": 1}'
-```
-
-*PowerShell (Windows):*
-```powershell
-# Set the environment variable for your session
-$env:AGENTWALL_PROXY_URL="http://127.0.0.1:8080"
-
-# Run the simulated agent
-python quickstart_agent.py
-```
-
-Once you are ready, you can run the provided quickstart agent:
-`python quickstart_agent.py`
-
-**Step 5 — See what your agent actually did**
-```bash
-# macOS/Linux (Bash):
-./agentwall report audit.log --format text
-
-# Windows (PowerShell):
-.\agentwall.exe report audit.log --format text
-```
-
-**Step 6 — Generate a starter policy**
-```bash
-# macOS/Linux (Bash):
-./agentwall init --from-log audit.log
-
-# Windows (PowerShell):
-.\agentwall.exe init --from-log audit.log
-```
-
-**Step 7 — Tune the generated policy and re-run with enforcement**
-
-Edit `policy.yaml` — tighten regexes, remove tools your agent shouldn't need. Then pre-flight validate using the security test suite:
+Verify the audit chain:
 
 ```bash
-# macOS/Linux:
-./agentwall test --policy policy.yaml audit.log
+./target/release/agentwall verify-log audit.log
+./target/release/agentwall report audit.log --format text
 ```
-
-```powershell
-# Windows:
-.\agentwall.exe test --policy policy.yaml audit.log
-```
-
-Finally, run with enforcement enabled (no `--dry-run`):
-
-*macOS/Linux (Bash):*
-```bash
-# Adding & at the end runs it in the background
-./agentwall start --policy policy.yaml --listen 127.0.0.1:8080 --log-path audit.log --kill-mode both &
-```
-
-*Windows (PowerShell):*
-```powershell
-# Start-Process ensures the proxy runs in a separate window so it doesn't block your terminal
-Start-Process -FilePath ".\agentwall.exe" -ArgumentList "start", "--policy", "policy.yaml", "--listen", "127.0.0.1:8080", "--log-path", "audit.log", "--kill-mode", "both"
-```
-
-**Step 8 — Verify the log**
-
-*Note: If you didn't run the proxy in the background in the previous step, you must open a **new terminal window** to run this command.*
-
-```bash
-# macOS/Linux (Bash):
-./agentwall verify-log audit.log
-
-# Windows (PowerShell):
-.\agentwall.exe verify-log audit.log
-```
-
-### Path B — CI/CD Integration (Graduation Path)
-
-Once you have a working local policy and at least one session report, you can deploy the proxy to your CI/CD pipeline or cluster, enforcing the same `policy.yaml`.
 
 ---
 
-## Policy Reference
+## Deployment
 
-A policy file is a YAML document with the following structure:
+### Production
+
+1. Deploy the gateway as a **cluster Service** (Kubernetes recommended) or managed Docker Compose stack.
+2. Store policies in a **GitOps** repository; apply via CI/CD (ConfigMap, volume mount, or equivalent).
+3. Configure **OIDC** (`--oidc-issuer`, audience, JWKS) so every agent presents a corporate JWT.
+4. Export audit events to your **SIEM** (`--siem-backend`, `--siem-endpoint`, `--siem-token`).
+5. Enforce **network egress** so agents cannot reach MCP servers except through the gateway.
+
+### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `AGENTWALL_POLICY_PATH` | Path to policy YAML |
+| `AGENTWALL_LISTEN` | Listen address (default `127.0.0.1:8080`) |
+| `AGENTWALL_MCP_URL` | Upstream MCP server URL |
+| `AGENTWALL_LOG_PATH` | Audit log file path |
+| `AGENTWALL_OIDC_ISSUER` | OIDC issuer URL (required for production) |
+| `AGENTWALL_SIEM_BACKEND` | `splunk`, `datadog`, `opensearch`, or `local` |
+| `AGENTWALL_SIEM_ENDPOINT` | SIEM ingestion URL |
+| `AGENTWALL_SIEM_TOKEN` | SIEM authentication token |
+| `AGENTWALL_SIEM_TIMEOUT` | Export timeout in seconds (default `2`) |
+| `AGENTWALL_REPORT_PATH` | Optional session report path on shutdown |
+| `AGENTWALL_DRY_RUN` | Development only: log denials but still forward requests |
+| `VEXA_GATEWAY_URL` | Target gateway for `agentwall test --gateway` in CI |
+
+Run `agentwall start --help` for all flags.
+
+### Kubernetes
+
+Expose AgentWall behind a Service or Ingress. Apply a `NetworkPolicy` that allows agent pods to reach only the gateway—not upstream MCP endpoints directly.
+
+---
+
+## Policy management
+
+Policies are **schema v2** YAML files managed in version control (`default_action: deny` is required). Object parameters must include an inline `schema` block—omitting it causes a startup error.
 
 ```yaml
-version: "2"                    # Schema version (FR-201/202 support)
-default_action: deny            # "allow" or "deny" for unconfigured tools
+version: "2"
+default_action: deny
 
-identity:                       # FR-202: Identity Binding
-  issuer: "https://auth.com"    # OIDC issuer URL
-  audience: "agentwall-proxy"   # Expected audience in JWT
+auth:
+  provider: okta
+  jwks_uri: https://your-org.okta.com/oauth2/default/v1/keys
+  audience: agentwall
+  issuer: https://your-org.okta.com
+  cache_ttl_minutes: 15
 
 session:
-  max_calls_per_second: 10      # Optional: rate limit across all tools
+  max_calls_per_second: 10
 
 tools:
-  - name: "query_database"      # FR-201: Nested Validation Engine
+  - name: read_file
     action: allow
-    risk: high                  # Required for FR-204 promotion
     parameters:
-      - name: "options"
-        type: object
-        schema:                 # Recursive JSON Schema validation
-          type: object
-          properties:
-            query: { type: string, pattern: "^SELECT.*" }
-            limit: { type: integer, maximum: 100 }
-          required: ["query"]
+      - name: path
+        type: string
+        required: true
+        validators:
+          - path_traversal
+          - regex: "^/allowed/paths/.*"
 ```
 
-### Agent Firewall (Cycle Detection)
+**Workflow**
 
-To protect against runaway agent loops (wasting LLM context budget), configure the `firewall` block:
+1. Author or change policy in Git with pull request review.
+2. Run `agentwall lint` for schema and permissive-pattern warnings.
+3. Run `agentwall test --gateway <test-gateway-url> --oidc-token <token> --policy policy.yaml fixtures.json` in CI before merge.
+4. Deploy to the gateway via your GitOps pipeline.
 
-```yaml
-firewall:
-  enabled: true                 # Master switch (default: true)
-  cycle_detection:
-    max_attempts: 3             # Number of consecutive identical calls before action (default: 3)
-    action: pivot_error         # Action: pivot_error, block, or pause_interactive (default: pivot_error)
-```
-
-#### Deterministic Cycle Detection Logic
-1. **Tool Call Fingerprinting**: Every incoming `tools/call` request has its arguments canonicalized (sorted object keys, serialized to JSON) and hashed alongside the tool name to compute a deterministic fingerprint.
-2. **Sliding History Window**: The proxy maintains a sliding history of the last 5 tool calls (hardcoded as `TOOL_HISTORY_MAX = 5`). 
-   > [!WARNING]
-   > **Configuration Constraint:** Because the sliding history window is bounded to 5, setting `max_attempts` to any value greater than `5` will prevent the loop detector from ever triggering. For cycle detection to function, `max_attempts` must be configured between `1` and `5` (inclusive).
-3. **State Reset**: Once a cycle is detected and handled (or bypassed via developer override), the history window is cleared to give the agent a clean slate.
-
-#### Firewall Actions:
-- **`pivot_error`** (Default): Returns a custom JSON-RPC error code `-32010` to the agent, prompting it to change its course instead of recursing.
-  ```json
-  {
-    "jsonrpc": "2.0",
-    "id": "<id>",
-    "error": {
-      "code": -32010,
-      "message": "AgentWall: Cycle detected — tool '<tool_name>' called <N> times with identical arguments. Try a different approach.",
-      "data": {
-        "session_id": "<session_id>",
-        "tool": "<tool_name>",
-        "cycle_length": <N>
-      }
-    }
-  }
-  ```
-- **`block`**: Returns the standard policy block error code `-32001` and triggers the configured session kill behavior (e.g. terminating the agent).
-- **`pause_interactive`**: Prompts the developer in real-time on the console (stdin/stderr) to allow/deny the specific call.
-  - To prevent interfering with JSON-RPC stdio communications in wrapped environments, the proxy directly opens the system console (`CONIN$` on Windows, `/dev/tty` on Unix/macOS) instead of standard input (`stdin`).
-  - If console/TTY access is unavailable (e.g. running in automated CI environments or inside non-interactive services), it logs a warning and gracefully falls back to `block` behavior.
-
-### Pattern Auto-Anchoring
-
-All regex patterns are automatically wrapped in `^(?:...)$` to prevent partial-match bypasses. For example:
-
-```yaml
-pattern: "/workspace/.*"
-# Becomes: ^(?:/workspace/.*)$
-```
-
-> **⚠ Footgun Warning:** If you use alternation like `foo|bar/.*`, the non-capturing group ensures it evaluates as `^(?:foo|bar/.*)$`, not `(^foo)|(bar/.*$)`. Do not disable anchoring in production.
+Reference policy: [`policy.example.yaml`](policy.example.yaml).
 
 ---
 
-## CLI Reference
+## Command-line interface
 
-```
-agentwall <SUBCOMMAND>
+| Command | Purpose |
+|---------|---------|
+| `agentwall start` | Run the central HTTP MCP gateway |
+| `agentwall lint` | Validate policy YAML locally (schema + warnings) |
+| `agentwall test` | Validate policy against a **deployed** test gateway and fixture file (CI/CD) |
+| `agentwall verify-log` | Verify HMAC integrity of an audit log |
+| `agentwall report` | Build a session report from an audit log file |
+| `agentwall promote` | Production readiness checks and Ed25519 policy signing |
 
-SUBCOMMANDS:
-  start        Start the proxy server (HTTP mode)
-  wrap         Wrap an agent executable, intercepting its stdio (Stdio mode)
-  test         Execute security unit tests against a fixture file (FR-204)
-  promote      Validate and sign a policy for production (FR-204)
-  verify-log   Verify cryptographic integrity of an audit log
-  report       Generate a session analytics report from an audit log
-  init         Generate a starter policy from a dry-run audit log
+**Notes**
 
-OPTIONS FOR 'start':
-  --policy <PATH>          Path to policy YAML file
-  --listen <ADDR>          Listen address (default: 127.0.0.1:8080)
-  --mcp-url <URL>          Upstream MCP server URL (default: http://127.0.0.1:3000)
-  --log-path <PATH>        Path for the audit log file
-  --kill-mode <MODE>       Action on policy violation: connection | process | both (default: connection)
-  --dry-run                Log violations but do not enforce them
-  --oidc-issuer <URL>      Override OIDC issuer for identity binding (FR-202)
-  --report-path <PATH>     Path to write the session report JSON on shutdown
-  --scan-responses         Enable response scanning for secret detection
-  --block-on-secrets       Block entire response on secret detection instead of redacting
-  --max-scan-bytes <BYTES> Maximum response size to scan (default: 1MB)
+- **`lint`** — Local policy checks. Exit codes: `0` clean, `1` errors, `2` warnings only.
+- **`test`** — Production validation path: requires `--gateway` and `--oidc-token` to exercise the live gateway. Fixture format: `[{ "tool": "name", "params": { ... } }, ...]`.
+- **`promote`** — Validates schema v2 requirements (including identity configuration) before signing.
 
-OPTIONS FOR 'wrap':
-  --command <CMD>          The full command to execute and wrap (e.g., 'python agent.py')
-  --policy <PATH>          Path to policy YAML file
-  --log-path <PATH>        Path for the audit log file
-  --kill-mode <MODE>       Action on policy violation: connection | process | both (default: connection)
-  --scan-responses         Enable response scanning for secret detection
-  --block-on-secrets       Block entire response on secret detection instead of redacting
-  --max-scan-bytes <BYTES> Maximum response size to scan (default: 1MB)
-
-OPTIONS FOR 'test':
-  --policy <PATH>          Policy YAML file to validate against
-  <FIXTURE>                JSON file containing an array of tool calls to test
-
-OPTIONS FOR 'promote':
-  --policy <PATH>          Policy YAML file to promote
-  --key <PATH>             Path to Ed25519 private key (optional: generates temp key if absent)
-
-OPTIONS FOR 'report':
-  <LOG_PATH>               Path to audit log file
-  --format <FORMAT>        Output format: json | text (default: json)
-  --report-include-params  Include raw parameters in the report (WARNING: sensitive data)
-
-OPTIONS FOR 'init':
-  --from-log <PATH>        Audit log to derive policy from
-  --output <PATH>          Output policy file path (default: policy.yaml)
-```
-
+Local single-payload checks for policy authors: `agentwall validate --policy policy.yaml --tool read_file --payload call.json`.
 
 ---
 
-## Security & Limitations
+## Operations
 
-### What AgentWall Cannot Prevent
+### HTTP endpoints
 
-1. **Direct Bypass**: The proxy cannot stop an agent from calling MCP servers directly if the network allows it. You **must** block direct MCP egress at the OS/container level (e.g., Kubernetes `NetworkPolicy`, `iptables`) and force all traffic through the proxy.
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | `POST` | MCP JSON-RPC proxy |
+| `/healthz` | `GET` | Liveness |
+| `/readyz` | `GET` | Readiness |
+| `/metrics` | `GET` | Prometheus metrics |
 
-2. **SIGKILL Rollback**: When a violation triggers a kill, the proxy terminates the connection and/or process. It **cannot** roll back side effects already committed by the MCP server before termination.
+### Repository layout
 
-### `--kill-mode` Reference
+```
+agentwall/
+├── src/
+│   ├── proxy/           # HTTP gateway, sessions, forwarding
+│   ├── policy/          # Schema, engine, OIDC identity
+│   └── audit/           # HMAC logger, SIEM export
+├── tests/               # Unit and integration tests
+├── test-tools/          # Local mocks (OIDC, SIEM, fixtures)
+├── docker-compose.yml   # Local stack aligned with production
+├── Dockerfile
+└── policy.example.yaml
+```
 
-| Mode | Behaviour | When to Use |
-|---|---|---|
-| `connection` | Closes the TCP socket immediately | Default — K8s without `shareProcessNamespace` |
-| `process` | Sends `SIGKILL` to the agent's PID | Single-host deployments |
-| `both` | Closes socket **and** sends `SIGKILL`; falls back to connection-only if kill fails | Maximum enforcement |
-
-> **Kubernetes Note:** PID namespaces are not shared by default. Set `shareProcessNamespace: true` in your pod spec if you want `process` or `both` kill mode to work.
-
-### Dry-Run Security Implications
-
-Starting the proxy with `--dry-run` (or `VEXA_DRY_RUN=true`) logs violations as `DRY_RUN_DENY` but **forwards the call to the MCP server anyway**. The agent is never killed.
-
-> **⚠ WARNING:** Dry-run disables enforcement. It is for policy development only. A `dry_run_active` security event is logged at startup, and the final session report will explicitly mark `"dry_run": true`. **Never use in production.**
-
----
-
-## Building from Source
-
-**Prerequisites:** Rust toolchain 1.75+
+### Development
 
 ```bash
-# Debug build (faster compilation, larger binary)
-cargo build
-
-# Release build (optimized, recommended for benchmarking)
 cargo build --release
-
-# Run the test suite
 cargo test
-
-# Run benchmarks
 cargo bench
+cargo fmt --check
+cargo clippy -- -D warnings
 ```
 
-The compiled binary is `agentwall` (or `agentwall.exe` on Windows).
+Use the Docker Compose stack and SIEM integration for local testing. **Production observability is through your SIEM and Prometheus**—not a bundled product dashboard.
+
+---
+
+## Security model
+
+**Provided by the gateway**
+
+- Deny-by-default enforcement for routed traffic
+- OIDC-bound identity on audited decisions
+- Full JSON Schema validation for object parameters
+- Tamper-evident audit logs with offline verification
+- Session termination on policy violation (connection boundary)
+
+**Required from operators**
+
+- Network policies that prevent MCP bypass
+- GitOps-managed policies with CI validation against a test gateway
+- OIDC for all production agent sessions
+- No `--dry-run` or `AGENTWALL_DRY_RUN` in production environments
+
+**Not in scope**
+
+- Semantic DLP or prompt-injection detection (use complementary controls)
+- Remote process termination (`--kill-mode process` / `both` are not supported)
+- Local sidecar or desktop wrap installers
+- Policy generation from runtime logs (`agentwall init` is deprecated)
+
+**Responsible disclosure:** [contact@vexasec.io](mailto:contact@vexasec.io)
 
 ---
 
 ## Contributing
 
-We welcome contributions! Whether it's reporting a bug, improving documentation, or submitting a Pull Request, please check our [GitHub Issues](https://github.com/noviqtechnologies/agentwall/issues) to get started.
+We welcome issues, documentation improvements, and pull requests.
 
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/amazing-feature`).
-3. Commit your changes (`git commit -m 'Add some amazing feature'`).
-4. Push to the branch (`git push origin feature/amazing-feature`).
-5. Open a Pull Request.
+1. [Open an issue](https://github.com/noviqtechnologies/agentwall/issues) for significant changes.
+2. Fork the repository and create a feature branch.
+3. Ensure `cargo fmt`, `cargo clippy`, and `cargo test` pass.
+4. Submit a pull request with a clear description and test plan.
+
+---
 
 ## Support
 
-- **Documentation**: coming soon
-- **Email Support**: [support@vexasec.io](mailto:support@vexasec.io)
-- **Issues**: [GitHub Issues](https://github.com/noviqtechnologies/agentwall/issues)
-
-## Security Policy
-
-If you discover a security vulnerability within VEXA AgentWall, please send an e-mail to [security@vexasec.io](mailto:support@vexasec.io). All security vulnerabilities will be promptly addressed.
+| Channel | Link |
+|---------|------|
+| GitHub Issues | [github.com/noviqtechnologies/agentwall/issues](https://github.com/noviqtechnologies/agentwall/issues) |
+| Product | [vexasec.io/agentwall](https://vexasec.io/agentwall.html) |
+| Email | [contact@vexasec.io](mailto:contact@vexasec.io) |
 
 ---
 
 ## License
 
-Apache-2.0 © NoviqTech — see [LICENSE](LICENSE) for details.
+Copyright © [NoviqTech](https://vexasec.io). Licensed under the [Apache License 2.0](LICENSE).
