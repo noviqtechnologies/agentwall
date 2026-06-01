@@ -1,5 +1,5 @@
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
-FROM rust:1.79-slim-bookworm AS builder
+FROM rust:1.89-slim-bookworm AS builder
 
 WORKDIR /build
 
@@ -9,16 +9,14 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Cache dependencies first (layer caching optimization)
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir -p src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs
-RUN cargo fetch
+# Copy the entire workspace so all benchmarks, tests, and source files are present
+COPY . .
 
-# Copy full source
-COPY src ./src
-
-# Build release binary
-RUN cargo build --release --bin agentwall
+# Build using BuildKit cache mounts for ultra-fast incremental compilation
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/target \
+    cargo build --release --bin agentwall && \
+    cp /build/target/release/agentwall /usr/local/bin/agentwall
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
@@ -30,8 +28,8 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy compiled binary from builder
-COPY --from=builder /build/target/release/agentwall /usr/local/bin/agentwall
+# Copy compiled binary from the builder's global path
+COPY --from=builder /usr/local/bin/agentwall /usr/local/bin/agentwall
 
 # Copy example policy and docs
 COPY policy.example.yaml /app/policy.example.yaml
