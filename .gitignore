@@ -1,6 +1,7 @@
 /target
 docs/
 scratch/
+graphify-out/
 
 # Audit Logs and Backups (FR-104, FR-109)
 *.log
@@ -11,6 +12,10 @@ scratch/
 session-report.json
 report.json
 matrix_results.json
+
+# html
+*.html
+*.css
 
 # IDEs and OS
 .idea/

@@ -1,9 +1,19 @@
 //! CLI definitions — clap derive (§5.3)
+//!
+//! ## v6.1 Deprecation Changes
+//!
+//! - `--kill-mode process` / `--kill-mode both` removed from `start` and `wrap`.
+//! - `agentwall init` is deprecated. Use a GitOps workflow instead.
+//! - `agentwall test` now accepts `--gateway` and `--oidc-token` for CI/CD integration.
 
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "agentwall", version, about = "VEXA AgentWall — MCP security proxy")]
+#[command(
+    name = "agentwall",
+    version,
+    about = "VEXA AgentWall — centralized enterprise security gateway for AI agent tool calls over MCP"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -11,13 +21,13 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Run the proxy server
+    /// Run the gateway server
     Start {
         /// YAML policy file path
         #[arg(long, env = "AGENTWALL_POLICY_PATH")]
         policy: Option<String>,
 
-        /// Proxy listen address
+        /// Gateway listen address
         #[arg(long, env = "AGENTWALL_LISTEN", default_value = "127.0.0.1:8080")]
         listen: String,
 
@@ -29,16 +39,18 @@ pub enum Commands {
         #[arg(long, env = "AGENTWALL_MCP_URL", default_value = "http://127.0.0.1:3000")]
         mcp_url: String,
 
-        /// Agent PID for kill switch
-        #[arg(long, env = "AGENTWALL_AGENT_PID")]
+        /// Agent PID (ignored in v6.1 — process kill is removed)
+        #[arg(long, env = "AGENTWALL_AGENT_PID", hide = true)]
         agent_pid: Option<u32>,
 
-        /// Read agent PID from file
-        #[arg(long, env = "AGENTWALL_AGENT_PID_FILE")]
+        /// Read agent PID from file (ignored in v6.1 — process kill is removed)
+        #[arg(long, env = "AGENTWALL_AGENT_PID_FILE", hide = true)]
         agent_pid_file: Option<String>,
 
-        /// Kill mode: connection, process, both
-        /// Kill mode
+        /// Kill mode [DEPRECATED in v6.1 — only 'connection' is supported]
+        ///
+        /// 'process' and 'both' have been removed. The gateway enforces security at
+        /// the MCP connection boundary. Remove this flag; 'connection' is the default.
         #[arg(long, default_value = "connection")]
         kill_mode: String,
 
@@ -53,8 +65,8 @@ pub enum Commands {
         /// Max tool calls per second (overrides policy)
         #[arg(long)]
         rate_limit: Option<u32>,
-        
-        /// OIDC issuer URL for identity binding (FR-202)
+
+        /// OIDC issuer URL for identity binding (FR-202). Required for enterprise deployments.
         #[arg(long, env = "AGENTWALL_OIDC_ISSUER")]
         oidc_issuer: Option<String>,
 
@@ -81,9 +93,48 @@ pub enum Commands {
         /// Maximum response size to scan in bytes (FR-303b, default: 1MB)
         #[arg(long, default_value_t = 1048576)]
         max_scan_bytes: usize,
+
+        // ── FR-104: SIEM Export ────────────────────────────────────────────
+
+        /// SIEM backend to export audit events to (FR-104).
+        /// Supported values: splunk | datadog | opensearch | local
+        /// Use 'local' (default) for disk-only operation without network export.
+        #[arg(long, env = "AGENTWALL_SIEM_BACKEND", default_value = "local")]
+        siem_backend: String,
+
+        /// SIEM ingestion endpoint URL (FR-104).
+        /// Splunk:     https://splunk.corp.com:8088/services/collector/event
+        /// Datadog:    https://http-intake.logs.datadoghq.com/api/v2/logs
+        /// OpenSearch: https://opensearch.corp.com/agentwall-logs/_doc
+        #[arg(long, env = "AGENTWALL_SIEM_ENDPOINT", default_value = "")]
+        siem_endpoint: String,
+
+        /// SIEM authentication token (FR-104).
+        /// Splunk: HEC token. Datadog: API key. OpenSearch: 'user:password' or Bearer token.
+        #[arg(long, env = "AGENTWALL_SIEM_TOKEN", default_value = "")]
+        siem_token: String,
+
+        /// SIEM export per-request timeout in seconds (FR-104, default: 2).
+        /// Tool calls are not blocked beyond this timeout; SIEM failures fall back to local disk.
+        #[arg(long, env = "AGENTWALL_SIEM_TIMEOUT", default_value_t = 2)]
+        siem_timeout_secs: u64,
+
+        /// Include raw tool call parameters in the audit log (FR-104).
+        /// WARNING: may expose PII or secrets. Only enable in dedicated secure logging environments.
+        /// Default: params are hashed (SHA-256) rather than stored in plaintext.
+        #[arg(long, env = "AGENTWALL_INCLUDE_PARAMS", default_value_t = false)]
+        include_params: bool,
     },
 
-    /// Executes "Security Unit Tests" using a fixture file (FR-204)
+    /// Validate a policy against a gateway instance using fixture test calls (FR-204)
+    ///
+    /// ## v6.1 Behavior
+    ///
+    /// File-only validation (without --gateway) is DEPRECATED. Policies must be validated
+    /// against a deployed gateway instance in CI/CD pipelines to accurately simulate
+    /// runtime DLP, cycle detection, and OIDC validation behavior.
+    ///
+    /// Use --gateway to point to a test gateway and --oidc-token for authentication.
     Test {
         /// YAML policy file path
         #[arg(long)]
@@ -95,6 +146,16 @@ pub enum Commands {
 
         /// JSON fixture file
         fixture: String,
+
+        /// Gateway endpoint URL for v6.1 gateway-mode validation (recommended)
+        ///
+        /// Example: --gateway https://agentwall.internal.corp/
+        #[arg(long, env = "VEXA_GATEWAY_URL")]
+        gateway: Option<String>,
+
+        /// OIDC Bearer token for authenticating with the gateway
+        #[arg(long, env = "AGENTWALL_OIDC_TOKEN")]
+        oidc_token: Option<String>,
     },
 
     /// Validate and sign a policy for production (FR-204)
@@ -133,7 +194,20 @@ pub enum Commands {
         report_include_params: bool,
     },
 
-    /// Generate a starter policy from a dry-run audit log (FR-112)
+    /// [DEPRECATED v6.1] Generate a starter policy from a dry-run audit log
+    ///
+    /// ## Removed in v6.1
+    ///
+    /// `agentwall init` encouraged ad-hoc policy creation outside of version control.
+    /// Enterprise security policies require GitOps workflows with peer review, automated
+    /// validation, and CI/CD deployment.
+    ///
+    /// ## Migration
+    ///
+    /// 1. Author policy YAML files directly in your GitOps repository.
+    /// 2. Use provided policy templates as a starting point.
+    /// 3. Validate with: `agentwall test --gateway <URL> --policy policy.yaml fixture.json`
+    /// 4. Deploy via CI/CD pipeline with `--gateway` pointing to your test environment.
     Init {
         /// Audit log to derive policy from
         #[arg(long)]
@@ -162,8 +236,10 @@ pub enum Commands {
         #[arg(long, env = "AGENTWALL_DRY_RUN", default_value_t = false)]
         dry_run: bool,
 
-        /// Kill mode: action to take on policy violation
-        #[arg(long, default_value = "process")]
+        /// Kill mode [DEPRECATED in v6.1 — only 'connection' is supported]
+        ///
+        /// 'process' and 'both' have been removed. Remove this flag from your configuration.
+        #[arg(long, default_value = "connection")]
         kill_mode: String,
 
         /// Audit log output path
@@ -222,6 +298,27 @@ pub enum Commands {
         /// Maximum response size to scan in bytes
         #[arg(long, default_value_t = 1048576)]
         max_scan_bytes: usize,
+    },
+
+    /// Validate a tool call payload against a policy file locally (FR-202)
+    Validate {
+        /// YAML policy file path
+        #[arg(long)]
+        policy: String,
+
+        /// Name of the tool to evaluate
+        #[arg(long)]
+        tool: String,
+
+        /// Path to JSON file containing the parameters payload
+        #[arg(long)]
+        payload: String,
+    },
+
+    /// Lint a policy YAML file for schema and security warnings (FR-203)
+    Lint {
+        /// YAML policy file path
+        policy: String,
     },
 }
 

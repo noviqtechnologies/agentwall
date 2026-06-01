@@ -9,3 +9,5 @@ pub mod promote;
 pub mod proxy;
 pub mod report;
 pub mod wrap;
+pub mod validate;
+pub mod lint;

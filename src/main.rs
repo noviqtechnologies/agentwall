@@ -93,6 +93,11 @@ async fn main() {
             scan_responses,
             block_on_secrets,
             max_scan_bytes,
+            siem_backend,
+            siem_endpoint,
+            siem_token,
+            siem_timeout_secs,
+            include_params,
         } => {
             run_start(
                 policy,
@@ -110,6 +115,11 @@ async fn main() {
                 scan_responses,
                 block_on_secrets,
                 max_scan_bytes,
+                siem_backend,
+                siem_endpoint,
+                siem_token,
+                siem_timeout_secs,
+                include_params,
             )
             .await
         }
@@ -117,7 +127,15 @@ async fn main() {
             policy,
             fixture,
             dry_run,
-        } => check::run_check(Path::new(&policy), Path::new(&fixture), dry_run),
+            gateway,
+            oidc_token,
+        } => check::run_check(
+            Path::new(&policy),
+            Path::new(&fixture),
+            dry_run,
+            gateway.as_deref(),
+            oidc_token.as_deref(),
+        ),
         Commands::Promote { policy, key } => {
             promote::run_promote(&policy, key.as_deref())
         }
@@ -134,6 +152,24 @@ async fn main() {
         }
         Commands::StdioProxy { args, scan_responses, block_on_secrets, max_scan_bytes } => {
             run_stdio_proxy(args, scan_responses, block_on_secrets, max_scan_bytes).await
+        }
+        Commands::Validate { policy, tool, payload } => {
+            match agentwall::validate::execute(&policy, &tool, &payload) {
+                Ok(_) => 0,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    1
+                }
+            }
+        }
+        Commands::Lint { policy } => {
+            match agentwall::lint::execute(&policy) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("Lint failed: {}", e);
+                    1
+                }
+            }
         }
     };
 
@@ -168,12 +204,14 @@ async fn run_stdio_proxy(
     let bin_path = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("agentwall.exe"));
     let log_path = bin_path.parent().unwrap_or(std::path::Path::new(".")).join("audit.log");
 
-    let audit_logger = match AuditLogger::new(
+    let audit_logger = match AuditLogger::new(agentwall::audit::logger::AuditLoggerConfig {
         log_path,
-        session_id.clone(),
+        session_id: session_id.clone(),
         session_secret,
-        104857600, // 100MB
-    ) {
+        max_bytes: 104857600, // 100MB
+        siem_exporter: None,
+        include_params: false,
+    }) {
         Ok(l) => Arc::new(l),
         Err(e) => {
             eprintln!("{} Cannot create audit logger: {}", "✖".red(), e);
@@ -204,21 +242,29 @@ async fn run_stdio_proxy(
     };
 
     let state = Arc::new(ProxyState {
-        policy: None, // Safe Mode only for Claude wrap
+        policy: std::sync::RwLock::new(None), // Safe Mode only for Claude wrap
         audit_logger,
         session_id,
         kill_mode: KillMode::Process,
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
-        policy_loaded: false,
+        policy_loaded: std::sync::atomic::AtomicBool::new(false),
         rate_limiter: proxy::handler::RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner,
         ready: true,
         response_scanner,
-        response_scan_config,
+        response_scan_config: std::sync::RwLock::new(response_scan_config),
         tool_history: std::sync::Mutex::new(Vec::new()),
+        sessions: dashmap::DashMap::new(),
+        metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_allow_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_deny_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_rate_limited_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     });
 
     let mut parts = args.clone();
@@ -255,6 +301,11 @@ async fn run_start(
     scan_responses: bool,
     block_on_secrets: bool,
     max_scan_bytes: usize,
+    siem_backend: String,
+    siem_endpoint: String,
+    siem_token: String,
+    siem_timeout_secs: u64,
+    include_params: bool,
 ) -> i32 {
     println!("{} Loading configuration...", "ℹ".blue());
 
@@ -338,13 +389,27 @@ async fn run_start(
     let session_secret: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
     let session_id = uuid::Uuid::new_v4().to_string();
 
+    let siem_backend_parsed = agentwall::audit::siem::SiemBackend::from_str(&siem_backend);
+    let siem_exporter = if siem_backend_parsed == agentwall::audit::siem::SiemBackend::Local {
+        None
+    } else {
+        Some(agentwall::audit::siem::SiemExporter::new(
+            siem_backend_parsed,
+            siem_endpoint,
+            siem_token,
+            siem_timeout_secs,
+        ))
+    };
+
     // Create audit logger
-    let audit_logger = match AuditLogger::new(
-        std::path::PathBuf::from(&log_path),
-        session_id.clone(),
+    let audit_logger = match AuditLogger::new(agentwall::audit::logger::AuditLoggerConfig {
+        log_path: std::path::PathBuf::from(&log_path),
+        session_id: session_id.clone(),
         session_secret,
-        log_max_bytes,
-    ) {
+        max_bytes: log_max_bytes,
+        siem_exporter,
+        include_params,
+    }) {
         Ok(l) => Arc::new(l),
         Err(e) => {
             eprintln!("{} Cannot create audit logger: {}", "✖".red(), e);
@@ -402,21 +467,29 @@ async fn run_start(
     };
 
     let state = Arc::new(ProxyState {
-        policy: compiled_policy,
+        policy: std::sync::RwLock::new(compiled_policy),
         audit_logger: audit_logger.clone(),
         session_id: session_id.clone(),
         kill_mode: kill_mode.clone(),
         agent_pid: resolved_pid,
         upstream_url: mcp_url,
         dry_run,
-        policy_loaded,
+        policy_loaded: std::sync::atomic::AtomicBool::new(policy_loaded),
         rate_limiter: proxy::handler::RateLimiter::new(rate_limit_val),
         http_client: reqwest::Client::new(),
         safe_mode_scanner,
         ready: true,
         response_scanner,
-        response_scan_config,
+        response_scan_config: std::sync::RwLock::new(response_scan_config),
         tool_history: std::sync::Mutex::new(Vec::new()),
+        sessions: dashmap::DashMap::new(),
+        metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_allow_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_deny_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_rate_limited_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     });
 
     if dry_run {
@@ -584,12 +657,14 @@ async fn run_wrap(
     let session_secret: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
     let session_id = uuid::Uuid::new_v4().to_string();
 
-    let audit_logger = match AuditLogger::new(
-        std::path::PathBuf::from(&log_path),
-        session_id.clone(),
+    let audit_logger = match AuditLogger::new(agentwall::audit::logger::AuditLoggerConfig {
+        log_path: std::path::PathBuf::from(&log_path),
+        session_id: session_id.clone(),
         session_secret,
-        104857600, // 100MB
-    ) {
+        max_bytes: 104857600, // 100MB
+        siem_exporter: None,
+        include_params: false,
+    }) {
         Ok(l) => Arc::new(l),
         Err(e) => {
             eprintln!("{} Cannot create audit logger: {}", "✖".red(), e);
@@ -636,7 +711,7 @@ async fn run_wrap(
     };
 
     let state = Arc::new(ProxyState {
-        policy: compiled_policy,
+        policy: std::sync::RwLock::new(compiled_policy),
         audit_logger,
         session_id,
         kill_mode: match kill_mode.as_str() {
@@ -648,14 +723,22 @@ async fn run_wrap(
         agent_pid: None,
         upstream_url: "".to_string(), // Not used in stdio proxy
         dry_run,
-        policy_loaded,
+        policy_loaded: std::sync::atomic::AtomicBool::new(policy_loaded),
         rate_limiter: proxy::handler::RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner,
         ready: true,
         response_scanner,
-        response_scan_config,
+        response_scan_config: std::sync::RwLock::new(response_scan_config),
         tool_history: std::sync::Mutex::new(Vec::new()),
+        sessions: dashmap::DashMap::new(),
+        metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_allow_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_deny_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_rate_limited_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     });
 
     // Parse the command string

@@ -1,5 +1,5 @@
 use std::time::Duration;
-use agentwall::audit::logger::AuditLogger;
+use agentwall::audit::logger::{AuditLogger, AuditLoggerConfig};
 use agentwall::proxy::handler::RateLimiter;
 use agentwall::report::generate_report;
 
@@ -34,16 +34,18 @@ fn test_log_rotation_and_seed() {
     let _ = std::fs::remove_file(&log_path);
 
     // Set a tiny rotation limit (200 bytes)
-    let logger = AuditLogger::new(
-        log_path.clone(),
-        session_id.clone(),
-        secret.clone(),
-        200,
-    ).unwrap();
+    let logger = AuditLogger::new(AuditLoggerConfig {
+        log_path:       log_path.clone(),
+        session_id:     session_id.clone(),
+        session_secret: secret.clone(),
+        max_bytes:      200,
+        siem_exporter:  None,
+        include_params: false,
+    }).unwrap();
 
     // Write entries until it rotates
     for _ in 0..10 {
-        logger.write_entry("tool_allow", "read_file", None, None, None, None).unwrap();
+        logger.write_entry(&session_id, "tool_allow", "read_file", None, None, None, None, None, None, None).unwrap();
         std::thread::sleep(Duration::from_millis(10));
     }
 
@@ -73,17 +75,19 @@ fn test_session_report_generation() {
     // Cleanup from previous runs if any
     let _ = std::fs::remove_file(&log_path);
 
-    let logger = AuditLogger::new(
-        log_path.clone(),
-        session_id.clone(),
-        secret.clone(),
-        100000,
-    ).unwrap();
+    let logger = AuditLogger::new(AuditLoggerConfig {
+        log_path:       log_path.clone(),
+        session_id:     session_id.clone(),
+        session_secret: secret.clone(),
+        max_bytes:      100000,
+        siem_exporter:  None,
+        include_params: false,
+    }).unwrap();
 
     // Mock session events
-    logger.write_entry("tool_allow", "read_file", None, None, None, None).unwrap();
-    logger.write_entry("tool_deny", "exec_shell", None, Some("action is deny".to_string()), None, None).unwrap();
-    logger.write_entry("rate_limited", "read_file", None, None, None, None).unwrap();
+    logger.write_entry(&session_id, "tool_allow", "read_file", None, None, None, None, None, None, None).unwrap();
+    logger.write_entry(&session_id, "tool_deny", "exec_shell", None, Some("action is deny".to_string()), None, None, None, None, None).unwrap();
+    logger.write_entry(&session_id, "rate_limited", "read_file", None, None, None, None, None, None, None).unwrap();
 
     // Drop the logger to flush the background writer
     drop(logger);

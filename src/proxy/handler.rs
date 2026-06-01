@@ -1,6 +1,13 @@
 //! JSON-RPC dispatch and method routing (FR-101)
+//!
+//! ## v6.1 Changes
+//!
+//! - Prometheus-compatible atomic counters added to `ProxyState` (Guidance #9).
+//!   Exposed via `GET /metrics` on the gateway's listen address.
+//! - `KillMode::Process` / `KillMode::Both` removed from the kill path (Guidance #2).
 
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -56,7 +63,7 @@ fn canonical_json(value: &Value) -> String {
 
 /// Shared proxy state
 pub struct ProxyState {
-    pub policy: Option<CompiledPolicy>,
+    pub policy: std::sync::RwLock<Option<CompiledPolicy>>,
     pub audit_logger: Arc<AuditLogger>,
     pub session_id: String,
     pub kill_mode: KillMode,
@@ -64,7 +71,7 @@ pub struct ProxyState {
     pub upstream_url: String,
     pub dry_run: bool,
     /// FR-113: Whether a policy file was successfully loaded
-    pub policy_loaded: bool,
+    pub policy_loaded: std::sync::atomic::AtomicBool,
     pub rate_limiter: RateLimiter,
     pub http_client: reqwest::Client,
     pub safe_mode_scanner: Arc<crate::policy::safe_mode::SafeModeScanner>,
@@ -72,9 +79,30 @@ pub struct ProxyState {
     /// FR-303b: Response scanner for secret detection
     pub response_scanner: Arc<crate::policy::response_scanner::ResponseScanner>,
     /// FR-303b: Response scan configuration
-    pub response_scan_config: crate::policy::response_scanner::ResponseScanConfig,
+    pub response_scan_config: std::sync::RwLock<crate::policy::response_scanner::ResponseScanConfig>,
     /// FR-306: Sliding window of recent tool call fingerprints (bounded to 5).
     pub tool_history: std::sync::Mutex<Vec<ToolCallFingerprint>>,
+
+    /// Dynamic sessions registry mapping validated client tokens/identities to isolated session contexts (FR-101)
+    pub sessions: dashmap::DashMap<String, Arc<super::session::SessionContext>>,
+
+    // ── Guidance #9: Prometheus-compatible atomic counters ─────────────────
+    /// Total tool call requests evaluated (tools/call only).
+    pub metrics_requests_total: Arc<AtomicU64>,
+    /// Total tool calls that resulted in ALLOW.
+    pub metrics_allow_total: Arc<AtomicU64>,
+    /// Total tool calls that resulted in DENY (policy violation, safe mode, etc.).
+    pub metrics_deny_total: Arc<AtomicU64>,
+    /// Total requests dropped by the rate limiter.
+    pub metrics_rate_limited_total: Arc<AtomicU64>,
+    /// Total tool calls blocked by the agent firewall (cycle detection).
+    pub metrics_firewall_cycle_total: Arc<AtomicU64>,
+
+    // ── FR-104: SIEM export counters ─────────────────────────────────────
+    /// Total audit entries successfully exported to the SIEM backend.
+    pub metrics_siem_export_total: Arc<AtomicU64>,
+    /// Total audit entries that failed SIEM export (fell back to local disk).
+    pub metrics_siem_export_failed_total: Arc<AtomicU64>,
 }
 
 pub struct RateLimiter {
@@ -127,15 +155,17 @@ const TOOL_HISTORY_MAX: usize = 5;
 pub enum ProxyAction {
     Forward,
     Respond(Value),
+    RespondWithStatus(hyper::StatusCode, Value),
     KillAndRespond(Value),
+    KillAndRespondWithStatus(hyper::StatusCode, Value),
 }
 
 /// Handle an incoming JSON-RPC request body to determine the proxy action.
-/// Returns a `ProxyAction`.
+/// Returns a `ProxyAction`. Evaluates against the dynamic, isolated `SessionContext`.
 pub async fn evaluate_jsonrpc(
     state: &ProxyState,
+    session: &Arc<super::session::SessionContext>,
     body: &Value,
-    auth_header: Option<String>,
 ) -> ProxyAction {
     let id = body.get("id").cloned().unwrap_or(Value::Null);
     let method = body.get("method").and_then(|m| m.as_str()).unwrap_or("");
@@ -157,17 +187,21 @@ pub async fn evaluate_jsonrpc(
     if method != "tools/call" {
         // Unknown method — reject and log as DENY
         let _ = state.audit_logger.write_entry(
+            &session.session_id,
             "tool_deny",
             method,
             None,
             Some("unknown_method".to_string()),
             None,
+            session.identity_sub.clone(),
+            session.identity_email.clone(),
             None,
+            session.request_ip.clone(),
         );
         logging::log_event(
             Level::Warn,
             "tool_deny",
-            json!({"tool": method, "session": &state.session_id, "reason": "unknown_method"}),
+            json!({"tool": method, "session": &session.session_id, "reason": "unknown_method", "sub": &session.identity_sub}),
         );
         return ProxyAction::Respond(make_error(&id, JSONRPC_METHOD_NOT_FOUND, "Method not found"));
     }
@@ -176,18 +210,30 @@ pub async fn evaluate_jsonrpc(
     let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
     let tool_params = params.get("arguments").cloned().unwrap_or(Value::Null);
 
-    // Rate limit check (FR-107)
-    if !state.rate_limiter.acquire() {
-        let _ = state
-            .audit_logger
-            .write_entry("rate_limited", tool_name, None, None, None, None);
+    // Rate limit check (FR-107) — strictly isolated per session
+    if !session.rate_limiter.acquire() {
+        state.metrics_requests_total.fetch_add(1, Ordering::Relaxed);
+        state.metrics_rate_limited_total.fetch_add(1, Ordering::Relaxed);
+        let _ = state.audit_logger.write_entry(
+            &session.session_id,
+            "rate_limited",
+            tool_name,
+            None,
+            None,
+            None,
+            session.identity_sub.clone(),
+            session.identity_email.clone(),
+            None,
+            session.request_ip.clone(),
+        );
         logging::log_event(
             Level::Warn,
             "rate_limited",
             json!({
                 "tool": tool_name,
-                "session": &state.session_id,
-                "limit_per_sec": state.rate_limiter.max_per_second
+                "session": &session.session_id,
+                "limit_per_sec": session.rate_limiter.max_per_second,
+                "sub": &session.identity_sub,
             }),
         );
         return ProxyAction::Respond(json!({
@@ -197,21 +243,24 @@ pub async fn evaluate_jsonrpc(
                 "code": -32029,
                 "message": "Rate limit exceeded",
                 "data": {
-                    "session_id": &state.session_id,
-                    "limit_per_sec": state.rate_limiter.max_per_second
+                    "session_id": &session.session_id,
+                    "limit_per_sec": session.rate_limiter.max_per_second
                 }
             }
         }));
     }
 
-    // FR-306: Cycle Detection (Agent Firewall)
+    // Increment total requests counter after rate limit pass
+    state.metrics_requests_total.fetch_add(1, Ordering::Relaxed);
+
+    // FR-306: Cycle Detection (Agent Firewall) — strictly isolated per session
     let cycle_action_to_take = {
-        let firewall_cfg = state.policy.as_ref().and_then(|p| p.firewall.as_ref());
+        let firewall_cfg = session.policy.as_ref().and_then(|p| p.firewall.as_ref());
         let effective_cfg = firewall_cfg.cloned().unwrap_or_default();
 
         if effective_cfg.enabled {
             let fingerprint = ToolCallFingerprint::new(tool_name, &tool_params);
-            let mut history = state.tool_history.lock().unwrap();
+            let mut history = session.tool_history.lock().unwrap();
 
             // Append and bound the window
             history.push(fingerprint.clone());
@@ -228,6 +277,7 @@ pub async fn evaluate_jsonrpc(
                 if all_identical {
                     // Clear history so agent gets a fresh start or on developer override
                     history.clear();
+                    state.metrics_firewall_cycle_total.fetch_add(1, Ordering::Relaxed);
                     Some((effective_cfg.cycle_detection.action, max_attempts))
                 } else {
                     None
@@ -243,6 +293,7 @@ pub async fn evaluate_jsonrpc(
     if let Some((action, max_attempts)) = cycle_action_to_take {
         // Cycle detected
         let _ = state.audit_logger.write_entry(
+            &session.session_id,
             "firewall_cycle_block",
             tool_name,
             None,
@@ -251,14 +302,17 @@ pub async fn evaluate_jsonrpc(
                 max_attempts, max_attempts
             )),
             None,
+            session.identity_sub.clone(),
+            session.identity_email.clone(),
             None,
+            session.request_ip.clone(),
         );
         logging::log_event(
             Level::Warn,
             "firewall_cycle_block",
             json!({
                 "tool": tool_name,
-                "session": &state.session_id,
+                "session": &session.session_id,
                 "consecutive_calls": max_attempts,
                 "action": format!("{:?}", action)
             }),
@@ -276,7 +330,7 @@ pub async fn evaluate_jsonrpc(
                             tool_name, max_attempts
                         ),
                         "data": {
-                            "session_id": &state.session_id,
+                            "session_id": &session.session_id,
                             "tool": tool_name,
                             "cycle_length": max_attempts
                         }
@@ -285,9 +339,11 @@ pub async fn evaluate_jsonrpc(
             }
             CycleAction::Block => {
                 return handle_deny(
-                    state, &id, tool_name,
+                    state, &session.session_id, &id, tool_name,
                     &format!("firewall_cycle_block: {} consecutive identical calls", max_attempts),
-                    None,
+                    session.identity_sub.clone(), session.identity_email.clone(),
+                    session.request_ip.clone(),
+                    false, None, None,
                 ).await;
             }
             CycleAction::PauseInteractive => {
@@ -296,27 +352,33 @@ pub async fn evaluate_jsonrpc(
                 let user_allowed = try_interactive_pause(tool_name, max_attempts);
                 if user_allowed {
                     let _ = state.audit_logger.write_entry(
+                        &session.session_id,
                         "firewall_cycle_override",
                         tool_name,
                         None,
                         Some("developer_override".to_string()),
                         None,
+                        session.identity_sub.clone(),
+                        session.identity_email.clone(),
                         None,
+                        session.request_ip.clone(),
                     );
                     logging::log_event(
                         Level::Warn,
                         "firewall_cycle_override",
                         json!({
                             "tool": tool_name,
-                            "session": &state.session_id
+                            "session": &session.session_id
                         }),
                     );
                     // Fall through to normal evaluation
                 } else {
                     return handle_deny(
-                        state, &id, tool_name,
+                        state, &session.session_id, &id, tool_name,
                         &format!("firewall_cycle_block: {} consecutive identical calls (interactive_denied)", max_attempts),
-                        None,
+                        session.identity_sub.clone(), session.identity_email.clone(),
+                        session.request_ip.clone(),
+                        false, None, None,
                     ).await;
                 }
             }
@@ -326,11 +388,11 @@ pub async fn evaluate_jsonrpc(
     // Safe Mode Evaluation (FR-303a) — tool-aware scanning
     let safe_mode_threat = state.safe_mode_scanner.scan_tool(tool_name, &tool_params);
 
-    // Policy evaluation
+    // Policy evaluation against frozen session-specific policy context
     let start = Instant::now();
-    let eval_result = match &state.policy {
+    let eval_result = match &session.policy {
         Some(policy) => {
-            Some(policy.evaluate(tool_name, &tool_params))
+            Some(policy.evaluate(tool_name, &tool_params, session.identity_sub.as_deref()))
         }
         None => None,
     };
@@ -342,7 +404,7 @@ pub async fn evaluate_jsonrpc(
             logging::log_event(
                 Level::Warn,
                 "safe_mode_override",
-                json!({"tool": tool_name, "session": &state.session_id, "threat": threat.category.as_str(), "reason": "user_policy_override"}),
+                json!({"tool": tool_name, "session": &session.session_id, "threat": threat.category.as_str(), "reason": "user_policy_override"}),
             );
             EvalResult::Allow
         }
@@ -354,10 +416,11 @@ pub async fn evaluate_jsonrpc(
                 param_value: None,
                 pattern: Some(threat.pattern_name.clone()),
                 json_pointer: Some(format!("{} Edit policy: agentwall edit-policy", threat.reason)),
+                validator_name: None,
             }
         }
-        (Some(EvalResult::Deny { reason_code, param_name, param_value, pattern, json_pointer }), None) => {
-            EvalResult::Deny { reason_code, param_name, param_value, pattern, json_pointer }
+        (Some(EvalResult::Deny { reason_code, param_name, param_value, pattern, json_pointer, validator_name }), None) => {
+            EvalResult::Deny { reason_code, param_name, param_value, pattern, json_pointer, validator_name }
         }
         (None, Some(threat)) => {
             EvalResult::Deny {
@@ -366,10 +429,11 @@ pub async fn evaluate_jsonrpc(
                 param_value: None,
                 pattern: Some(threat.pattern_name.clone()),
                 json_pointer: Some(format!("{} Edit policy: agentwall edit-policy", threat.reason)),
+                validator_name: None,
             }
         }
         (None, None) => {
-            if !state.policy_loaded {
+            if !state.policy_loaded.load(Ordering::Relaxed) {
                 // Out-Of-The-Box Safe Mode: No policy loaded, Safe Mode is clean.
                 EvalResult::Allow
             } else {
@@ -380,48 +444,31 @@ pub async fn evaluate_jsonrpc(
                     param_value: None,
                     pattern: None,
                     json_pointer: None,
+                    validator_name: None,
                 }
             }
         }
     };
 
-    // Identity Binding (FR-202)
-    let mut subject = None;
-    if let Some(policy) = &state.policy {
-        if let Some(validator) = &policy.identity_validator {
-            // Fail-Closed: ensure keys are loaded
-            if !validator.is_ready().await {
-                return handle_deny(state, &id, tool_name, "identity_keys_not_ready", None).await;
-            }
-
-            let token = auth_header.and_then(|h| {
-                h.strip_prefix("Bearer ").map(|s| s.to_string())
-            });
-
-            match token {
-                Some(t) => match validator.validate_token(&t).await {
-                    Ok(sub) => subject = Some(sub),
-                    Err(e) => {
-                        return handle_deny(state, &id, tool_name, &format!("identity_validation_failed: {}", e), None).await;
-                    }
-                },
-                None => {
-                    return handle_deny(state, &id, tool_name, "identity_token_missing", None).await;
-                }
-            }
-        }
-    }
+    // Identity claims were validated during dynamic session creation (OIDC cache)
+    let identity_sub   = session.identity_sub.clone();
+    let identity_email = session.identity_email.clone();
 
     match final_eval {
         EvalResult::Allow => {
-            // ALLOW path: log → fsync → forward
+            state.metrics_allow_total.fetch_add(1, Ordering::Relaxed);
+            // ALLOW path: log → fsync → forward (NFR-204)
             let log_result = state.audit_logger.write_entry(
+                &session.session_id,
                 "tool_allow",
                 tool_name,
                 Some(tool_params.clone()),
                 None,
                 Some(eval_ms),
-                subject.clone(),
+                identity_sub.clone(),
+                identity_email.clone(),
+                None,
+                session.request_ip.clone(),
             );
 
             if let Err(e) = log_result {
@@ -431,16 +478,26 @@ pub async fn evaluate_jsonrpc(
                     "log_flush_failed",
                     json!({"reason": e.to_string(), "action": "deny_applied"}),
                 );
-                return handle_deny(state, &id, tool_name, "log_flush_failed", subject).await;
+                return handle_deny(
+                    state, &session.session_id, &id, tool_name,
+                    "log_flush_failed",
+                    identity_sub, identity_email, session.request_ip.clone(),
+                    false, None, None,
+                ).await;
             }
 
             logging::log_event(
                 Level::Info,
                 "tool_allow",
-                json!({"tool": tool_name, "session": &state.session_id, "latency_ms": eval_ms, "sub": &subject}),
+                json!({
+                    "tool":      tool_name,
+                    "session":   &session.session_id,
+                    "latency_ms": eval_ms,
+                    "sub":       &identity_sub,
+                    "email":     &identity_email,
+                }),
             );
 
-            // Forward to MCP
             ProxyAction::Forward
         }
         EvalResult::Deny {
@@ -449,63 +506,83 @@ pub async fn evaluate_jsonrpc(
             param_value,
             pattern,
             json_pointer,
+            validator_name,
         } => {
+            state.metrics_deny_total.fetch_add(1, Ordering::Relaxed);
             let mut reason_parts = vec![format!("reason={}", reason_code)];
-            if let Some(n) = &param_name {
-                reason_parts.push(format!("param={}", n));
-            }
-            if let Some(v) = &param_value {
-                reason_parts.push(format!("value={}", v));
-            }
-            if let Some(p) = &pattern {
-                reason_parts.push(format!("pattern={}", p));
-            }
-            if let Some(ptr) = &json_pointer {
-                reason_parts.push(format!("pointer={}", ptr));
-            }
+            if let Some(n) = &param_name  { reason_parts.push(format!("param={}", n)); }
+            if let Some(v) = &param_value { reason_parts.push(format!("value={}", v)); }
+            if let Some(p) = &pattern     { reason_parts.push(format!("pattern={}", p)); }
+            if let Some(ptr) = &json_pointer { reason_parts.push(format!("pointer={}", ptr)); }
+            if let Some(vn) = &validator_name { reason_parts.push(format!("validator={}", vn)); }
             let reason = reason_parts.join(" ");
 
             if state.dry_run {
                 // DRY_RUN_DENY: log but forward anyway, no kill
                 let _ = state.audit_logger.write_entry(
+                    &session.session_id,
                     "tool_dry_run_deny",
                     tool_name,
                     None,
                     Some(reason.clone()),
                     None,
-                    subject.clone(),
+                    identity_sub.clone(),
+                    identity_email.clone(),
+                    None,
+                    session.request_ip.clone(),
                 );
                 logging::log_event(
                     Level::Warn,
                     "tool_dry_run_deny",
-                    json!({"tool": tool_name, "session": &state.session_id, "reason": &reason, "sub": &subject}),
+                    json!({
+                        "tool":    tool_name,
+                        "session": &session.session_id,
+                        "reason":  &reason,
+                        "sub":     &identity_sub,
+                        "email":   &identity_email,
+                    }),
                 );
-
-                // Forward despite violation
                 ProxyAction::Forward
             } else {
-                handle_deny(state, &id, tool_name, &reason, subject).await
+                let is_val_fail = reason_code == "validator_failed";
+                handle_deny(
+                    state, &session.session_id, &id, tool_name, &reason,
+                    identity_sub, identity_email, session.request_ip.clone(),
+                    is_val_fail, param_name, validator_name,
+                ).await
             }
         }
     }
 }
 
-/// Handle the DENY path: log → error response → kill
+/// Handle the DENY path: write audit entry → send JSON-RPC error → signal kill.
+///
+/// The audit entry is written and fsync-confirmed before the error response is
+/// constructed — satisfying NFR-204 (no forward without a durable log entry).
 async fn handle_deny(
-    state: &ProxyState,
-    id: &Value,
-    tool_name: &str,
-    reason: &str,
-    subject: Option<String>,
+    state:             &ProxyState,
+    session_id:        &str,
+    id:                &Value,
+    tool_name:         &str,
+    reason:            &str,
+    identity_sub:      Option<String>,
+    identity_email:    Option<String>,
+    request_ip:        Option<String>,
+    is_validator_fail: bool,
+    failing_param:     Option<String>,
+    failing_validator: Option<String>,
 ) -> ProxyAction {
-    // Step 1: Write + fsync DENY log entry (params redacted)
     let log_result = state.audit_logger.write_entry(
+        session_id,
         "tool_deny",
         tool_name,
         None,
         Some(reason.to_string()),
         None,
-        subject.clone(),
+        identity_sub.clone(),
+        identity_email.clone(),
+        None,
+        request_ip.clone(),
     );
 
     if let Err(e) = log_result {
@@ -516,29 +593,38 @@ async fn handle_deny(
         );
     }
 
-    // Step 2: Log to stderr
     logging::log_event(
         Level::Warn,
         "tool_deny",
-        json!({"tool": tool_name, "session": &state.session_id, "reason": reason, "sub": &subject}),
+        json!({
+            "tool":    tool_name,
+            "session": session_id,
+            "reason":  reason,
+            "sub":     &identity_sub,
+            "email":   &identity_email,
+        }),
     );
 
-    // Step 3: JSON-RPC error response
     let error_response = json!({
         "jsonrpc": "2.0",
         "id": id,
         "error": {
-            "code": JSONRPC_POLICY_VIOLATION,
+            "code": if is_validator_fail { -32003 } else { JSONRPC_POLICY_VIOLATION },
             "message": format!("Policy violation: {}", reason),
             "data": {
-                "session_id": &state.session_id,
-                "kill_mode": state.kill_mode.as_str()
+                "session_id": session_id,
+                "parameter":  failing_param,
+                "validator":  failing_validator,
+                "kill_mode":  state.kill_mode.as_str()
             }
         }
     });
 
-    // Step 4: Kill will be executed by the server after sending response
-    ProxyAction::KillAndRespond(error_response)
+    if is_validator_fail {
+        ProxyAction::KillAndRespondWithStatus(hyper::StatusCode::BAD_REQUEST, error_response)
+    } else {
+        ProxyAction::KillAndRespond(error_response)
+    }
 }
 
 /// Create a JSON-RPC error response

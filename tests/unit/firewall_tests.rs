@@ -7,6 +7,7 @@ use agentwall::audit::logger::AuditLogger;
 use agentwall::kill::KillMode;
 use agentwall::policy::safe_mode::SafeModeScanner;
 use agentwall::policy::response_scanner::{ResponseScanner, ResponseScanConfig};
+use std::sync::atomic::{AtomicU64, AtomicBool};
 
 #[test]
 fn test_canonical_json_hashing() {
@@ -37,39 +38,57 @@ fn test_canonical_json_hashing() {
 #[test]
 fn test_tool_history_memory_bounding() {
     let log_path = std::env::temp_dir().join(format!("vexa_test_fw_mem_{}.log", uuid::Uuid::new_v4()));
-    let audit_logger = Arc::new(AuditLogger::new(
+    let audit_logger = Arc::new(AuditLogger::new(agentwall::audit::logger::AuditLoggerConfig {
         log_path,
-        "session-fw-mem".to_string(),
-        b"secret-12345678901234567890123456789012".to_vec(),
-        100000,
-    ).unwrap());
+        session_id: "session-fw-mem".to_string(),
+        session_secret: b"secret-12345678901234567890123456789012".to_vec(),
+        max_bytes: 100000,
+        siem_exporter: None,
+        include_params: false,
+    }).unwrap());
 
     let state = ProxyState {
-        policy: Some(CompiledPolicy {
+        policy: std::sync::RwLock::new(Some(CompiledPolicy {
             max_calls_per_second: 0,
             tools: vec![],
             identity_validator: None,
             scannable_tools: vec![],
             safe_tools: vec![],
             firewall: None, // Will fallback to default (enabled=true, max_attempts=3)
-        }),
+        })),
         audit_logger,
         session_id: "session-fw-mem".to_string(),
         kill_mode: KillMode::Connection,
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
-        policy_loaded: true,
+        policy_loaded: AtomicBool::new(true),
         rate_limiter: RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner: Arc::new(SafeModeScanner::new().unwrap()),
         ready: true,
         response_scanner: Arc::new(ResponseScanner::new().unwrap()),
-        response_scan_config: ResponseScanConfig::default(),
+        response_scan_config: std::sync::RwLock::new(ResponseScanConfig::default()),
         tool_history: std::sync::Mutex::new(Vec::new()),
+        sessions: dashmap::DashMap::new(),
+        metrics_requests_total: Arc::new(AtomicU64::new(0)),
+        metrics_allow_total: Arc::new(AtomicU64::new(0)),
+        metrics_deny_total: Arc::new(AtomicU64::new(0)),
+        metrics_rate_limited_total: Arc::new(AtomicU64::new(0)),
+        metrics_firewall_cycle_total: Arc::new(AtomicU64::new(0)),
+        metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
+        metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
     };
 
     let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let local_policy = state.policy.read().unwrap().clone();
+    let session = Arc::new(agentwall::proxy::session::SessionContext::new(
+        None,
+        None,
+        local_policy,
+        None,
+    ));
 
     // Call 10 times with different parameters so cycle detection isn't triggered,
     // but history is populated.
@@ -85,26 +104,28 @@ fn test_tool_history_memory_bounding() {
         });
         
         let _ = rt.block_on(async {
-            evaluate_jsonrpc(&state, &req, None).await
+            evaluate_jsonrpc(&state, &session, &req).await
         });
     }
 
-    let history = state.tool_history.lock().unwrap();
+    let history = session.tool_history.lock().unwrap();
     assert_eq!(history.len(), 5, "History size must be capped at TOOL_HISTORY_MAX (5)");
 }
 
 #[test]
 fn test_cycle_detection_blocking() {
     let log_path = std::env::temp_dir().join(format!("vexa_test_fw_block_{}.log", uuid::Uuid::new_v4()));
-    let audit_logger = Arc::new(AuditLogger::new(
+    let audit_logger = Arc::new(AuditLogger::new(agentwall::audit::logger::AuditLoggerConfig {
         log_path,
-        "session-fw-block".to_string(),
-        b"secret-12345678901234567890123456789012".to_vec(),
-        100000,
-    ).unwrap());
+        session_id: "session-fw-block".to_string(),
+        session_secret: b"secret-12345678901234567890123456789012".to_vec(),
+        max_bytes: 100000,
+        siem_exporter: None,
+        include_params: false,
+    }).unwrap());
 
     let state = ProxyState {
-        policy: Some(CompiledPolicy {
+        policy: std::sync::RwLock::new(Some(CompiledPolicy {
             max_calls_per_second: 0,
             tools: vec![],
             identity_validator: None,
@@ -117,21 +138,29 @@ fn test_cycle_detection_blocking() {
                     action: CycleAction::PivotError,
                 },
             }),
-        }),
+        })),
         audit_logger,
         session_id: "session-fw-block".to_string(),
         kill_mode: KillMode::Connection,
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
-        policy_loaded: true,
+        policy_loaded: AtomicBool::new(true),
         rate_limiter: RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner: Arc::new(SafeModeScanner::new().unwrap()),
         ready: true,
         response_scanner: Arc::new(ResponseScanner::new().unwrap()),
-        response_scan_config: ResponseScanConfig::default(),
+        response_scan_config: std::sync::RwLock::new(ResponseScanConfig::default()),
         tool_history: std::sync::Mutex::new(Vec::new()),
+        sessions: dashmap::DashMap::new(),
+        metrics_requests_total: Arc::new(AtomicU64::new(0)),
+        metrics_allow_total: Arc::new(AtomicU64::new(0)),
+        metrics_deny_total: Arc::new(AtomicU64::new(0)),
+        metrics_rate_limited_total: Arc::new(AtomicU64::new(0)),
+        metrics_firewall_cycle_total: Arc::new(AtomicU64::new(0)),
+        metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
+        metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
     };
 
     let req = json!({
@@ -146,9 +175,16 @@ fn test_cycle_detection_blocking() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let res1 = rt.block_on(evaluate_jsonrpc(&state, &req, None));
-    let res2 = rt.block_on(evaluate_jsonrpc(&state, &req, None));
-    let res3 = rt.block_on(evaluate_jsonrpc(&state, &req, None));
+    let local_policy = state.policy.read().unwrap().clone();
+    let session = Arc::new(agentwall::proxy::session::SessionContext::new(
+        None,
+        None,
+        local_policy,
+        None,
+    ));
+    let res1 = rt.block_on(evaluate_jsonrpc(&state, &session, &req));
+    let res2 = rt.block_on(evaluate_jsonrpc(&state, &session, &req));
+    let res3 = rt.block_on(evaluate_jsonrpc(&state, &session, &req));
 
     match res1 {
         ProxyAction::KillAndRespond(val) => {
@@ -176,15 +212,17 @@ fn test_cycle_detection_blocking() {
 #[test]
 fn test_pause_interactive_fallback_in_non_tty() {
     let log_path = std::env::temp_dir().join(format!("vexa_test_fw_tty_{}.log", uuid::Uuid::new_v4()));
-    let audit_logger = Arc::new(AuditLogger::new(
+    let audit_logger = Arc::new(AuditLogger::new(agentwall::audit::logger::AuditLoggerConfig {
         log_path,
-        "session-fw-tty".to_string(),
-        b"secret-12345678901234567890123456789012".to_vec(),
-        100000,
-    ).unwrap());
+        session_id: "session-fw-tty".to_string(),
+        session_secret: b"secret-12345678901234567890123456789012".to_vec(),
+        max_bytes: 100000,
+        siem_exporter: None,
+        include_params: false,
+    }).unwrap());
 
     let state = ProxyState {
-        policy: Some(CompiledPolicy {
+        policy: std::sync::RwLock::new(Some(CompiledPolicy {
             max_calls_per_second: 0,
             tools: vec![],
             identity_validator: None,
@@ -197,21 +235,29 @@ fn test_pause_interactive_fallback_in_non_tty() {
                     action: CycleAction::PauseInteractive,
                 },
             }),
-        }),
+        })),
         audit_logger,
         session_id: "session-fw-tty".to_string(),
         kill_mode: KillMode::Connection,
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
-        policy_loaded: true,
+        policy_loaded: AtomicBool::new(true),
         rate_limiter: RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner: Arc::new(SafeModeScanner::new().unwrap()),
         ready: true,
         response_scanner: Arc::new(ResponseScanner::new().unwrap()),
-        response_scan_config: ResponseScanConfig::default(),
+        response_scan_config: std::sync::RwLock::new(ResponseScanConfig::default()),
         tool_history: std::sync::Mutex::new(Vec::new()),
+        sessions: dashmap::DashMap::new(),
+        metrics_requests_total: Arc::new(AtomicU64::new(0)),
+        metrics_allow_total: Arc::new(AtomicU64::new(0)),
+        metrics_deny_total: Arc::new(AtomicU64::new(0)),
+        metrics_rate_limited_total: Arc::new(AtomicU64::new(0)),
+        metrics_firewall_cycle_total: Arc::new(AtomicU64::new(0)),
+        metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
+        metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
     };
 
     let req = json!({
@@ -226,8 +272,16 @@ fn test_pause_interactive_fallback_in_non_tty() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let _res1 = rt.block_on(evaluate_jsonrpc(&state, &req, None));
-    let res2 = rt.block_on(evaluate_jsonrpc(&state, &req, None));
+    let local_policy = state.policy.read().unwrap().clone();
+    let session = Arc::new(agentwall::proxy::session::SessionContext::new(
+        None,
+        None,
+        local_policy,
+        None,
+    ));
+
+    let _res1 = rt.block_on(evaluate_jsonrpc(&state, &session, &req));
+    let res2 = rt.block_on(evaluate_jsonrpc(&state, &session, &req));
 
     match res2 {
         ProxyAction::KillAndRespond(val) => {

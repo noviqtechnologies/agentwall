@@ -38,6 +38,18 @@ pub struct CompiledTool {
     pub action: String,
     pub risk: Option<super::schema::ToolRisk>,
     pub parameters: Vec<CompiledParam>,
+    /// FR-201: Bound to specific agent sub claim
+    pub identity: Option<String>,
+}
+
+/// Compiled representation of a structural validator (FR-202)
+#[derive(Clone, Debug)]
+pub enum CompiledValidator {
+    PathTraversal,
+    UrlSchemeAllowlist(Option<Vec<String>>),
+    SqlInjectionBasic,
+    ShellInjectionBasic,
+    Regex(Regex),
 }
 
 /// A compiled parameter constraint
@@ -49,6 +61,8 @@ pub struct CompiledParam {
     pub schema: Option<Arc<JSONSchema>>,
     pub max_length: Option<usize>,
     pub required: bool,
+    /// FR-202: Compiled validators
+    pub validators: Vec<CompiledValidator>,
 }
 
 impl std::fmt::Debug for CompiledParam {
@@ -60,6 +74,7 @@ impl std::fmt::Debug for CompiledParam {
             .field("schema", &self.schema.as_ref().map(|_| "Some(JSONSchema)"))
             .field("max_length", &self.max_length)
             .field("required", &self.required)
+            .field("validators", &self.validators)
             .finish()
     }
 }
@@ -74,6 +89,7 @@ pub enum EvalResult {
         param_value: Option<String>,
         pattern: Option<String>,
         json_pointer: Option<String>, // FR-201
+        validator_name: Option<String>, // FR-202
     },
 }
 
@@ -104,9 +120,21 @@ impl CompiledPolicy {
 
     /// Evaluate a tool call against the policy.
     /// Returns Allow or Deny with reason.
-    pub fn evaluate(&self, tool_name: &str, params: &Value) -> EvalResult {
+    pub fn evaluate(&self, tool_name: &str, params: &Value, identity_sub: Option<&str>) -> EvalResult {
         // Find tool in allowlist (case-sensitive exact match)
-        let tool = match self.tools.iter().find(|t| t.name == tool_name) {
+        // Filter by bound agent identity (FR-201)
+        let tool = match self.tools.iter().find(|t| {
+            t.name == tool_name && match &t.identity {
+                Some(rule_ident) => {
+                    if rule_ident == "*" {
+                        true
+                    } else {
+                        identity_sub.map(|s| s == rule_ident).unwrap_or(false)
+                    }
+                }
+                None => true, // unrestricted identity if not specified in the rule
+            }
+        }) {
             Some(t) => t,
             None => {
                 return EvalResult::Deny {
@@ -115,6 +143,7 @@ impl CompiledPolicy {
                     param_value: None,
                     pattern: None,
                     json_pointer: None,
+                    validator_name: None,
                 }
             }
         };
@@ -127,6 +156,7 @@ impl CompiledPolicy {
                 param_value: None,
                 pattern: None,
                 json_pointer: None,
+                validator_name: None,
             };
         }
 
@@ -141,6 +171,7 @@ impl CompiledPolicy {
                     param_value: None,
                     pattern: None,
                     json_pointer: None,
+                    validator_name: None,
                 }
             }
         };
@@ -154,6 +185,7 @@ impl CompiledPolicy {
                 param_value: None,
                 pattern: None,
                 json_pointer: None,
+                validator_name: None,
             };
         }
 
@@ -169,6 +201,7 @@ impl CompiledPolicy {
                         param_value: None,
                         pattern: None,
                         json_pointer: None,
+                        validator_name: None,
                     };
                 }
             }
@@ -191,6 +224,7 @@ impl CompiledPolicy {
                                 param_value: Some(value.to_string()),
                                 pattern: None,
                                 json_pointer: None,
+                                validator_name: None,
                             }
                         }
                     };
@@ -203,6 +237,7 @@ impl CompiledPolicy {
                                 param_value: Some(s.to_string()),
                                 pattern: None,
                                 json_pointer: None,
+                                validator_name: None,
                             };
                         }
                     }
@@ -215,6 +250,7 @@ impl CompiledPolicy {
                                 param_value: Some(s.to_string()),
                                 pattern: Some(re.as_str().to_string()),
                                 json_pointer: None,
+                                validator_name: None,
                             };
                         }
                     }
@@ -227,6 +263,7 @@ impl CompiledPolicy {
                             param_value: Some(value.to_string()),
                             pattern: None,
                             json_pointer: None,
+                            validator_name: None,
                         };
                     }
                 }
@@ -238,6 +275,7 @@ impl CompiledPolicy {
                             param_value: Some(value.to_string()),
                             pattern: None,
                             json_pointer: None,
+                            validator_name: None,
                         };
                     }
                 }
@@ -249,6 +287,7 @@ impl CompiledPolicy {
                             param_value: Some(value.to_string()),
                             pattern: None,
                             json_pointer: None,
+                            validator_name: None,
                         };
                     }
                 }
@@ -260,6 +299,7 @@ impl CompiledPolicy {
                             param_value: Some(value.to_string()),
                             pattern: None,
                             json_pointer: None,
+                            validator_name: None,
                         };
                     }
                 }
@@ -278,6 +318,89 @@ impl CompiledPolicy {
                         param_value: Some(value.to_string()),
                         pattern: None,
                         json_pointer: pointer,
+                        validator_name: None,
+                    };
+                }
+            }
+
+            // Run value-level validators (FR-202)
+            for validator in &param_rule.validators {
+                let is_valid = match validator {
+                    CompiledValidator::PathTraversal => {
+                        if let Some(s) = value.as_str() {
+                            !s.contains("../") && !s.contains("..\\")
+                        } else {
+                            true
+                        }
+                    }
+                    CompiledValidator::UrlSchemeAllowlist(allowed_schemes) => {
+                        if let Some(s) = value.as_str() {
+                            if s.contains("://") {
+                                if s.starts_with("file://") || s.starts_with("javascript://") {
+                                    false
+                                } else if let Some(schemes) = allowed_schemes {
+                                    schemes.iter().any(|sch| {
+                                        s.starts_with(&format!("{}://", sch))
+                                    })
+                                } else {
+                                    true
+                                }
+                            } else {
+                                true
+                            }
+                        } else {
+                            true
+                        }
+                    }
+                    CompiledValidator::SqlInjectionBasic => {
+                        if let Some(s) = value.as_str() {
+                            let s_upper = s.to_uppercase();
+                            !(s_upper.contains("UNION SELECT")
+                                || s_upper.contains("DROP TABLE")
+                                || s_upper.contains("OR '1'='1'")
+                                || s_upper.contains("OR 1=1"))
+                        } else {
+                            true
+                        }
+                    }
+                    CompiledValidator::ShellInjectionBasic => {
+                        if let Some(s) = value.as_str() {
+                            !(s.contains(';')
+                                || s.contains("&&")
+                                || s.contains("||")
+                                || s.contains("$(")
+                                || s.contains('`'))
+                        } else {
+                            true
+                        }
+                    }
+                    CompiledValidator::Regex(re) => {
+                        if let Some(s) = value.as_str() {
+                            re.is_match(s)
+                        } else {
+                            true
+                        }
+                    }
+                };
+
+                if !is_valid {
+                    let val_name = match validator {
+                        CompiledValidator::PathTraversal => "path_traversal",
+                        CompiledValidator::UrlSchemeAllowlist(_) => "url_scheme_allowlist",
+                        CompiledValidator::SqlInjectionBasic => "sql_injection_basic",
+                        CompiledValidator::ShellInjectionBasic => "shell_injection_basic",
+                        CompiledValidator::Regex(_) => "regex",
+                    };
+                    return EvalResult::Deny {
+                        reason_code: "validator_failed".to_string(),
+                        param_name: Some(param_rule.name.clone()),
+                        param_value: Some(value.to_string()),
+                        pattern: match validator {
+                            CompiledValidator::Regex(re) => Some(re.as_str().to_string()),
+                            _ => None,
+                        },
+                        json_pointer: None,
+                        validator_name: Some(val_name.to_string()),
                     };
                 }
             }

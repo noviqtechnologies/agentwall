@@ -1,4 +1,4 @@
-use agentwall::audit::logger::AuditLogger;
+use agentwall::audit::logger::{AuditLogger, AuditLoggerConfig};
 use agentwall::init::generate_policy_from_log;
 use agentwall::report::{format_text_report, generate_report};
 use serde_json::json;
@@ -10,21 +10,27 @@ fn test_phase_1_1_init_from_log() {
     let session_id = "test-init-session".to_string();
     let secret = b"test-secret-123456789012345678901".to_vec();
 
-    let logger = AuditLogger::new(
-        log_file.path().to_path_buf(),
-        session_id.clone(),
-        secret.clone(),
-        100000,
-    )
-    .unwrap();
+    let config = AuditLoggerConfig {
+        log_path: log_file.path().to_path_buf(),
+        session_id: session_id.clone(),
+        session_secret: secret.clone(),
+        max_bytes: 100000,
+        siem_exporter: None,
+        include_params: true,
+    };
+    let logger = AuditLogger::new(config).unwrap();
 
     // Mock a dry-run active log
     logger
         .write_entry(
+            &session_id,
             "dry_run_active",
             "system",
             None,
             Some("dry run active".to_string()),
+            None,
+            None,
+            None,
             None,
             None,
         )
@@ -33,11 +39,15 @@ fn test_phase_1_1_init_from_log() {
     // Mock an allowed tool (in dry run allow-all sentinel mode)
     logger
         .write_entry(
+            &session_id,
             "tool_allow",
             "git_clone",
             Some(json!({"repo": "https://github.com/foo/bar.git", "depth": 1})),
             None,
             Some(2.5),
+            None,
+            None,
+            None,
             None,
         )
         .unwrap();
@@ -65,20 +75,26 @@ fn test_phase_1_1_developer_observability_report() {
     let session_id = "test-report-session".to_string();
     let secret = b"test-secret-123456789012345678901".to_vec();
 
-    let logger = AuditLogger::new(
-        log_file.path().to_path_buf(),
-        session_id.clone(),
-        secret.clone(),
-        100000,
-    )
-    .unwrap();
+    let config = AuditLoggerConfig {
+        log_path: log_file.path().to_path_buf(),
+        session_id: session_id.clone(),
+        session_secret: secret.clone(),
+        max_bytes: 100000,
+        siem_exporter: None,
+        include_params: true,
+    };
+    let logger = AuditLogger::new(config).unwrap();
 
     logger
         .write_entry(
+            &session_id,
             "dry_run_active",
             "system",
             None,
             Some("dry run active".to_string()),
+            None,
+            None,
+            None,
             None,
             None,
         )
@@ -86,10 +102,14 @@ fn test_phase_1_1_developer_observability_report() {
 
     logger
         .write_entry(
+            &session_id,
             "tool_dry_run_deny",
             "dangerous_tool",
             None,
             Some("not_in_policy".to_string()),
+            None,
+            None,
+            None,
             None,
             None,
         )
@@ -115,7 +135,9 @@ fn test_phase_1_1_developer_observability_report() {
     assert_eq!(report.policy_version, None);
     assert_eq!(report.policy, None);
 
+    colored::control::set_override(false);
     let text_output = format_text_report(&report);
+    colored::control::unset_override();
 
     // Verify FR-114 outputs
     assert!(text_output.contains("Policy:      None (Allow-all sentinel)"));

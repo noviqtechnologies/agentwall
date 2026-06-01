@@ -1,0 +1,132 @@
+version: "3.9"
+
+# ─── AgentWall Local Development Stack — FR-203 ──────────────────────────────
+#
+# Provides a fully self-contained local development environment:
+#
+#   agentwall   — the gateway (same binary as production)
+#   mock-oidc   — a lightweight OIDC provider serving JWKS + signed JWTs
+#   mock-splunk — a Splunk HEC mock for SIEM export testing
+#   mock-mcp    — a minimal MCP tool server for end-to-end testing
+#
+# Quick Start:
+#   docker compose up
+#   # Then: curl -X POST http://localhost:8080 -H "Content-Type: application/json" \
+#   #   -H "Authorization: Bearer $(curl -s http://localhost:8081/token?sub=agent-dev | jq -r .access_token)" \
+#   #   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"read_file","arguments":{"path":"/workspace/test.txt"}},"id":1}'
+#
+# AC-203-1: Services start in < 60 seconds, no external dependencies.
+# AC-203-2: Enforcement is identical to production (same binary, same policy).
+# AC-203-4: This file is provided in the repository root per the spec.
+
+services:
+
+  # ── Mock OIDC Provider ──────────────────────────────────────────────────────
+  mock-oidc:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./test-tools:/app
+    command: >
+      sh -c "pip install cryptography pyjwt --quiet && python3 mock_oidc.py --port 8081 --audience agentwall"
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    networks:
+      - agentwall-net
+
+  # ── Mock Splunk HEC ─────────────────────────────────────────────────────────
+  mock-splunk:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./test-tools:/app
+    command: python3 mock_splunk.py --port 8088
+    ports:
+      - "8088:8088"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - agentwall-net
+
+  # ── Mock MCP Tool Server ────────────────────────────────────────────────────
+  mock-mcp:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./test-tools:/app
+    command: python3 mock-stdio-server.py
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/health') if True else None", "||", "exit", "0"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agentwall-net
+
+  # ── AgentWall Gateway ───────────────────────────────────────────────────────
+  agentwall:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./test-tools/test-policy.yaml:/app/policy.yaml:ro
+      - agentwall-logs:/var/log/agentwall
+    environment:
+      # Core gateway config
+      AGENTWALL_LISTEN: "0.0.0.0:8080"
+      AGENTWALL_MCP_URL: "http://mock-mcp:3000"
+      AGENTWALL_LOG_PATH: "/var/log/agentwall/audit.log"
+      AGENTWALL_DRY_RUN: "false"
+
+      # OIDC — points to the local mock provider (AC-203-2: same code path as production)
+      AGENTWALL_OIDC_ISSUER: "http://mock-oidc:8081"
+
+      # SIEM export — points to local Splunk mock
+      AGENTWALL_SIEM_BACKEND: "splunk"
+      AGENTWALL_SIEM_ENDPOINT: "http://mock-splunk:8088/services/collector/event"
+      AGENTWALL_SIEM_TOKEN: "mock-splunk-token-for-local-dev"
+      AGENTWALL_SIEM_TIMEOUT: "2"
+
+      # Developer convenience: wildcard identity allowed in local dev
+      ALLOW_WILDCARD_IDENTITY: "true"
+    command:
+      - "start"
+      - "--policy"
+      - "/app/policy.yaml"
+    depends_on:
+      mock-oidc:
+        condition: service_healthy
+      mock-splunk:
+        condition: service_healthy
+      mock-mcp:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "agentwall", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - agentwall-net
+
+volumes:
+  agentwall-logs:
+
+networks:
+  agentwall-net:
+    driver: bridge

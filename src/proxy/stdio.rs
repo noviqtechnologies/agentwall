@@ -122,6 +122,15 @@ pub async fn run_stdio_bridge(
     let mut agent_reader = FramedRead::new(agent_stdin, JsonRpcCodec);
     let mut agent_writer = FramedWrite::new(agent_stdout, JsonRpcCodec);
 
+    // Create a local isolated SessionContext representing the active session (FR-101)
+    let local_policy = state.policy.read().unwrap().clone();
+    let local_session = Arc::new(crate::proxy::session::SessionContext::new(
+        None,
+        None,
+        local_policy,
+        None,
+    ));
+
     // FR-303b: Track forwarded tools by their JSON-RPC ID for response correlation.
     // This prevents out-of-order responses from being scanned against the wrong tool context.
     let mut forwarded_requests: std::collections::HashMap<serde_json::Value, String> = std::collections::HashMap::new();
@@ -139,7 +148,7 @@ pub async fn run_stdio_bridge(
                             .unwrap_or("")
                             .to_string();
 
-                        let action = evaluate_jsonrpc(&state, &json, None).await;
+                        let action = evaluate_jsonrpc(&state, &local_session, &json).await;
                         match action {
                             ProxyAction::Forward => {
                                 // Track the tool name for response scanning using its ID
@@ -151,14 +160,15 @@ pub async fn run_stdio_bridge(
                                     break;
                                 }
                             }
-                            ProxyAction::Respond(resp) => {
+                            ProxyAction::Respond(resp) | ProxyAction::RespondWithStatus(_, resp) => {
                                 if let Err(e) = agent_writer.send(resp).await {
                                     eprintln!("Error sending to agent: {}", e);
                                     break;
                                 }
                             }
-                            ProxyAction::KillAndRespond(resp) => {
+                            ProxyAction::KillAndRespond(resp) | ProxyAction::KillAndRespondWithStatus(_, resp) => {
                                 let _ = agent_writer.send(resp).await;
+                                #[allow(deprecated)]
                                 if state.kill_mode == KillMode::Process || state.kill_mode == KillMode::Both {
                                     eprintln!("Violation: Killing process and exiting.");
                                     let _ = child.kill().await;
@@ -187,7 +197,7 @@ pub async fn run_stdio_bridge(
                         let id = json.get("id").cloned().unwrap_or(serde_json::Value::Null);
                         let tool_name = forwarded_requests.remove(&id).unwrap_or_default();
                         
-                        let processed = stdio_scan_response(&state, &json, &tool_name);
+                        let processed = stdio_scan_response(&state, &local_session.session_id, &json, &tool_name);
                         if let Err(e) = agent_writer.send(processed).await {
                             eprintln!("Error sending to agent: {}", e);
                             break;
@@ -225,23 +235,26 @@ pub async fn run_stdio_bridge(
 /// Fail-open: any scanner error passes the response through with audit log.
 fn stdio_scan_response(
     state: &ProxyState,
+    session_id: &str,
     response: &serde_json::Value,
     tool_name: &str,
 ) -> serde_json::Value {
+    let scan_config = state.response_scan_config.read().unwrap();
     let scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        state.response_scanner.scan_response(response, tool_name, &state.response_scan_config)
+        state.response_scanner.scan_response(response, tool_name, &scan_config)
     }));
 
     let scan_result = match scan_result {
         Ok(result) => result,
         Err(_) => {
             let _ = state.audit_logger.write_entry(
+                session_id,
                 "SCANNER_FAILURE", tool_name, None,
                 Some("Response scanner panicked — fail-open applied".to_string()),
-                None, None,
+                None, None, None, None, None,
             );
             logging::log_event(logging::Level::Error, "SCANNER_FAILURE",
-                serde_json::json!({"tool": tool_name, "session": &state.session_id, "reason": "scanner_panic"}));
+                serde_json::json!({"tool": tool_name, "session": session_id, "reason": "scanner_panic"}));
             return response.clone();
         }
     };
@@ -250,46 +263,46 @@ fn stdio_scan_response(
         ScanResult::Pass | ScanResult::Clean => response.clone(),
 
         ScanResult::Skipped { reason } => {
-            let _ = state.audit_logger.write_entry("response_scan_skipped", tool_name, None, Some(reason.clone()), None, None);
+            let _ = state.audit_logger.write_entry(session_id, "response_scan_skipped", tool_name, None, Some(reason.clone()), None, None, None, None, None);
             logging::log_event(logging::Level::Warn, "response_scan_skipped",
-                serde_json::json!({"tool": tool_name, "session": &state.session_id, "reason": &reason}));
+                serde_json::json!({"tool": tool_name, "session": session_id, "reason": &reason}));
             response.clone()
         }
 
         ScanResult::Redact { findings } => {
-            if state.response_scan_config.dry_run {
+            if scan_config.dry_run {
                 for f in &findings {
-                    let _ = state.audit_logger.write_entry("response_scan_dry_run", tool_name, None,
-                        Some(format!("Would redact {} at {}:{} preview={}", f.pattern_name, f.field_path, f.position, f.preview)), None, None);
+                    let _ = state.audit_logger.write_entry(session_id, "response_scan_dry_run", tool_name, None,
+                        Some(format!("Would redact {} at {}:{} preview={}", f.pattern_name, f.field_path, f.position, f.preview)), None, None, None, None, None);
                 }
                 logging::log_event(logging::Level::Warn, "response_scan_dry_run",
-                    serde_json::json!({"tool": tool_name, "session": &state.session_id, "action": "redact", "count": findings.len()}));
+                    serde_json::json!({"tool": tool_name, "session": session_id, "action": "redact", "count": findings.len()}));
                 return response.clone();
             }
             for f in &findings {
-                let _ = state.audit_logger.write_entry("response_secret_redacted", tool_name, None,
-                    Some(format!("pattern={} field={} pos={} len={} preview={}", f.pattern_name, f.field_path, f.position, f.length, f.preview)), None, None);
+                let _ = state.audit_logger.write_entry(session_id, "response_secret_redacted", tool_name, None,
+                    Some(format!("pattern={} field={} pos={} len={} preview={}", f.pattern_name, f.field_path, f.position, f.length, f.preview)), None, None, None, None, None);
             }
             logging::log_event(logging::Level::Warn, "response_secret_redacted",
-                serde_json::json!({"tool": tool_name, "session": &state.session_id, "count": findings.len()}));
-            state.response_scanner.redact_response(response, &state.response_scan_config)
+                serde_json::json!({"tool": tool_name, "session": session_id, "count": findings.len()}));
+            state.response_scanner.redact_response(response, &scan_config)
         }
 
         ScanResult::Block { findings } => {
-            if state.response_scan_config.dry_run {
+            if scan_config.dry_run {
                 for f in &findings {
-                    let _ = state.audit_logger.write_entry("response_scan_dry_run", tool_name, None,
-                        Some(format!("Would block: {} preview={}", f.pattern_name, f.preview)), None, None);
+                    let _ = state.audit_logger.write_entry(session_id, "response_scan_dry_run", tool_name, None,
+                        Some(format!("Would block: {} preview={}", f.pattern_name, f.preview)), None, None, None, None, None);
                 }
                 logging::log_event(logging::Level::Warn, "response_scan_dry_run",
-                    serde_json::json!({"tool": tool_name, "session": &state.session_id, "action": "block", "count": findings.len()}));
+                    serde_json::json!({"tool": tool_name, "session": session_id, "action": "block", "count": findings.len()}));
                 return response.clone();
             }
             let f = &findings[0];
-            let _ = state.audit_logger.write_entry("response_secret_blocked", tool_name, None,
-                Some(format!("pattern={} field={} preview={}", f.pattern_name, f.field_path, f.preview)), None, None);
+            let _ = state.audit_logger.write_entry(session_id, "response_secret_blocked", tool_name, None,
+                Some(format!("pattern={} field={} preview={}", f.pattern_name, f.field_path, f.preview)), None, None, None, None, None);
             logging::log_event(logging::Level::Warn, "response_secret_blocked",
-                serde_json::json!({"tool": tool_name, "session": &state.session_id, "pattern": &f.pattern_name}));
+                serde_json::json!({"tool": tool_name, "session": session_id, "pattern": &f.pattern_name}));
 
             let id = response.get("id").cloned().unwrap_or(serde_json::Value::Null);
             serde_json::json!({
@@ -298,16 +311,16 @@ fn stdio_scan_response(
                 "error": {
                     "code": -32002,
                     "message": format!("Response blocked: secret detected ({}). Use --dry-run to preview, or adjust policy.", f.pattern_name),
-                    "data": { "session_id": &state.session_id, "pattern": &f.pattern_name }
+                    "data": { "session_id": session_id, "pattern": &f.pattern_name }
                 }
             })
         }
 
         ScanResult::ScannerError { error } => {
-            let _ = state.audit_logger.write_entry("SCANNER_FAILURE", tool_name, None,
-                Some(format!("Scanner error: {} — fail-open applied", error)), None, None);
+            let _ = state.audit_logger.write_entry(session_id, "SCANNER_FAILURE", tool_name, None,
+                Some(format!("Scanner error: {} — fail-open applied", error)), None, None, None, None, None);
             logging::log_event(logging::Level::Error, "SCANNER_FAILURE",
-                serde_json::json!({"tool": tool_name, "session": &state.session_id, "error": &error}));
+                serde_json::json!({"tool": tool_name, "session": session_id, "error": &error}));
             response.clone()
         }
     }

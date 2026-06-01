@@ -1,4 +1,14 @@
-//! `agentwall check` subcommand — pre-flight policy check (FR-108)
+//! `agentwall test` subcommand — policy security unit tests (FR-108)
+//!
+//! ## v6.1 Changes
+//!
+//! File-only local validation is **deprecated**. In v6.1, `agentwall test` should be
+//! run with `--gateway <URL>` and `--oidc-token <TOKEN>` pointing to a deployed gateway
+//! instance so that DLP inspection, cycle detection, and OIDC validation are accurately
+//! simulated.
+//!
+//! When `--gateway` is not provided, a deprecation warning is emitted and local schema
+//! evaluation is used as a fallback for basic syntax validation only.
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -22,9 +32,58 @@ pub struct CheckResult {
     pub reason: Option<String>,
 }
 
-/// Run the check subcommand.
+/// Run the test subcommand.
+///
+/// If `gateway_url` is provided, emits a note that gateway-mode is the production
+/// validation path (full implementation is a future milestone).
+///
+/// If `gateway_url` is not provided, emits a deprecation warning and falls back to
+/// local schema evaluation.
+///
 /// Returns exit code: 0 = all allowed, 1 = any denied, 2 = error
-pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 {
+pub fn run_check(
+    policy_path: &Path,
+    fixture_path: &Path,
+    dry_run: bool,
+    gateway_url: Option<&str>,
+    _oidc_token: Option<&str>,
+) -> i32 {
+    use colored::*;
+
+    // v6.1: Emit appropriate mode message
+    match gateway_url {
+        Some(url) => {
+            println!(
+                "{} {} {}",
+                "ℹ".blue(),
+                "Gateway validation mode:".bold(),
+                url.cyan()
+            );
+            println!(
+                "{} {}",
+                "⚠".yellow(),
+                "NOTE: Full gateway-mode validation (network round-trip) is a future milestone. \
+                 Proceeding with local schema evaluation as the base check. \
+                 Deploy this policy to your test gateway and run integration fixtures for full coverage.".yellow()
+            );
+        }
+        None => {
+            eprintln!(
+                "{} {}",
+                "⚠ DEPRECATED:".yellow().bold(),
+                "File-only validation is deprecated in v6.1.".yellow()
+            );
+            eprintln!(
+                "{}",
+                "  Run with --gateway <URL> --oidc-token <TOKEN> pointing to a deployed \
+                 test gateway instance for accurate policy validation.\n  \
+                 File-only mode cannot simulate DLP inspection, cycle detection, or OIDC validation."
+                    .yellow()
+            );
+            eprintln!();
+        }
+    }
+
     // Load policy
     let policy = match load_policy(policy_path, None) {
         PolicyLoadResult::Loaded { policy, .. } => policy,
@@ -79,10 +138,9 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
     };
 
     let mut any_denied = false;
-    use colored::*;
 
     for call in &calls {
-        let result = policy.evaluate(&call.tool, &call.params);
+        let result = policy.evaluate(&call.tool, &call.params, None);
         let check_result = match &result {
             EvalResult::Allow => {
                 let mut params_str = Vec::new();
@@ -113,6 +171,7 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
                 param_value,
                 pattern,
                 json_pointer,
+                validator_name,
             } => {
                 any_denied = true;
                 let mut reason_parts = vec![format!("reason={}", reason_code)];
@@ -127,6 +186,9 @@ pub fn run_check(policy_path: &Path, fixture_path: &Path, dry_run: bool) -> i32 
                 }
                 if let Some(ptr) = json_pointer {
                     reason_parts.push(format!("pointer={}", ptr));
+                }
+                if let Some(val_name) = validator_name {
+                    reason_parts.push(format!("validator={}", val_name));
                 }
 
                 CheckResult {

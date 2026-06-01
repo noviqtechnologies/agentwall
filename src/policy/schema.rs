@@ -22,6 +22,9 @@ pub struct PolicyFile {
     /// Identity binding configuration (v2 only).
     pub identity: Option<IdentityConfig>,
 
+    /// OIDC authentication configuration (FR-201).
+    pub auth: Option<AuthConfig>,
+
     /// Optional session configuration.
     pub session: Option<SessionConfig>,
 
@@ -113,6 +116,17 @@ pub struct IdentityConfig {
     pub audience: String,
 }
 
+/// OIDC provider authentication configuration (FR-201).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthConfig {
+    pub provider: String,
+    pub jwks_uri: String,
+    pub audience: String,
+    pub issuer: String,
+    pub cache_ttl_minutes: Option<u64>,
+}
+
 /// Response scanning configuration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -155,6 +169,9 @@ pub struct ToolRule {
 
     /// Parameter constraints. Optional.
     pub parameters: Option<Vec<ParameterRule>>,
+
+    /// FR-201: Bound to specific agent sub claim
+    pub identity: Option<String>,
 }
 
 /// Parameter type enumeration.
@@ -177,6 +194,69 @@ impl std::fmt::Display for ParamType {
             ParamType::Object => write!(f, "object"),
             ParamType::Array => write!(f, "array"),
         }
+    }
+}
+
+/// Structural value-level parameter validator rules (FR-202)
+#[derive(Debug, Clone, PartialEq)]
+pub enum ValidatorRule {
+    /// Rejects parameters containing "../" or "..\"
+    PathTraversal,
+    /// Rejects file://, javascript://, and configurable schemes
+    UrlSchemeAllowlist(Option<Vec<String>>),
+    /// Rejects UNION SELECT, DROP TABLE, and common SQLi patterns
+    SqlInjectionBasic,
+    /// Rejects ;, &&, ||, $(), and backtick sequences
+    ShellInjectionBasic,
+    /// Runs a custom compiled regex pattern
+    Regex(String),
+}
+
+impl<'de> Deserialize<'de> for ValidatorRule {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ValidatorRuleVisitor;
+        impl<'de> serde::de::Visitor<'de> for ValidatorRuleVisitor {
+            type Value = ValidatorRule;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or map representing a ValidatorRule")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    "path_traversal" => Ok(ValidatorRule::PathTraversal),
+                    "url_scheme_allowlist" => Ok(ValidatorRule::UrlSchemeAllowlist(None)),
+                    "sql_injection_basic" => Ok(ValidatorRule::SqlInjectionBasic),
+                    "shell_injection_basic" => Ok(ValidatorRule::ShellInjectionBasic),
+                    _ => Err(E::custom(format!("unknown validator rule: {}", value))),
+                }
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let key: String = map.next_key()?
+                    .ok_or_else(|| serde::de::Error::custom("expected a validator key"))?;
+                match key.as_str() {
+                    "regex" => {
+                        let val: String = map.next_value()?;
+                        Ok(ValidatorRule::Regex(val))
+                    }
+                    "url_scheme_allowlist" => {
+                        let val: Vec<String> = map.next_value()?;
+                        Ok(ValidatorRule::UrlSchemeAllowlist(Some(val)))
+                    }
+                    _ => Err(serde::de::Error::custom(format!("unknown validator key: {}", key))),
+                }
+            }
+        }
+        deserializer.deserialize_any(ValidatorRuleVisitor)
     }
 }
 
@@ -208,4 +288,7 @@ pub struct ParameterRule {
     /// If true, parameter must be present. Default: false.
     #[serde(default)]
     pub required: bool,
+
+    /// FR-202: Structural parameter validators.
+    pub validators: Option<Vec<ValidatorRule>>,
 }

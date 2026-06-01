@@ -1,4 +1,15 @@
 //! Policy file loading, validation, and hashing (FR-103, NFR-203)
+//!
+//! ## v6.1 Changes — Nested Object Blind Pass-Through Removed (Guidance #6)
+//!
+//! Policies with `type: object` or `type: array` parameters that do not define an
+//! inline JSON Schema are **rejected with a fatal error** at startup.
+//!
+//! This enforces Policy Schema v2 compliance. A security gateway that cannot inspect
+//! deeply nested data structures is fundamentally flawed for DLP and policy enforcement.
+//!
+//! **Migration:** Add a `schema:` block to every `type: object` and `type: array`
+//! parameter in your policy. Use `vexa check` in CI/CD to validate before deploying.
 
 use regex::Regex;
 use sha2::{Digest, Sha256};
@@ -174,6 +185,25 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
             }
         }
 
+        let identity_bound = if let Some(ident) = &tool.identity {
+            if ident == "*" {
+                let allow_wildcard = std::env::var("ALLOW_WILDCARD_IDENTITY")
+                    .map(|v| v == "true")
+                    .unwrap_or(false);
+                if !allow_wildcard {
+                    return PolicyLoadResult::Fatal {
+                        error: PolicyLoadError::InvalidYaml(format!(
+                            "Tool \"{}\" uses wildcard identity (\"*\") which is strictly gated behind ALLOW_WILDCARD_IDENTITY=true environment variable.",
+                            tool.name
+                        )),
+                    };
+                }
+            }
+            Some(ident.clone())
+        } else {
+            None
+        };
+
         let mut compiled_params = Vec::new();
         if let Some(params) = &tool.parameters {
             for param in params {
@@ -226,6 +256,25 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
                     };
                 }
 
+                // v6.1 Guidance #6: Reject object/array params without inline JSON Schema.
+                // Blind pass-through of complex parameter types is a critical security
+                // vulnerability removed in v6.1. All object and array parameters MUST
+                // define a schema for DLP inspection and policy enforcement.
+                if (param.param_type == ParamType::Object || param.param_type == ParamType::Array)
+                    && param.schema.is_none()
+                {
+                    return PolicyLoadResult::Fatal {
+                        error: PolicyLoadError::InvalidYaml(format!(
+                            "Tool \"{}\" param \"{}\" has type {} but no 'schema' is defined. \
+                             Policy Schema v2 requires inline JSON Schema for all object and array \
+                             parameters (v6.1 — blind pass-through removal). \
+                             Add a 'schema:' block or change the parameter type to 'string'. \
+                             See docs/VexaAgentWall-PRD-v6.1.md §6.2 for the migration guide.",
+                            tool.name, param.name, param.param_type
+                        )),
+                    };
+                }
+
                 // Nested JSON Schema Compilation (FR-201)
                 let compiled_schema = if let Some(schema_val) = &param.schema {
                     let mut schema_to_compile = schema_val.clone();
@@ -258,6 +307,42 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
                     None
                 };
 
+                let mut compiled_validators = Vec::new();
+                if let Some(vals) = &param.validators {
+                    for val in vals {
+                        let compiled = match val {
+                            super::schema::ValidatorRule::PathTraversal => {
+                                super::engine::CompiledValidator::PathTraversal
+                            }
+                            super::schema::ValidatorRule::UrlSchemeAllowlist(ref schemes) => {
+                                super::engine::CompiledValidator::UrlSchemeAllowlist(schemes.clone())
+                            }
+                            super::schema::ValidatorRule::SqlInjectionBasic => {
+                                super::engine::CompiledValidator::SqlInjectionBasic
+                            }
+                            super::schema::ValidatorRule::ShellInjectionBasic => {
+                                super::engine::CompiledValidator::ShellInjectionBasic
+                            }
+                            super::schema::ValidatorRule::Regex(ref pattern) => {
+                                match Regex::new(pattern) {
+                                    Ok(re) => super::engine::CompiledValidator::Regex(re),
+                                    Err(e) => {
+                                        return PolicyLoadResult::Fatal {
+                                            error: PolicyLoadError::InvalidRegex {
+                                                tool: tool.name.clone(),
+                                                param: param.name.clone(),
+                                                pattern: pattern.clone(),
+                                                error: e.to_string(),
+                                            },
+                                        };
+                                    }
+                                }
+                            }
+                        };
+                        compiled_validators.push(compiled);
+                    }
+                }
+
                 compiled_params.push(super::engine::CompiledParam {
                     name: param.name.clone(),
                     param_type: param.param_type.clone(),
@@ -265,6 +350,7 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
                     schema: compiled_schema,
                     max_length: param.max_length,
                     required: param.required,
+                    validators: compiled_validators,
                 });
             }
         }
@@ -273,6 +359,7 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
             action: tool.action.clone(),
             risk: tool.risk.clone(),
             parameters: compiled_params,
+            identity: identity_bound,
         });
     }
 
@@ -281,9 +368,17 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
         .and_then(|s| s.max_calls_per_second)
         .unwrap_or(0);
 
-    let identity_validator = if let Some(ident) = policy_file.identity {
-        let final_issuer = issuer_override.unwrap_or(ident.issuer);
-        let validator = super::identity::IdentityValidator::new(final_issuer, ident.audience);
+    let (oidc_issuer, oidc_audience, oidc_cache_ttl) = if let Some(auth_cfg) = policy_file.auth {
+        (Some(auth_cfg.issuer), Some(auth_cfg.audience), auth_cfg.cache_ttl_minutes)
+    } else if let Some(ident) = policy_file.identity {
+        (Some(ident.issuer), Some(ident.audience), None)
+    } else {
+        (None, None, None)
+    };
+
+    let identity_validator = if let (Some(issuer), Some(audience)) = (oidc_issuer, oidc_audience) {
+        let final_issuer = issuer_override.unwrap_or(issuer);
+        let validator = super::identity::IdentityValidator::new(final_issuer, audience, oidc_cache_ttl);
         validator.clone().start_background_rotation();
         Some(validator)
     } else {
@@ -291,7 +386,7 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
              logging::log_event(
                 Level::Warn,
                 "oidc_issuer_ignored",
-                serde_json::json!({"reason": "no identity section in policy", "issuer": &issuer}),
+                serde_json::json!({"reason": "no auth or identity section in policy", "issuer": &issuer}),
             );
         }
         None
