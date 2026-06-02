@@ -45,7 +45,7 @@ USER agentwall
 # Default environment
 ENV AGENTWALL_LISTEN=0.0.0.0:8080 \
     AGENTWALL_LOG_PATH=/var/log/agentwall/audit.log \
-    AGENTWALL_MCP_URL=http://mcp-server:3000 \
+    AGENTWALL_MCP_URL=http://mock-mcp:3000 \
     AGENTWALL_DRY_RUN=false
 
 # Health check

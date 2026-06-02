@@ -60,15 +60,13 @@ services:
 
   # ── Mock MCP Tool Server ────────────────────────────────────────────────────
   mock-mcp:
-    image: python:3.12-slim
-    working_dir: /app
-    volumes:
-      - ./test-tools:/app
-    command: python3 mock-stdio-server.py
+    build:
+      context: ./test-tools/mock-mcp-server
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/health') if True else None", "||", "exit", "0"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 10s
       timeout: 3s
       retries: 3

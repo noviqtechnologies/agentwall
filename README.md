@@ -89,27 +89,107 @@ Configure agents with your gateway endpoint and OIDC bearer tokens—for example
 
 ## Quick start
 
-Evaluate AgentWall locally using the Docker Compose stack that mirrors production components (gateway, OIDC, SIEM mock, sample MCP server):
+Evaluate AgentWall locally using the Docker Compose stack that mirrors production components (gateway, OIDC, SIEM mock, and a mock upstream MCP server). The steps below are designed to be **copy/paste friendly** on both Windows (PowerShell) and macOS/Linux (bash).
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose, **or**
-- [Rust](https://rustup.rs/) 1.75+ to build from source
+- [Docker Desktop](https://docs.docker.com/get-docker/) with `docker compose`
+- A local HTTP client:
+  - **Windows**: PowerShell `Invoke-RestMethod` (built-in)
+  - **macOS/Linux**: `curl`
+
+> Note: The local stack builds a small Rust-based mock MCP server container. You do **not** need Rust installed locally; Docker builds it with a recent Rust toolchain.
 
 ### Docker Compose
 
 ```bash
 git clone https://github.com/noviqtechnologies/agentwall.git
 cd agentwall
-docker compose up --build
+docker compose up -d --build
 ```
 
-After services are healthy, obtain a development JWT and send a tool call:
+### Validate the gateway (recommended)
+
+1) Confirm the local services are up:
+
+- Gateway health: `GET http://localhost:8080/healthz`
+- Mock OIDC health: `GET http://localhost:8081/health`
+- Metrics: `GET http://localhost:8080/metrics`
+
+#### PowerShell (Windows) — quick health checks
+
+```powershell
+Invoke-RestMethod "http://localhost:8080/healthz"
+Invoke-RestMethod "http://localhost:8081/health"
+Invoke-RestMethod "http://localhost:8080/metrics" | Select-Object -First 20
+```
+
+#### bash (macOS/Linux) — quick health checks
 
 ```bash
-export TOKEN=$(curl -s "http://localhost:8081/token?sub=agent-dev" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+curl -fsS http://localhost:8080/healthz
+curl -fsS http://localhost:8081/health
+curl -fsS http://localhost:8080/metrics | head -n 20
+```
 
+2) Obtain a development JWT from the local mock OIDC provider.
+
+#### PowerShell (Windows)
+
+```powershell
+$token = (Invoke-RestMethod "http://localhost:8081/token?sub=agent-dev&aud=agentwall").access_token
+$headers = @{ Authorization = "Bearer $token" }
+
+# Allowed call (passes policy; upstream records the call)
+$allowedBody = @{
+  jsonrpc = "2.0"
+  method  = "tools/call"
+  params  = @{
+    name      = "safe_tool"
+    arguments = @{ example = "hello" }
+  }
+  id      = 1
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers -ContentType "application/json" -Body $allowedBody
+
+# Denied call (not in allowlist → gateway returns a JSON-RPC error)
+$deniedBody = @{
+  jsonrpc = "2.0"
+  method  = "tools/call"
+  params  = @{
+    name      = "leak_secret"
+    arguments = @{ }
+  }
+  id      = 2
+} | ConvertTo-Json -Depth 10
+
+try {
+  Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers -ContentType "application/json" -Body $deniedBody
+} catch {
+  $_.Exception.Message
+}
+```
+
+#### bash (macOS/Linux)
+
+```bash
+TOKEN="$(curl -fsS "http://localhost:8081/token?sub=agent-dev&aud=agentwall" | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+
+curl -fsS -X POST http://localhost:8080/ \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "safe_tool",
+      "arguments": { "example": "hello" }
+    },
+    "id": 1
+  }'
+
+# Denied call (not in allowlist → gateway returns a JSON-RPC error)
 curl -s -X POST http://localhost:8080/ \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
@@ -117,14 +197,24 @@ curl -s -X POST http://localhost:8080/ \
     "jsonrpc": "2.0",
     "method": "tools/call",
     "params": {
-      "name": "read_file",
-      "arguments": { "path": "/workspace/test.txt" }
+      "name": "leak_secret",
+      "arguments": {}
     },
-    "id": 1
-  }'
+    "id": 2
+  }' | cat
 ```
 
-See [`docker-compose.yml`](docker-compose.yml) for service definitions and environment defaults.
+3) Inspect what reached the upstream mock MCP server:
+
+- `GET http://localhost:3000/calls` — shows calls that were forwarded (allowed calls only).
+
+4) Shut down cleanly when done:
+
+```bash
+docker compose down -v
+```
+
+See [`docker-compose.yml`](docker-compose.yml) for service definitions and environment defaults. The Compose stack mounts a local development policy at `./test-tools/test-policy.yaml`.
 
 ### Build from source
 

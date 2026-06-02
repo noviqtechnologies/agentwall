@@ -25,7 +25,8 @@ struct ServerState {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let addr: SocketAddr = "127.0.0.1:3000".parse()?;
+    // Bind to 0.0.0.0 so the server is reachable from other containers.
+    let addr: SocketAddr = "0.0.0.0:3000".parse()?;
     let listener = TcpListener::bind(addr).await?;
     println!("Mock MCP Server listening on http://{}", addr);
 
@@ -54,6 +55,13 @@ async fn handle(
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
+
+    if method == Method::GET && path == "/health" {
+        return Ok(json_response(
+            StatusCode::OK,
+            &json!({"status": "ok", "service": "mock-mcp"}),
+        ));
+    }
 
     if method == Method::GET && path == "/calls" {
         let calls = state.calls.lock().unwrap().clone();
