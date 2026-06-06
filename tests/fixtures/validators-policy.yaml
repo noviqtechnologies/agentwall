@@ -1,0 +1,34 @@
+# Phase 1 validator E2E policy — see tests/PHASE1_VERIFICATION_TEST_PLAN.md §5.3
+version: "2"
+default_action: deny
+tools:
+  - name: read_file
+    action: allow
+    parameters:
+      - name: path
+        type: string
+        validators:
+          - path_traversal
+  - name: fetch_url
+    action: allow
+    parameters:
+      - name: url
+        type: string
+        validators:
+          - url_scheme_allowlist: ["https", "http"]
+  - name: db_query
+    action: allow
+    parameters:
+      - name: query
+        type: string
+        validators:
+          - sql_injection_basic
+  - name: run_cmd
+    action: allow
+    parameters:
+      - name: args
+        type: string
+        validators:
+          - shell_injection_basic
+  - name: safe_tool
+    action: allow

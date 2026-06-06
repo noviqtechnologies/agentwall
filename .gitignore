@@ -1,5 +1,8 @@
 /target
 docs/
+!docs/AgentWall-Technical-Design-Document.md
+!docs/agentwall_prd_v02.md
+!docs/VexaAgentWall-PRD-v6.1.md
 scratch/
 graphify-out/
 
@@ -64,3 +67,6 @@ node_modules/
 # Environment variables
 .env
 .env.*
+tests/PHASE1_VERIFICATION_TEST_PLAN.docx
+tests/PHASE1_VERIFICATION_TEST_PLAN.md
+tests/fixtures/README.md

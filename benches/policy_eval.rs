@@ -33,6 +33,7 @@ fn make_policy(n: usize) -> CompiledPolicy {
             name: format!("tool_{:04}", i),
             action: "allow".to_string(),
             risk: None,
+            identity: None,
             parameters: vec![
                 CompiledParam {
                     name: "path".to_string(),
@@ -41,6 +42,7 @@ fn make_policy(n: usize) -> CompiledPolicy {
                     schema: None,
                     max_length: Some(512),
                     required: true,
+                    validators: vec![],
                 },
                 CompiledParam {
                     name: "limit".to_string(),
@@ -49,6 +51,7 @@ fn make_policy(n: usize) -> CompiledPolicy {
                     schema: None,
                     max_length: None,
                     required: false,
+                    validators: vec![],
                 },
             ],
         })
@@ -82,6 +85,7 @@ fn make_policy_with_schema() -> CompiledPolicy {
             name: "query_db".to_string(),
             action: "allow".to_string(),
             risk: None,
+            identity: None,
             parameters: vec![CompiledParam {
                 name: "options".to_string(),
                 param_type: ParamType::Object,
@@ -89,6 +93,7 @@ fn make_policy_with_schema() -> CompiledPolicy {
                 schema: Some(compiled_schema),
                 max_length: None,
                 required: true,
+                validators: vec![],
             }],
         }],
         max_calls_per_second: 0,
@@ -115,7 +120,7 @@ fn bench_eval_allowed_1000_rules(c: &mut Criterion) {
 
     c.bench_function("eval_allowed_worst_case_1000_rules", |b| {
         b.iter(|| {
-            black_box(policy.evaluate(black_box("tool_0999"), black_box(&params)))
+            black_box(policy.evaluate(black_box("tool_0999"), black_box(&params), None))
         })
     });
 }
@@ -127,7 +132,7 @@ fn bench_eval_denied_not_in_policy(c: &mut Criterion) {
 
     c.bench_function("eval_denied_not_in_policy_1000_rules", |b| {
         b.iter(|| {
-            black_box(policy.evaluate(black_box("unknown_tool"), black_box(&params)))
+            black_box(policy.evaluate(black_box("unknown_tool"), black_box(&params), None))
         })
     });
 }
@@ -139,7 +144,7 @@ fn bench_eval_schema_validation(c: &mut Criterion) {
 
     c.bench_function("eval_schema_validation_allowed", |b| {
         b.iter(|| {
-            black_box(policy.evaluate(black_box("query_db"), black_box(&valid_params)))
+            black_box(policy.evaluate(black_box("query_db"), black_box(&valid_params), None))
         })
     });
 }
@@ -152,7 +157,7 @@ fn bench_eval_schema_denial(c: &mut Criterion) {
 
     c.bench_function("eval_schema_validation_denied", |b| {
         b.iter(|| {
-            black_box(policy.evaluate(black_box("query_db"), black_box(&bad_params)))
+            black_box(policy.evaluate(black_box("query_db"), black_box(&bad_params), None))
         })
     });
 }
@@ -168,7 +173,7 @@ fn bench_eval_regex_denial(c: &mut Criterion) {
 
     c.bench_function("eval_regex_denial_1000_rules", |b| {
         b.iter(|| {
-            black_box(policy.evaluate(black_box("tool_0999"), black_box(&bad_params)))
+            black_box(policy.evaluate(black_box("tool_0999"), black_box(&bad_params), None))
         })
     });
 }

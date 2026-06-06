@@ -1,4 +1,4 @@
-//! Identity validation and OIDC background fetcher (FR-202)
+//! Identity validation and OIDC background fetcher (FR-201)
 
 use dashmap::DashMap;
 use jsonwebtoken::{decode, decode_header, DecodingKey, Validation};
@@ -45,10 +45,10 @@ struct JwksResponse {
 pub struct IdentityValidator {
     pub issuer: String,
     pub audience: String,
-    keys: DashMap<String, DecodingKey>,
+    pub keys: DashMap<String, DecodingKey>,
     last_fetched: RwLock<Instant>,
     client: reqwest::Client,
-    cache_ttl: Duration,
+    pub cache_ttl: Duration,
 }
 
 impl IdentityValidator {
