@@ -89,6 +89,14 @@ Configure agents with your gateway endpoint and OIDC bearer tokens—for example
 
 ## Quick start
 
+### Installation
+
+For macOS, Linux, and Windows (via MSYS/Git Bash/WSL), install the precompiled binary with a single command:
+
+```bash
+curl -fsSL https://vexasec.io/install.sh | sh
+```
+
 Evaluate AgentWall locally using the Docker Compose stack that mirrors production components (gateway, OIDC, SIEM mock, and a mock upstream MCP server). The steps below are designed to be **copy/paste friendly** on both Windows (PowerShell) and macOS/Linux (bash).
 
 ### Prerequisites
