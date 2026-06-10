@@ -38,9 +38,9 @@ mock_curl() {
 mock_unzip() {
     echo 'Mock unzip called with args: \$@'
     # create dummy binary file
-    mkdir -p \"\$5/release/bin\"
-    touch \"\$5/release/bin/agentwall\"
-    touch \"\$5/release/bin/agentwall.exe\"
+    mkdir -p \"\$5/bin\"
+    touch \"\$5/bin/agentwall\"
+    touch \"\$5/bin/agentwall.exe\"
 }
 " > /tmp/mock_funcs.sh
 

@@ -44,9 +44,9 @@ fi
 echo "[*] Extracting..."
 unzip -q -o "${TEMPDIR}/asset.zip" -d "$TEMPDIR"
 
-BINARY_PATH="${TEMPDIR}/release/bin/agentwall"
+BINARY_PATH="${TEMPDIR}/bin/agentwall"
 if [[ "$OS" == "windows" ]]; then
-  BINARY_PATH="${TEMPDIR}/release/bin/agentwall.exe"
+  BINARY_PATH="${TEMPDIR}/bin/agentwall.exe"
 fi
 
 if [ ! -f "$BINARY_PATH" ]; then
