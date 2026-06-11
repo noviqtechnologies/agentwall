@@ -160,6 +160,30 @@ Each event object in the response array contains:
 
 ---
 
+## Local Web Dashboard (FR-3)
+
+When running the gateway in `dev` mode, AgentWall automatically serves a rich, real-time web dashboard directly from the binary. It tracks and visualizes tool executions instantly without needing external SIEM setups or frontend dependencies.
+
+### Features
+- **Live Event Stream**: Real-time SSE updates as agents make tool calls.
+- **Inventory & Parameters**: See all observed tools, upstream endpoints, and parameters.
+- **Risk Trends**: View visualizations of request distributions and tool latency.
+- **Policy Drafts**: Instantly generate starter policy YAMLs from observed activity.
+
+### How to test manually
+
+To test the dashboard:
+1. Run the local shadow proxy:
+   ```bash
+   cargo run -- dev
+   ```
+2. The dashboard will automatically open in your default browser at `http://127.0.0.1:8080`. (Use `--no-browser` to disable this).
+3. Send tool calls to the proxy at `http://127.0.0.1:8080/` (via POST) or run an agent through it.
+4. Watch the events stream live in the UI!
+
+
+---
+
 ## Quick start
 
 ### Installation
@@ -420,7 +444,7 @@ Reference policy: [`policy.example.yaml`](policy.example.yaml).
 - **`lint`** — Local policy checks. Exit codes: `0` clean, `1` errors, `2` warnings only.
 - **`test`** — Production validation path: requires `--gateway` and `--oidc-token` to exercise the live gateway. Fixture format: `[{ "tool": "name", "params": { ... } }, ...]`.
 - **`promote`** — Validates schema v2 requirements (including identity configuration) before signing.
-- **`dev`** — Equivalent to `start --shadow-mode`; sets `shadow_mode = true`, zero rate-limiter, skips policy loading. Intended for local development baselining.
+- **`dev`** — Equivalent to `start --shadow-mode`; sets `shadow_mode = true`, skips policy loading, and serves the local Web Dashboard (FR-3). Automatically opens your browser. Intended for local development baselining.
 - **`start --shadow-mode`** — Same behaviour as `dev` but within the `start` command, allowing environment variable control via `AGENTWALL_SHADOW_MODE`.
 
 Local single-payload checks for policy authors: `agentwall validate --policy policy.yaml --tool read_file --payload call.json`.
@@ -433,11 +457,15 @@ Local single-payload checks for policy authors: `agentwall validate --policy pol
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/` | `GET` | Local Web Dashboard UI (FR-3) |
 | `/` | `POST` | MCP JSON-RPC proxy |
 | `/healthz` | `GET` | Liveness |
 | `/readyz` | `GET` | Readiness |
 | `/metrics` | `GET` | Prometheus-compatible counters |
 | `/api/events` | `GET` | Most recent tool-call events from SQLite (shadow mode, FR-2). Optional `?limit=N` (max 100). |
+| `/api/events/stream` | `GET` | Live SSE stream of tool execution events (FR-3) |
+| `/api/stats` | `GET` | Dashboard real-time statistics (FR-3) |
+| `/api/generate-policy` | `POST` | Generate policy YAML draft (FR-3) |
 
 ### Repository layout
 

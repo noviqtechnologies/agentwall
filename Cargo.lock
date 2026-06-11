@@ -36,6 +36,7 @@ dependencies = [
  "socket2 0.5.10",
  "tempfile",
  "tokio",
+ "tokio-stream",
  "tokio-test",
  "tokio-util",
  "uuid",

@@ -85,6 +85,9 @@ pub struct ProxyState {
     pub response_scan_config: std::sync::RwLock<crate::policy::response_scanner::ResponseScanConfig>,
     /// FR-306: Sliding window of recent tool call fingerprints (bounded to 5).
     pub tool_history: std::sync::Mutex<Vec<ToolCallFingerprint>>,
+    
+    /// FR-3: SSE broadcast channel for real-time dashboard streaming
+    pub event_tx: tokio::sync::broadcast::Sender<String>,
 
     /// Dynamic sessions registry mapping validated client tokens/identities to isolated session contexts (FR-101)
     pub sessions: dashmap::DashMap<String, Arc<super::session::SessionContext>>,

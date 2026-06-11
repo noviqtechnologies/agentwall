@@ -67,7 +67,32 @@ pub async fn run_server(
                         let state = state.clone();
                         let client_ip = client_ip.clone();
                         async move {
-                            handle_request(req, &state, &client_ip).await
+                            if req.uri().path() == "/api/events/stream" && req.method() == hyper::Method::GET {
+                                let (tx, rx) = tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, hyper::Error>>(100);
+                                let mut bcast_rx = state.event_tx.subscribe();
+                                tokio::spawn(async move {
+                                    while let Ok(msg) = bcast_rx.recv().await {
+                                        let data = format!("data: {}\n\n", msg);
+                                        if tx.send(Ok(hyper::body::Frame::data(Bytes::from(data)))).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                });
+                                let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+                                use http_body_util::BodyExt;
+                                let body = http_body_util::StreamBody::new(stream).boxed();
+                                return Ok::<_, hyper::Error>(Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("Content-Type", "text/event-stream")
+                                    .header("Cache-Control", "no-cache")
+                                    .header("Access-Control-Allow-Origin", "*")
+                                    .body(body)
+                                    .unwrap());
+                            }
+
+                            let res = handle_request(req, &state, &client_ip).await?;
+                            use http_body_util::BodyExt;
+                            Ok::<_, hyper::Error>(res.map(|b| b.map_err(|e| match e {}).boxed()))
                         }
                     });
 
@@ -244,9 +269,31 @@ async fn handle_request(
     let method = req.method().clone();
     let path = req.uri().path().to_string();
 
-    // Health/readiness/metrics endpoints
+    // Health/readiness/metrics/dashboard endpoints
     if method == hyper::Method::GET {
         match path.as_str() {
+            "/" => {
+                let html = crate::dashboard::dashboard_html();
+                return Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header(hyper::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                    .body(Full::new(Bytes::from(html)))
+                    .unwrap());
+            }
+            "/api/stats" => {
+                match state.db_manager.get_stats().await {
+                    Ok(stats) => {
+                        let json_val = serde_json::to_value(&stats).unwrap();
+                        return Ok(json_response(StatusCode::OK, &json_val));
+                    }
+                    Err(e) => {
+                        let err = serde_json::json!({
+                            "error": format!("Database error: {}", e)
+                        });
+                        return Ok(json_response(StatusCode::INTERNAL_SERVER_ERROR, &err));
+                    }
+                }
+            }
             "/api/events" => {
                 let limit = req.uri().query()
                     .and_then(|q| {
@@ -293,6 +340,27 @@ async fn handle_request(
                 return Ok(prometheus_metrics_response(state));
             }
             _ => {}
+        }
+    }
+
+    // Policy Generation endpoint
+    if method == hyper::Method::POST && path == "/api/generate-policy" {
+        // Fetch all events to generate policy
+        match state.db_manager.get_events(100_000).await {
+            Ok(events) => {
+                let yaml_str = crate::generate_policy::generate_from_events(&events);
+                return Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header(hyper::header::CONTENT_TYPE, "text/yaml; charset=utf-8")
+                    .body(Full::new(Bytes::from(yaml_str)))
+                    .unwrap());
+            }
+            Err(e) => {
+                let err = serde_json::json!({
+                    "error": format!("Database error: {}", e)
+                });
+                return Ok(json_response(StatusCode::INTERNAL_SERVER_ERROR, &err));
+            }
         }
     }
 
@@ -405,6 +473,12 @@ async fn handle_request(
             latency_ms: start_time.elapsed().as_secs_f64() * 1000.0,
         };
         let db = state.db_manager.clone();
+        
+        // Broadcast to SSE clients
+        if let Ok(json_str) = serde_json::to_string(&event) {
+            let _ = state.event_tx.send(json_str);
+        }
+
         tokio::spawn(async move {
             let _ = db.insert(event).await;
             db.prune();

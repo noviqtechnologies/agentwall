@@ -53,6 +53,7 @@ fn create_mock_proxy_state(policy: Option<CompiledPolicy>) -> Arc<ProxyState> {
         metrics_firewall_cycle_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
+        event_tx: tokio::sync::broadcast::channel(256).0,
     })
 }
 

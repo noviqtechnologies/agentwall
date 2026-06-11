@@ -81,6 +81,7 @@ fn test_tool_history_memory_bounding() {
         metrics_firewall_cycle_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
+        event_tx: tokio::sync::broadcast::channel(256).0,
     };
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -167,6 +168,7 @@ fn test_cycle_detection_blocking() {
         metrics_firewall_cycle_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
+        event_tx: tokio::sync::broadcast::channel(256).0,
     };
 
     let req = json!({
@@ -267,6 +269,7 @@ fn test_pause_interactive_fallback_in_non_tty() {
         metrics_firewall_cycle_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
+        event_tx: tokio::sync::broadcast::channel(256).0,
     };
 
     let req = json!({

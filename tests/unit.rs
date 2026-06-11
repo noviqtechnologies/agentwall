@@ -8,4 +8,6 @@ mod unit {
     mod linter_tests;
     mod validator_tests;
     mod oidc_tests;
+    mod dashboard_html_test;
+    mod generate_policy_test;
 }

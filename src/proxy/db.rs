@@ -17,12 +17,22 @@ pub struct Event {
     pub latency_ms: f64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DbStats {
+    pub total_events: i64,
+    pub unique_tools: i64,
+    pub risk_flag_count: i64,
+}
+
 // Commands sent to the DB manager thread
 enum DbCmd {
     Insert(Event),
     Fetch {
         limit: usize,
         responder: oneshot::Sender<Result<Vec<Event>, String>>,
+    },
+    GetStats {
+        responder: oneshot::Sender<Result<DbStats, String>>,
     },
     Prune,
 }
@@ -137,6 +147,25 @@ impl DbManager {
                             }
                             let _ = responder.send(Ok(events));
                         }
+                        DbCmd::GetStats { responder } => {
+                            let total_events: i64 = conn.query_row(
+                                "SELECT COUNT(*) FROM events",
+                                [],
+                                |row| row.get(0),
+                            ).unwrap_or(0);
+                            
+                            let unique_tools: i64 = conn.query_row(
+                                "SELECT COUNT(DISTINCT tool_name) FROM events",
+                                [],
+                                |row| row.get(0),
+                            ).unwrap_or(0);
+
+                            let _ = responder.send(Ok(DbStats {
+                                total_events,
+                                unique_tools,
+                                risk_flag_count: 0, // Inferred on client
+                            }));
+                        }
                         DbCmd::Prune => {
                             // Prune if file size > 500 MiB
                             if let Ok(metadata) = fs::metadata(&db_path) {
@@ -176,6 +205,15 @@ impl DbManager {
             .send(DbCmd::Fetch { limit, responder: tx })
             .map_err(|e| format!("Failed to send fetch cmd: {}", e))?;
         rx.await.map_err(|e| format!("Fetch response error: {}", e))?
+    }
+
+    /// Async fetch of aggregate stats.
+    pub async fn get_stats(&self) -> Result<DbStats, String> {
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(DbCmd::GetStats { responder: tx })
+            .map_err(|e| format!("Failed to send stats cmd: {}", e))?;
+        rx.await.map_err(|e| format!("Stats response error: {}", e))?
     }
 
     /// Trigger pruning (optional public helper).

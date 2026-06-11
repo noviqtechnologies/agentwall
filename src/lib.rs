@@ -11,3 +11,5 @@ pub mod report;
 pub mod wrap;
 pub mod validate;
 pub mod lint;
+pub mod dashboard;
+pub mod generate_policy;

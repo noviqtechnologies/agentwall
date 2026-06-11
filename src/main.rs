@@ -284,6 +284,7 @@ async fn run_stdio_proxy(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        event_tx: tokio::sync::broadcast::channel(256).0,
     });
 
     let mut parts = args.clone();
@@ -515,6 +516,7 @@ async fn run_start(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        event_tx: tokio::sync::broadcast::channel(256).0,
     });
 
     if shadow_mode {
@@ -776,6 +778,7 @@ async fn run_wrap(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        event_tx: tokio::sync::broadcast::channel(256).0,
     });
 
     // Parse the command string
@@ -813,7 +816,7 @@ async fn run_dev(
     listen: String,
     mcp_url: String,
     _stdio: bool,
-    _no_browser: bool,
+    no_browser: bool,
     _args: Vec<String>,
 ) -> i32 {
     // Generate session secret and ID
@@ -889,6 +892,7 @@ async fn run_dev(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        event_tx: tokio::sync::broadcast::channel(256).0,
     });
 
     // Parse listen address
@@ -915,6 +919,19 @@ async fn run_dev(
     );
     println!("{} Press Ctrl+C to stop", "⌨".blue());
     println!("{}", "-".repeat(60).cyan());
+
+    if !no_browser {
+        let url = format!("http://{}", listen_addr);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            #[cfg(target_os = "windows")]
+            let _ = std::process::Command::new("cmd").args(["/C", "start", &url]).spawn();
+            #[cfg(target_os = "macos")]
+            let _ = std::process::Command::new("open").arg(&url).spawn();
+            #[cfg(target_os = "linux")]
+            let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+        });
+    }
 
     // Shutdown channel
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
