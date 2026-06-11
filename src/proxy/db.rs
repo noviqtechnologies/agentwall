@@ -31,6 +31,11 @@ enum DbCmd {
         limit: usize,
         responder: oneshot::Sender<Result<Vec<Event>, String>>,
     },
+    /// Fetch all events in chronological order (oldest first) — used by generate-policy (FR-4)
+    FetchAll {
+        limit: usize,
+        responder: oneshot::Sender<Result<Vec<Event>, String>>,
+    },
     GetStats {
         responder: oneshot::Sender<Result<DbStats, String>>,
     },
@@ -147,6 +152,33 @@ impl DbManager {
                             }
                             let _ = responder.send(Ok(events));
                         }
+                        DbCmd::FetchAll { limit, responder } => {
+                            // Oldest-first ordering for policy generation corpus (FR-4)
+                            let mut stmt = conn.prepare(
+                                "SELECT timestamp, tool_name, parameters, response, upstream_endpoint, session_id, latency_ms FROM events ORDER BY id ASC LIMIT ?",
+                            )
+                            .expect("Failed to prepare fetch-all stmt");
+                            let rows = stmt
+                                .query_map(params![limit as i64], |row| {
+                                    Ok(Event {
+                                        timestamp: row.get(0)?,
+                                        tool_name: row.get(1)?,
+                                        parameters: row.get(2)?,
+                                        response: row.get(3)?,
+                                        upstream_endpoint: row.get(4)?,
+                                        session_id: row.get(5)?,
+                                        latency_ms: row.get(6)?,
+                                    })
+                                })
+                                .expect("Failed to query all events");
+                            let mut events = Vec::new();
+                            for ev in rows {
+                                if let Ok(e) = ev {
+                                    events.push(e);
+                                }
+                            }
+                            let _ = responder.send(Ok(events));
+                        }
                         DbCmd::GetStats { responder } => {
                             let total_events: i64 = conn.query_row(
                                 "SELECT COUNT(*) FROM events",
@@ -198,13 +230,23 @@ impl DbManager {
             .map_err(|e| format!("Failed to send insert cmd: {}", e))
     }
 
-    /// Async fetch of recent events, limited to `limit` (capped by caller).
+    /// Async fetch of recent events in reverse-chronological order (newest first), limited to `limit`.
     pub async fn get_events(&self, limit: usize) -> Result<Vec<Event>, String> {
         let (tx, rx) = oneshot::channel();
         self.cmd_tx
             .send(DbCmd::Fetch { limit, responder: tx })
             .map_err(|e| format!("Failed to send fetch cmd: {}", e))?;
         rx.await.map_err(|e| format!("Fetch response error: {}", e))?
+    }
+
+    /// Async fetch of all events in chronological order (oldest first) for policy generation (FR-4).
+    /// `limit` is capped at 500 by the `generate-policy` command.
+    pub async fn get_all_events(&self, limit: usize) -> Result<Vec<Event>, String> {
+        let (tx, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(DbCmd::FetchAll { limit, responder: tx })
+            .map_err(|e| format!("Failed to send fetch-all cmd: {}", e))?;
+        rx.await.map_err(|e| format!("FetchAll response error: {}", e))?
     }
 
     /// Async fetch of aggregate stats.

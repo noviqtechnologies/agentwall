@@ -223,6 +223,25 @@ pub enum Commands {
         report_include_params: bool,
     },
 
+    /// Generate a YAML security policy draft from observed shadow-mode traffic (FR-4)
+    ///
+    /// Reads all tool-call events recorded by `agentwall dev` (shadow mode) from the
+    /// local SQLite database and produces a lint-passing `agentwall-policy.yaml` draft.
+    ///
+    /// ## Workflow
+    ///
+    /// 1. Run `agentwall dev` and route your agent's MCP traffic through it.
+    /// 2. Run `agentwall generate-policy` to draft the policy.
+    /// 3. Review and tighten the generated YAML.
+    /// 4. Run `agentwall lint agentwall-policy.yaml` to validate.
+    /// 5. Submit to your security/platform team for deployment to the centralized gateway.
+    #[command(name = "generate-policy")]
+    GeneratePolicy {
+        /// Output file path for the generated policy (default: ./agentwall-policy.yaml)
+        #[arg(long, default_value = "agentwall-policy.yaml")]
+        output: String,
+    },
+
     /// [DEPRECATED v6.1] Generate a starter policy from a dry-run audit log
     ///
     /// ## Removed in v6.1
@@ -233,10 +252,9 @@ pub enum Commands {
     ///
     /// ## Migration
     ///
-    /// 1. Author policy YAML files directly in your GitOps repository.
-    /// 2. Use provided policy templates as a starting point.
-    /// 3. Validate with: `agentwall test --gateway <URL> --policy policy.yaml fixture.json`
-    /// 4. Deploy via CI/CD pipeline with `--gateway` pointing to your test environment.
+    /// 1. Use `agentwall generate-policy` to draft a policy from observed traffic.
+    /// 2. Validate with: `agentwall test --gateway <URL> --policy policy.yaml fixture.json`
+    /// 3. Deploy via CI/CD pipeline with `--gateway` pointing to your test environment.
     Init {
         /// Audit log to derive policy from
         #[arg(long)]

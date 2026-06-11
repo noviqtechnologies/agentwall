@@ -1,393 +1,359 @@
 # Vexa AgentWall
 
-**Enterprise security gateway for AI agent tool calls over MCP.**
+**MCP security proxy for AI agent tool calls.**
 
-Vexa AgentWall is a self-hosted, **centrally deployed** enforcement layer for the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). Every JSON-RPC tool call is authenticated with OIDC, evaluated against a version-controlled allowlist policy, and recorded in a tamper-evident audit trail with real-time export to your SIEM.
+AgentWall operates as two distinct tools with a clean separation of concerns:
+
+1. **Local Developer CLI** — shadow-mode observation proxy. Records every MCP tool call the agent makes, surfaces risk patterns in a local dashboard, and generates a YAML security policy draft. No enforcement, no cloud, no signup.
+2. **Centralized Enforcement Gateway** — team/org deployment. Enforces reviewed policies for all production agents. Operated by the platform or security team — not the developer.
+
+> **Why two separate tools?** A security control operated by the same person it constrains is not a security control. Local enforcement on a developer's machine can be disabled by that developer. The centralized gateway breaks that conflict of interest.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.6-green.svg)](Cargo.toml)
+[![Version](https://img.shields.io/badge/version-1.0.8-green.svg)](Cargo.toml)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 
-[Website](https://vexasec.io/agentwall.html) · [Report an issue](https://github.com/noviqtechnologies/agentwall/issues) · [Security](mailto:security@vexasec.io)
+[Website](https://vexasec.io/agentwall.html) · [Issues](https://github.com/noviqtechnologies/agentwall/issues) · [Security](mailto:security@vexasec.io)
 
 ---
 
-## Table of contents
+## Table of Contents
 
-- [Why AgentWall](#why-agentwall)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Shadow Mode](#shadow-mode-fr-2)
-- [Quick start](#quick-start)
-- [Deployment](#deployment)
-- [Policy management](#policy-management)
-- [Command-line interface](#command-line-interface)
-- [Operations](#operations)
-- [Security model](#security-model)
+- [What This Is (and Is Not)](#what-this-is-and-is-not)
+- [Installation](#installation)
+- [Quick Start — Local Development](#quick-start--local-development)
+- [Local Web Dashboard](#local-web-dashboard)
+- [Auto-Policy Generation](#auto-policy-generation)
+- [Centralized Enforcement Gateway](#centralized-enforcement-gateway)
+- [Policy Reference](#policy-reference)
+- [CLI Reference](#cli-reference)
+- [Environment Variables](#environment-variables)
+- [HTTP Endpoints](#http-endpoints)
+- [Security Model](#security-model)
+- [Repository Layout](#repository-layout)
 - [Contributing](#contributing)
 - [License](#license)
 
 ---
 
-## Why Vexa AgentWall
+## What This Is (and Is Not)
 
-AI agents that invoke tools can read sensitive data, execute commands, and reach internal services. General API gateways and prompt-layer controls do not provide a dedicated **tool-call enforcement boundary** with identity-bound audit trails.
+**This IS:**
+- A locally-installed CLI (`agentwall dev`) for observation, policy generation, and linting.
+- A transparent local MCP proxy (shadow mode only) that records agent behaviour without blocking.
+- A local web dashboard served on `localhost` for visualizing agent tool calls in real time.
+- An auto-policy generator that drafts YAML security policies from observed traffic.
+- A centralized enforcement gateway for team/org deployment — enforces reviewed policies, operated by the security team.
+- A policy linter (`agentwall lint`) and audit log verifier (`agentwall verify-log`).
 
-Vexa AgentWall is built for platform and security teams deploying agents at scale:
-
-| Capability | What you get |
-|------------|----------------|
-| **Centralized enforcement** | One organizational gateway (Kubernetes or Docker Compose)—not a per-process sidecar. |
-| **Identity** | Every session requires a valid OIDC JWT (Okta, Microsoft Entra ID, or any JWKS provider). |
-| **Policy** | Deny-by-default YAML allowlists with JSON Schema for nested parameters—no blind object pass-through. |
-| **Audit** | HMAC-chained logs, offline verification, and export to Splunk, Datadog, or OpenSearch. |
-| **Operations** | Health probes and Prometheus metrics from day one. |
-
-> **Two-layer Architecture:** AgentWall solves this at two distinct layers. First, the developer runs `agentwall dev` locally — a zero‑friction observation tool that records every tool call, surfaces risk patterns, and auto‑generates a security policy draft. No cloud accounts, no YAML hand‑authoring, no Docker. Second, the platform or security team deploys the **AgentWall Centralized Enforcement Gateway** — a hardened Rust service that all production agents route through, enforcing the reviewed and approved policy under the security team's control. The developer cannot bypass it, modify it, or disable it.
-
-> **Network prerequisite:** Route all agent egress through the gateway (for example, Kubernetes `NetworkPolicy`) and block direct access to MCP servers. The gateway enforces only the traffic it sees.
-
----
-
-## Features
-
-### Gateway (multi-tenant)
-
-- **HTTP MCP proxy** — JSON-RPC 2.0; concurrent agent sessions with per-session isolation.
-- **Policy engine** — Schema v2 YAML; typed parameters; auto-anchored regex; **required** inline JSON Schema for `object` parameters.
-- **Default-deny** — Invalid or permissive policy configurations fail at startup; unlisted tools are blocked.
-- **Connection-level enforcement** — On violation, the gateway returns a JSON-RPC error and terminates the MCP session (no remote process kill).
-- **Shadow Mode (FR-2)** — Observation-only proxy: all tool calls are forwarded unconditionally, logged to a local SQLite database, and exposed via a REST events API. No policy evaluation, no blocking. Ideal for baselining traffic before enforcement.
-
-### Security
-
-- **OIDC authentication** — RS256/ES256 JWT validation with JWKS caching and background key rotation.
-- **Structural validators** — Opt-in `path_traversal`, `url_scheme_allowlist`, `sql_injection_basic`, `shell_injection_basic`, and custom `regex` per parameter.
-- **Response scanning** — Optional secret detection and redaction in tool outputs (`--scan-responses`).
-
-### Observability
-
-- **Probes** — `GET /healthz`, `GET /readyz`
-- **Metrics** — Prometheus-compatible `GET /metrics`
-- **SIEM export** — Splunk HEC, Datadog Logs, OpenSearch, or local-only fallback
-- **Events API** — `GET /api/events` returns the most recent tool-call events from the local SQLite database (shadow mode)
+**This is NOT:**
+- A SaaS platform, cloud backend, or hosted web application.
+- A local enforcement tool. There is no `--enforce` flag on the developer CLI. Enforcement is centralized infrastructure.
+- An SDK or library that patches LangChain, OpenAI, or Anthropic.
+- A prompt injection detection tool (use Lakera or similar).
+- An LLM observability platform (use LangSmith, AgentOps).
+- A general API gateway (use Kong, Cloudflare).
 
 ---
 
-## Architecture
+## Installation
 
-```
-  AI Agent A ──┐
-  AI Agent B ──┼──►  Vexa AgentWall          ──►  MCP Tool Servers
-  AI Agent C ──┘     (central gateway)            (GitHub, DB, FS, …)
-                     OIDC · Policy · Audit
-                              │
-                              ▼
-                         Enterprise SIEM
-```
-
-**Enforcement flow:** OIDC validation → rate limiting → policy + structural validators → durable audit write → forward to upstream MCP → optional response scan.
-
-**Shadow Mode flow:** forward (unconditionally) → SQLite event log → `GET /api/events`.
-
-Configure agents with your gateway endpoint and OIDC bearer tokens—for example, `AGENTWALL_PROXY_URL` or your ingress URL.
-
----
-
-## Shadow Mode
-
-Shadow Mode is an **observation-only proxy** — every MCP tool call is forwarded to the upstream server without any policy evaluation or enforcement. All events are persisted locally in SQLite (`~/.agentwall/events.db`) and queryable via a REST API.
-
-Use shadow mode to:
-- **Baseline** all tool calls before writing a policy.
-- **Monitor** agent behaviour in development without blocking anything.
-- **Audit** traffic without deploying enforcement.
-
-### Enabling Shadow Mode
+### One-command install (macOS, Linux, Windows via bash)
 
 ```bash
-# Dedicated dev command — always shadow mode:
-agentwall dev \
-  --listen 127.0.0.1:8080 \
-  --mcp-url http://127.0.0.1:3000
-
-# Or use the start command with the explicit flag:
-agentwall start \
-  --shadow-mode \
-  --listen 127.0.0.1:8080 \
-  --mcp-url http://127.0.0.1:3000
-
-# Via environment variable:
-AGENTWALL_SHADOW_MODE=true agentwall start ...
+curl -fsSL https://vexasec.io/install.sh | sh
 ```
 
-When active, the startup banner shows:
+The script downloads a statically-linked binary from [GitHub Releases](https://github.com/noviqtechnologies/agentwall/releases), installs it to `~/.local/bin/agentwall`, and prints PATH instructions if needed. No Docker, no Kubernetes, no runtime dependencies.
 
-```
-👁 Mode: SHADOW (Observation Only — no enforcement)
-ℹ  All tool calls forwarded and logged. Enforcement is OFF.
-```
+**Supported platforms:**
 
-### Events API
+| OS | Architecture | Binary type |
+|----|---|---|
+| macOS 12+ | x86_64, aarch64 | Universal |
+| Linux (glibc 2.31+ / Ubuntu 20.04+) | x86_64, aarch64 | Static (musl) |
+| Windows 10 21H2+ | x86_64 | Native |
 
-Query recently observed tool-call events:
+**Verify the install:**
 
 ```bash
-# Fetch the most recent 50 events (default):
-curl http://127.0.0.1:8080/api/events
-
-# Fetch up to 100 events (maximum):
-curl "http://127.0.0.1:8080/api/events?limit=100"
+agentwall --version
+# agentwall 1.0.8
 ```
 
-Each event object in the response array contains:
+### Build from source
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `timestamp` | string (ISO 8601) | When the call was received |
-| `tool_name` | string | MCP tool name (e.g. `read_file`) |
-| `parameters` | string (JSON) | Serialised tool arguments |
-| `response` | string (JSON) | Upstream server response |
-| `upstream_endpoint` | string | MCP server URL |
-| `session_id` | string | Agent session identifier |
-| `latency_ms` | number | Round-trip latency to upstream |
-
-### Storage & Retention
-
-- **Database path:** `~/.agentwall/events.db` (SQLite, created automatically).
-- **Pruning:** The oldest 1 000 rows are deleted automatically when the database file exceeds **500 MiB**.
-- **Stdio proxy:** When `shadow_mode` is active in the stdio bridge, traffic is piped directly without JSON-RPC parsing (zero overhead).
-
-> ⚠️ **Production note:** Shadow Mode disables all enforcement. Never run `--shadow-mode` or `AGENTWALL_SHADOW_MODE=true` in a production enforcement environment.
-
----
-
-# Local Web Dashboard
-
-When running the gateway in `dev` mode (`cargo run -- dev`), AgentWall automatically serves a rich, real‑time web dashboard directly from the binary. **In shadow mode the proxy skips policy evaluation**, so the dashboard works without a JWT. To see policy enforcement (allowed/denied calls) you must run the full Docker‑Compose stack, which provides the mock OIDC server and upstream MCP.
-
-#### Features
-- **Live Event Stream**: Real‑time SSE updates as agents make tool calls.
-- **Inventory & Parameters**: View observed tools, upstream endpoints, and call arguments.
-- **Risk Trends**: Visualize request distribution and tool latency.
-- **Policy Drafts**: Instantly generate starter policy YAMLs from observed activity.
-
-#### How to test manually (full end‑to‑end)
-1. **Start the full development stack** (includes mock OIDC at port 8081 and mock MCP at port 3000):
-   ```bash
-   docker compose up -d --build
-   ```
-2. **Run the local shadow proxy** (the dashboard UI will open):
-   ```bash
-   cargo run -- dev
-   ```
-3. **Obtain a development JWT** from the mock OIDC server:
-   ```powershell
-   $token = (Invoke-RestMethod "http://localhost:8081/token?sub=dev&aud=agentwall").access_token
-   $headers = @{ Authorization = "Bearer $token" }
-   ```
-4. **Send an allowed tool call** (passes policy):
-   ```powershell
-   $allowedBody = @{
-       jsonrpc = "2.0"
-       method  = "tools/call"
-       params  = @{
-           name      = "safe_tool"
-           arguments = @{ example = "hello" }
-       }
-       id = 1
-   } | ConvertTo-Json -Depth 10
-   Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers -ContentType "application/json" -Body $allowedBody
-   ```
-5. **Send a denied tool call** (blocked by policy):
-   ```powershell
-   $deniedBody = @{
-       jsonrpc = "2.0"
-       method  = "tools/call"
-       params  = @{
-           name      = "leak_secret"
-           arguments = @{}
-       }
-       id = 2
-   } | ConvertTo-Json -Depth 10
-   Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers -ContentType "application/json" -Body $deniedBody
-   ```
-6. **Watch the dashboard** – the live event stream will show both calls in real time.
-
-If you only need to preview the UI without policy enforcement, you can skip steps 1‑3; run `cargo run -- dev` and the dashboard will display events (all calls are treated as allowed).
-
-
----
-
-### Quick start
-
-#### 1️⃣ Local development (no Docker)
-
-```bash
-# Run the shadow proxy with built‑in dashboard (no policy enforcement, no JWT required)
-cargo run -- dev
-```
-
-- The UI opens automatically at `http://127.0.0.1:8080`.
-- All tool calls are logged and shown in real time, but **no policy checks** are performed.
-
-#### 2️⃣ Full end‑to‑end testing (Docker stack)
-
-```bash
-# Start the complete development environment (gateway, mock OIDC, mock MCP)
-docker compose up -d --build
-
-# In a separate terminal, run the dev proxy to serve the dashboard
-cargo run -- dev
-```
-
-- The mock OIDC server on `localhost:8081` issues development JWTs.
-- The mock MCP server on `localhost:3000` receives forwarded tool calls.
-- Use the JWT flow described in the **Local Web Dashboard (FR‑3)** section to test allowed and denied calls.
-
-#### 3️⃣ Clean up
-
-```bash
-# Stop and remove containers
-docker compose down -v
-```
-
----
-
-### Prerequisites
-
-- [Docker Desktop](https://docs.docker.com/get-docker/) with `docker compose`
-- A local HTTP client:
-  - **Windows**: PowerShell `Invoke-RestMethod` (built-in)
-  - **macOS/Linux**: `curl`
-
-> Note: The local stack builds a small Rust-based mock MCP server container. You do **not** need Rust installed locally; Docker builds it with a recent Rust toolchain.
-
-### Docker Compose
+Requires Rust 1.75+.
 
 ```bash
 git clone https://github.com/noviqtechnologies/agentwall.git
 cd agentwall
-docker compose up -d --build
+cargo build --release
+# Binary at: ./target/release/agentwall
 ```
 
-### Validate the gateway (recommended)
+---
 
-1) Confirm the local services are up:
+## Quick Start — Local Development
 
-- Gateway health: `GET http://localhost:8080/healthz`
-- Mock OIDC health: `GET http://localhost:8081/health`
-- Metrics: `GET http://localhost:8080/metrics`
+Shadow mode records every MCP tool call without blocking or modifying any traffic. It writes events to a local SQLite database and serves a real-time web dashboard.
 
-#### PowerShell (Windows) — quick health checks
+### Prerequisites
 
-```powershell
-Invoke-RestMethod "http://localhost:8080/healthz"
-Invoke-RestMethod "http://localhost:8081/health"
-Invoke-RestMethod "http://localhost:8080/metrics" | Select-Object -First 20
-```
+- AgentWall CLI installed (see above).
+- An MCP-compatible agent or tool server running locally (optional — the proxy forwards to `localhost:3000` by default).
 
-#### bash (macOS/Linux) — quick health checks
+### Step 1 — Start the shadow proxy
+
+**HTTP MCP agent:**
 
 ```bash
-curl -fsS http://localhost:8080/healthz
-curl -fsS http://localhost:8081/health
-curl -fsS http://localhost:8080/metrics | head -n 20
+agentwall dev
+# Listening on: 127.0.0.1:8080
+# Upstream: http://127.0.0.1:3000
+# Dashboard: http://127.0.0.1:8080
 ```
 
-2) Obtain a development JWT from the local mock OIDC provider.
+Configure your agent to route MCP traffic through `http://localhost:8080` instead of directly to your MCP server.
 
-#### PowerShell (Windows)
+**Stdio MCP agent (Claude Desktop, Cursor):**
 
-```powershell
-$token = (Invoke-RestMethod "http://localhost:8081/token?sub=agent-dev&aud=agentwall").access_token
+```bash
+agentwall dev --stdio -- npx -y @modelcontextprotocol/server-filesystem /workspace
+```
+
+This wraps the downstream MCP process. Update your `claude_desktop_config.json` to use `agentwall dev --stdio --` as the command prefix.
+
+### Step 2 — Run your agent
+
+Route MCP traffic through the proxy. The proxy adds no enforcement — all calls pass through unchanged.
+
+```bash
+# Example: point an HTTP MCP client at the proxy
+export AGENTWALL_PROXY_URL=http://localhost:8080
+python my_agent.py
+```
+
+Events appear in `~/.agentwall/events.db` within one second of each tool call.
+
+### Step 3 — Generate a policy draft
+
+```bash
+agentwall generate-policy
+# Output: ./agentwall-policy.yaml
+```
+
+### Step 4 — Validate the policy
+
+```bash
+agentwall lint agentwall-policy.yaml
+# Exit 0: clean
+# Exit 1: schema or security errors
+# Exit 2: malformed YAML
+```
+
+### Step 5 — Submit for security review
+
+Commit `agentwall-policy.yaml` to version control and submit it to your platform or security team for deployment to the centralized enforcement gateway. The developer's job ends here — policy enforcement is not a developer-side concern.
+
+### Full end-to-end test with Docker stack
+
+The repo includes a Docker Compose stack with a mock OIDC server (port 8081) and mock MCP server (port 3000) for integration testing.
+
+```bash
+# Start the full stack
+docker compose up -d --build
+
+# In a separate terminal, start the shadow proxy
+agentwall dev
+
+# Obtain a development JWT from the mock OIDC server
+# PowerShell (Windows):
+$token = (Invoke-RestMethod "http://localhost:8081/token?sub=dev&aud=agentwall").access_token
 $headers = @{ Authorization = "Bearer $token" }
 
-# Allowed call (passes policy; upstream records the call)
-$allowedBody = @{
-  jsonrpc = "2.0"
-  method  = "tools/call"
-  params  = @{
-    name      = "safe_tool"
-    arguments = @{ example = "hello" }
-  }
-  id      = 1
-} | ConvertTo-Json -Depth 10
-
-Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers -ContentType "application/json" -Body $allowedBody
-
-# Denied call (not in allowlist → gateway returns a JSON-RPC error)
-$deniedBody = @{
-  jsonrpc = "2.0"
-  method  = "tools/call"
-  params  = @{
-    name      = "leak_secret"
-    arguments = @{ }
-  }
-  id      = 2
-} | ConvertTo-Json -Depth 10
-
-try {
-  Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers -ContentType "application/json" -Body $deniedBody
-} catch {
-  $_.Exception.Message
-}
+# bash (macOS/Linux):
+TOKEN=$(curl -fsS "http://localhost:8081/token?sub=dev&aud=agentwall" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 ```
 
-#### bash (macOS/Linux)
+**Send an allowed tool call (passes policy):**
+
+```powershell
+# PowerShell
+$body = @{
+    jsonrpc = "2.0"; id = 1; method = "tools/call"
+    params  = @{ name = "safe_tool"; arguments = @{ example = "hello" } }
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers `
+    -ContentType "application/json" -Body $body
+```
 
 ```bash
-TOKEN="$(curl -fsS "http://localhost:8081/token?sub=agent-dev&aud=agentwall" | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-
+# bash
 curl -fsS -X POST http://localhost:8080/ \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "safe_tool",
-      "arguments": { "example": "hello" }
-    },
-    "id": 1
-  }'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"safe_tool","arguments":{"example":"hello"}}}'
+```
 
-# Denied call (not in allowlist → gateway returns a JSON-RPC error)
+**Send a denied tool call (not in policy allowlist):**
+
+```powershell
+# PowerShell
+$body = @{
+    jsonrpc = "2.0"; id = 2; method = "tools/call"
+    params  = @{ name = "leak_secret"; arguments = @{} }
+} | ConvertTo-Json -Depth 10
+
+try {
+    Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers `
+        -ContentType "application/json" -Body $body
+} catch { $_.Exception.Message }
+```
+
+```bash
+# bash
 curl -s -X POST http://localhost:8080/ \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "leak_secret",
-      "arguments": {}
-    },
-    "id": 2
-  }' | cat
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"leak_secret","arguments":{}}}'
 ```
 
-3) Inspect what reached the upstream mock MCP server:
+**Check calls that reached the upstream mock MCP server:**
 
-- `GET http://localhost:3000/calls` — shows calls that were forwarded (allowed calls only).
+```bash
+curl http://localhost:3000/calls
+```
 
-4) Shut down cleanly when done:
+**Shut down:**
 
 ```bash
 docker compose down -v
 ```
 
-See [`docker-compose.yml`](docker-compose.yml) for service definitions and environment defaults. The Compose stack mounts a local development policy at `./test-tools/test-policy.yaml`.
+---
 
-### Build from source
+## Local Web Dashboard
+
+When `agentwall dev` starts, it automatically opens `http://127.0.0.1:8080` in the default browser. Use `--no-browser` to suppress this.
+
+The dashboard is served by the same binary — no separate Node.js process, no cloud dependency.
+
+**What the dashboard shows:**
+
+| View | Description |
+|------|-------------|
+| **Tool Inventory** | All observed tools: call count, last seen, risk tier (TIER_1 / TIER_2 / TIER_3). |
+| **Session Timeline** | Chronological list of tool calls with timestamp, parameters (collapsed), response status, and latency. Click to expand full JSON. |
+| **Parameter Explorer** | Per-tool view of observed parameter values, inferred types, bounds, and detected patterns (file paths, URLs, SQL, shell commands). |
+| **Risk Flags** | Auto-detected: path traversal (`../`), shell injection metacharacters, external URLs, unbounded strings, destructive operation names. |
+| **Generate Policy** | Button that calls `agentwall generate-policy` and displays the resulting YAML in-browser with a download option. |
+
+**Live event streaming:** New tool calls appear in the timeline within 500ms via Server-Sent Events (`/api/events/stream`).
+
+**Storage:** Events are stored in `~/.agentwall/events.db` (SQLite). Automatic pruning kicks in when the file exceeds 500 MiB.
+
+> The dashboard is a developer diagnostic tool. It has no login, no user accounts, and no multi-user collaboration. All data stays on the local machine.
+
+---
+
+## Auto-Policy Generation
+
+`agentwall generate-policy` reads all events from the local SQLite store and produces a `agentwall-policy.yaml` draft.
 
 ```bash
-cargo build --release
+agentwall generate-policy
+# Reading observed tool calls from event store...
+# Analysing N events across M unique tools...
+# Policy written to agentwall-policy.yaml
+```
 
-./target/release/agentwall lint policy.example.yaml
+**What the generator produces per tool:**
 
-./target/release/agentwall start \
-  --policy policy.example.yaml \
+- Tool name allowlist entry.
+- Per-parameter schema: inferred type, `max_length` (observed max + 20% headroom), enum values if ≤ 10 unique values observed.
+- `risk_tier`: `TIER_1` (destructive/shell), `TIER_2` (data access/mutation), `TIER_3` (read-only).
+- `confidence`: `high` (≥ 50 observations), `medium` (10–49), `low` (< 10).
+- Path-like string parameters automatically receive the `path_traversal` validator.
+- `anomalies` section flagging parameter values that appear exactly once — requires human review before enabling enforcement.
+
+**Example output:**
+
+```yaml
+# Auto-generated by AgentWall from 847 observed tool calls
+# Observation window: 2026-06-01 to 2026-06-07
+# Review this policy carefully before enabling enforcement.
+
+version: "2"
+default_action: deny
+
+tools:
+  - name: read_file
+    action: allow
+    risk_tier: TIER_3
+    confidence: high         # 312 observations
+    parameters:
+      - name: path
+        type: string
+        required: true
+        max_length: 256
+        validators:
+          - path_traversal
+        observed_pattern: "^/workspace/.*$"  # informational
+
+  - name: execute_query
+    action: allow
+    risk_tier: TIER_1        # CAUTION: destructive potential
+    confidence: medium       # 28 observations
+    parameters:
+      - name: query
+        type: string
+        required: true
+        max_length: 2048
+      - name: database
+        type: string
+        required: true
+        enum: ["analytics", "staging"]
+
+# ── Anomalies (review required) ─────────────────────────────
+# - execute_query.query: observed value containing "DROP TABLE" (1 occurrence)
+#   → Likely a test. Confirm before enabling enforcement.
+```
+
+Validate the generated policy before submitting it:
+
+```bash
+agentwall lint agentwall-policy.yaml
+```
+
+---
+
+## Centralized Enforcement Gateway
+
+> **This is Phase 2 infrastructure.** The policy engine (`src/policy/`) is built and production-ready. Centralized gateway packaging and deployment tooling are under active development.
+
+The centralized gateway is the only component that enforces policy. It is deployed and operated by the platform or security team — separate from the developer's local machine. All production agents route MCP traffic through it.
+
+**Enforcement flow:** OIDC validation → rate limiting → policy evaluation → structural validators → audit write → forward to upstream MCP → optional response scan.
+
+**Default-deny:** Unlisted tools are blocked. An invalid or permissive policy configuration fails at startup.
+
+**Fail-closed:** If the gateway crashes, all active agent MCP connections drop. There is no silent pass-through.
+
+### Run with Docker Compose (for integration testing)
+
+```bash
+docker compose up -d --build
+```
+
+See [`docker-compose.yml`](docker-compose.yml) for service definitions. The stack mounts `./test-tools/test-policy.yaml` as the enforcement policy.
+
+### Run as a standalone binary
+
+```bash
+./agentwall start \
+  --policy policy.yaml \
   --listen 0.0.0.0:8080 \
   --log-path audit.log \
   --oidc-issuer https://your-idp.example.com \
@@ -396,55 +362,18 @@ cargo build --release
   --siem-token "$SPLUNK_HEC_TOKEN"
 ```
 
-Verify the audit chain:
+### Verify the audit log
 
 ```bash
-./target/release/agentwall verify-log audit.log
-./target/release/agentwall report audit.log --format text
+agentwall verify-log audit.log
+agentwall report audit.log --format text
 ```
 
 ---
 
-## Deployment
+## Policy Reference
 
-### Production
-
-1. Deploy the gateway as a **cluster Service** (Kubernetes recommended) or managed Docker Compose stack.
-2. Store policies in a **GitOps** repository; apply via CI/CD (ConfigMap, volume mount, or equivalent).
-3. Configure **OIDC** (`--oidc-issuer`, audience, JWKS) so every agent presents a corporate JWT.
-4. Export audit events to your **SIEM** (`--siem-backend`, `--siem-endpoint`, `--siem-token`).
-5. Enforce **network egress** so agents cannot reach MCP servers except through the gateway.
-
-### Environment variables
-
-| Variable | Description |
-|----------|-------------|
-| `AGENTWALL_POLICY_PATH` | Path to policy YAML |
-| `AGENTWALL_LISTEN` | Listen address (default `127.0.0.1:8080`) |
-| `AGENTWALL_MCP_URL` | Upstream MCP server URL |
-| `AGENTWALL_LOG_PATH` | Audit log file path |
-| `AGENTWALL_OIDC_ISSUER` | OIDC issuer URL (required for production) |
-| `AGENTWALL_SIEM_BACKEND` | `splunk`, `datadog`, `opensearch`, or `local` |
-| `AGENTWALL_SIEM_ENDPOINT` | SIEM ingestion URL |
-| `AGENTWALL_SIEM_TOKEN` | SIEM authentication token |
-| `AGENTWALL_SIEM_TIMEOUT` | Export timeout in seconds (default `2`) |
-| `AGENTWALL_REPORT_PATH` | Optional session report path on shutdown |
-| `AGENTWALL_DRY_RUN` | Development only: log denials but still forward requests |
-| `AGENTWALL_SHADOW_MODE` | Enable Shadow Mode — observe all traffic without enforcement (FR-2) |
-| `AGENTWALL_INCLUDE_PARAMS` | Store raw tool parameters in audit log (default: hashed only) |
-| `VEXA_GATEWAY_URL` | Target gateway for `agentwall test --gateway` in CI |
-
-Run `agentwall start --help` for all flags.
-
-### Kubernetes
-
-Expose AgentWall behind a Service or Ingress. Apply a `NetworkPolicy` that allows agent pods to reach only the gateway—not upstream MCP endpoints directly.
-
----
-
-## Policy management
-
-Policies are **schema v2** YAML files managed in version control (`default_action: deny` is required). Object parameters must include an inline `schema` block—omitting it causes a startup error.
+Policies are Schema v2 YAML files. `default_action: deny` is required. Object parameters require an inline `schema` block — omitting it causes a startup error.
 
 ```yaml
 version: "2"
@@ -467,134 +396,187 @@ tools:
       - name: path
         type: string
         required: true
+        max_length: 512
         validators:
           - path_traversal
-          - regex: "^/allowed/paths/.*"
+          - regex: "^/allowed/.*"
+
+  - name: query_db
+    action: allow
+    parameters:
+      - name: filters
+        type: object
+        required: true
+        schema:
+          type: object
+          properties:
+            table:
+              type: string
+            limit:
+              type: integer
 ```
 
-**Workflow**
+**Supported parameter validators:**
 
-1. Author or change policy in Git with pull request review.
-2. Run `agentwall lint` for schema and permissive-pattern warnings.
-3. Run `agentwall test --gateway <test-gateway-url> --oidc-token <token> --policy policy.yaml fixtures.json` in CI before merge.
-4. Deploy to the gateway via your GitOps pipeline.
+| Validator | Description |
+|-----------|-------------|
+| `path_traversal` | Blocks `../` sequences. |
+| `url_scheme_allowlist` | Blocks disallowed URL schemes. |
+| `sql_injection_basic` | Flags basic SQL injection patterns. |
+| `shell_injection_basic` | Flags shell metacharacters. |
+| `regex: "..."` | Validates against a pattern. All patterns are auto-anchored (`^...$`). |
 
-Reference policy: [`policy.example.yaml`](policy.example.yaml).
+**Policy workflow:**
 
----
+1. Author or modify policy in a Git branch with peer review.
+2. Run `agentwall lint policy.yaml` locally.
+3. Run `agentwall test --gateway <url> --oidc-token <token> --policy policy.yaml fixtures.json` in CI.
+4. Deploy to the centralized gateway via your GitOps pipeline.
 
-## Command-line interface
-
-| Command | Purpose |
-|---------|---------|
-| `agentwall start` | Run the central HTTP MCP gateway |
-| `agentwall start --shadow-mode` | Run the gateway in shadow (observation-only) mode — no enforcement (FR-2) |
-| `agentwall dev` | Start a local shadow proxy with a built-in dashboard endpoint (FR-2) |
-| `agentwall lint` | Validate policy YAML locally (schema + warnings) |
-| `agentwall test` | Validate policy against a **deployed** test gateway and fixture file (CI/CD) |
-| `agentwall verify-log` | Verify HMAC integrity of an audit log |
-| `agentwall report` | Build a session report from an audit log file |
-| `agentwall promote` | Production readiness checks and Ed25519 policy signing |
-| `agentwall validate` | Single-payload policy check for policy authors |
-
-**Notes**
-
-- **`lint`** — Local policy checks. Exit codes: `0` clean, `1` errors, `2` warnings only.
-- **`test`** — Production validation path: requires `--gateway` and `--oidc-token` to exercise the live gateway. Fixture format: `[{ "tool": "name", "params": { ... } }, ...]`.
-- **`promote`** — Validates schema v2 requirements (including identity configuration) before signing.
-- **`dev`** — Equivalent to `start --shadow-mode`; sets `shadow_mode = true`, skips policy loading, and serves the local Web Dashboard (FR-3). Automatically opens your browser. Intended for local development baselining.
-- **`start --shadow-mode`** — Same behaviour as `dev` but within the `start` command, allowing environment variable control via `AGENTWALL_SHADOW_MODE`.
-
-Local single-payload checks for policy authors: `agentwall validate --policy policy.yaml --tool read_file --payload call.json`.
+Reference: [`policy.example.yaml`](policy.example.yaml).
 
 ---
 
-## Operations
+## CLI Reference
 
-### HTTP endpoints
+| Command | Description |
+|---------|-------------|
+| `agentwall dev` | Start local shadow proxy (observation only, no enforcement). Opens dashboard. |
+| `agentwall dev --stdio -- <cmd>` | Stdio proxy mode — wraps a downstream MCP process. |
+| `agentwall dev --no-browser` | Start shadow proxy without opening the browser. |
+| `agentwall start` | Run the enforcement gateway (requires `--policy`). |
+| `agentwall start --shadow-mode` | Run the gateway in shadow mode via `start` command. |
+| `agentwall generate-policy` | Generate a YAML policy draft from observed shadow-mode traffic. |
+| `agentwall lint <policy.yaml>` | Validate policy YAML (schema + security warnings). |
+| `agentwall test` | Validate policy against a deployed gateway with fixture calls (CI/CD). |
+| `agentwall verify-log <log>` | Verify HMAC chain integrity of an audit log. |
+| `agentwall report <log>` | Generate a session report from an audit log. |
+| `agentwall validate` | Single-payload policy check for policy authors. |
+| `agentwall promote` | Production readiness checks and Ed25519 policy signing. |
+| `agentwall wrap claude` | Patch Claude Desktop config to route MCP through AgentWall. |
+| `agentwall unwrap claude` | Restore Claude Desktop config from the AgentWall backup. |
+
+**`agentwall lint` exit codes:** `0` = clean, `1` = errors, `2` = malformed YAML.
+
+**`agentwall test`** requires `--gateway <url>` and `--oidc-token <token>` to exercise a live gateway. Fixture format: `[{ "tool": "name", "params": { ... } }, ...]`.
+
+---
+
+## Environment Variables
+
+| Variable | Command | Description |
+|----------|---------|-------------|
+| `AGENTWALL_POLICY_PATH` | `start` | Path to policy YAML |
+| `AGENTWALL_LISTEN` | `start` | Listen address (default `127.0.0.1:8080`) |
+| `AGENTWALL_MCP_URL` | `start`, `dev` | Upstream MCP server URL |
+| `AGENTWALL_LOG_PATH` | `start` | Audit log file path |
+| `AGENTWALL_OIDC_ISSUER` | `start` | OIDC issuer URL |
+| `AGENTWALL_SIEM_BACKEND` | `start` | `splunk`, `datadog`, `opensearch`, or `local` |
+| `AGENTWALL_SIEM_ENDPOINT` | `start` | SIEM ingestion URL |
+| `AGENTWALL_SIEM_TOKEN` | `start` | SIEM authentication token |
+| `AGENTWALL_SIEM_TIMEOUT` | `start` | Export timeout in seconds (default `2`) |
+| `AGENTWALL_SHADOW_MODE` | `start` | `true` to enable shadow mode on `start` |
+| `AGENTWALL_DRY_RUN` | `start` | Log violations but forward all calls |
+| `AGENTWALL_INCLUDE_PARAMS` | `start` | Store raw parameters in audit log (default: hashed) |
+| `AGENTWALL_REPORT_PATH` | `start` | Session report path on shutdown |
+| `VEXA_GATEWAY_URL` | `test` | Target gateway for `agentwall test` in CI |
+
+Run `agentwall start --help` for all flags.
+
+---
+
+## HTTP Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | `GET` | Local Web Dashboard UI (FR-3) |
-| `/` | `POST` | MCP JSON-RPC proxy |
-| `/healthz` | `GET` | Liveness |
-| `/readyz` | `GET` | Readiness |
+| `/` | `GET` | Local web dashboard |
+| `/` | `POST` | MCP JSON-RPC 2.0 proxy |
+| `/healthz` | `GET` | Liveness probe |
+| `/readyz` | `GET` | Readiness probe |
 | `/metrics` | `GET` | Prometheus-compatible counters |
-| `/api/events` | `GET` | Most recent tool-call events from SQLite (shadow mode, FR-2). Optional `?limit=N` (max 100). |
-| `/api/events/stream` | `GET` | Live SSE stream of tool execution events (FR-3) |
-| `/api/stats` | `GET` | Dashboard real-time statistics (FR-3) |
-| `/api/generate-policy` | `POST` | Generate policy YAML draft (FR-3) |
+| `/api/events` | `GET` | Recent tool-call events from SQLite. `?limit=N` (max 100, default 50). |
+| `/api/events/stream` | `GET` | Live SSE stream of tool-call events |
+| `/api/stats` | `GET` | Real-time event statistics |
+| `/api/generate-policy` | `POST` | Trigger policy generation, returns YAML |
 
-### Repository layout
+---
+
+## Security Model
+
+**What the gateway enforces:**
+
+- Default-deny: unlisted tools are blocked.
+- OIDC-bound identity on all audited decisions.
+- Full JSON Schema validation for object parameters.
+- Tamper-evident HMAC-chained audit logs with offline verifiability.
+- Session termination on policy violation (connection boundary only — no remote process kill).
+
+**What you must provide:**
+
+- Network policies (K8s `NetworkPolicy`, VPC egress rules, firewall) that prevent agents from routing around the gateway.
+- GitOps-managed policies with CI validation against a test gateway.
+- OIDC for all production agent sessions.
+- Never run `--shadow-mode`, `AGENTWALL_SHADOW_MODE`, or `AGENTWALL_DRY_RUN` in a production enforcement environment.
+
+**Out of scope:**
+
+- Semantic DLP or prompt-injection detection.
+- Remote process termination (`--kill-mode process` / `both` are removed as of v6.1).
+- SaaS dashboard or cloud-hosted log storage.
+- Legal compliance certifications.
+
+**Responsible disclosure:** [security@vexasec.io](mailto:security@vexasec.io)
+
+---
+
+## Repository Layout
 
 ```
 agentwall/
 ├── src/
+│   ├── main.rs              # Entry point, command dispatch
+│   ├── cli.rs               # Clap CLI definitions
 │   ├── proxy/
-│   │   ├── server.rs    # HTTP gateway, routing, /api/events endpoint
-│   │   ├── handler.rs   # ProxyState, policy evaluation, shadow_mode bypass
-│   │   ├── stdio.rs     # Stdio bridge + transparent shadow pipe
-│   │   ├── db.rs        # SQLite event engine (FR-2)
-│   │   └── session.rs   # Per-session isolation
-│   ├── policy/          # Schema, engine, OIDC identity
-│   └── audit/           # HMAC logger, SIEM export
-├── tests/               # Unit and integration tests
-├── test-tools/          # Local mocks (OIDC, SIEM, fixtures)
-├── docker-compose.yml   # Local stack aligned with production
+│   │   ├── handler.rs       # ProxyState, policy evaluation, shadow-mode bypass
+│   │   ├── server.rs        # HTTP gateway, routing, /api/* endpoints
+│   │   ├── db.rs            # SQLite event store (FR-2)
+│   │   ├── stdio.rs         # Stdio bridge and transparent shadow pipe
+│   │   └── session.rs       # Per-session isolation
+│   ├── dashboard/
+│   │   ├── mod.rs           # Dashboard module
+│   │   └── dashboard.html   # Embedded dashboard UI (FR-3)
+│   ├── policy/              # Schema, engine, OIDC identity, response scanner
+│   ├── audit/               # HMAC logger, SIEM export
+│   ├── generate_policy.rs   # Auto-policy generator (FR-4)
+│   └── lint.rs              # Policy linter
+├── tests/
+│   └── unit/                # Unit tests (68+ passing)
+├── test-tools/              # Mock OIDC server, mock MCP server, test fixtures
+├── docs/
+│   └── VexaAgentWall-PRD-FINAL.md
+├── docker-compose.yml       # Local development stack
 ├── Dockerfile
-└── policy.example.yaml
+├── policy.example.yaml
+└── install.sh               # One-command installer (FR-1)
 ```
 
 ### Development
 
 ```bash
-cargo build --release
+cargo build
 cargo test
-cargo bench
-cargo fmt --check
 cargo clippy -- -D warnings
+cargo fmt --check
 ```
-
-Use the Docker Compose stack and SIEM integration for local testing. **Production observability is through your SIEM and Prometheus**—not a bundled product dashboard.
-
----
-
-## Security model
-
-**Provided by the gateway**
-
-- Deny-by-default enforcement for routed traffic
-- OIDC-bound identity on audited decisions
-- Full JSON Schema validation for object parameters
-- Tamper-evident audit logs with offline verification
-- Session termination on policy violation (connection boundary)
-
-**Required from operators**
-
-- Network policies that prevent MCP bypass
-- GitOps-managed policies with CI validation against a test gateway
-- OIDC for all production agent sessions
-- No `--dry-run`, `AGENTWALL_DRY_RUN`, `--shadow-mode`, or `AGENTWALL_SHADOW_MODE` in production environments
-
-**Not in scope**
-
-- Semantic DLP or prompt-injection detection (use complementary controls)
-- Remote process termination (`--kill-mode process` / `both` are not supported)
-- Local sidecar or desktop wrap installers
-- Policy generation from runtime logs (`agentwall init` is deprecated)
-
-**Responsible disclosure:** [contact@vexasec.io](mailto:contact@vexasec.io)
 
 ---
 
 ## Contributing
 
-We welcome issues, documentation improvements, and pull requests.
-
 1. [Open an issue](https://github.com/noviqtechnologies/agentwall/issues) for significant changes.
 2. Fork the repository and create a feature branch.
-3. Ensure `cargo fmt`, `cargo clippy`, and `cargo test` pass.
-4. Submit a pull request with a clear description and test plan.
+3. Ensure `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test` all pass.
+4. Submit a pull request with a description and test plan.
 
 ---
 

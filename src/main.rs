@@ -165,6 +165,9 @@ async fn main() {
         } => {
             run_dev(listen, mcp_url, stdio, no_browser, args).await
         }
+        Commands::GeneratePolicy { output } => {
+            run_generate_policy(output).await
+        }
         Commands::Validate { policy, tool, payload } => {
             match agentwall::validate::execute(&policy, &tool, &payload) {
                 Ok(_) => 0,
@@ -947,6 +950,75 @@ async fn run_dev(
         return 1;
     }
     0
+}
+
+// ─── FR-4: agentwall generate-policy ──────────────────────────────────────────
+
+/// Run the auto-policy generator (FR-4).
+///
+/// Reads up to 500 events from the local SQLite event store (chronological order),
+/// runs the analysis engine, and writes the resulting YAML to `output_path`.
+async fn run_generate_policy(output_path: String) -> i32 {
+    println!("{} Reading observed tool calls from event store...", "ℹ".blue());
+
+    let db = agentwall::proxy::db::DbManager::init();
+    let events = match db.get_all_events(500).await {
+        Ok(evs) => evs,
+        Err(e) => {
+            eprintln!("{} Failed to read events: {}", "✖".red(), e);
+            return 1;
+        }
+    };
+
+    if events.is_empty() {
+        println!(
+            "{} No tool calls observed yet.",
+            "⚠".yellow()
+        );
+        println!(
+            "{} Start shadow mode first: {}",
+            "ℹ".blue(),
+            "agentwall dev".cyan()
+        );
+        return 1;
+    }
+
+    println!(
+        "{} Analysing {} events across {} unique tools...",
+        "ℹ".blue(),
+        events.len().to_string().cyan(),
+        events
+            .iter()
+            .map(|e| e.tool_name.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            .to_string()
+            .cyan()
+    );
+
+    let yaml = agentwall::generate_policy::generate_from_events(&events);
+
+    match std::fs::write(&output_path, &yaml) {
+        Ok(_) => {
+            println!(
+                "{} Policy written to {}",
+                "✓".green().bold(),
+                output_path.cyan().underline()
+            );
+            println!(
+                "{} Next steps:",
+                "ℹ".blue()
+            );
+            println!("    1. Review {} carefully — check anomalies section.", output_path.cyan());
+            println!("    2. Run {} to validate.", "agentwall lint agentwall-policy.yaml".yellow());
+            println!("    3. Submit to your platform/security team for gateway deployment.");
+            0
+        }
+        Err(e) => {
+            eprintln!("{} Failed to write {}: {}", "✖".red(), output_path, e);
+            1
+        }
+    }
 }
 
 // ─── FR-304: agentwall wrap claude / unwrap claude ──────────────────────────
