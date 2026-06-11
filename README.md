@@ -17,7 +17,7 @@ Vexa AgentWall is a self-hosted, **centrally deployed** enforcement layer for th
 - [Why AgentWall](#why-agentwall)
 - [Features](#features)
 - [Architecture](#architecture)
-- [Shadow Mode (FR-2)](#shadow-mode-fr-2)
+- [Shadow Mode](#shadow-mode-fr-2)
 - [Quick start](#quick-start)
 - [Deployment](#deployment)
 - [Policy management](#policy-management)
@@ -42,6 +42,8 @@ Vexa AgentWall is built for platform and security teams deploying agents at scal
 | **Policy** | Deny-by-default YAML allowlists with JSON Schema for nested parameters—no blind object pass-through. |
 | **Audit** | HMAC-chained logs, offline verification, and export to Splunk, Datadog, or OpenSearch. |
 | **Operations** | Health probes and Prometheus metrics from day one. |
+
+> **Two-layer Architecture:** AgentWall solves this at two distinct layers. First, the developer runs `agentwall dev` locally — a zero‑friction observation tool that records every tool call, surfaces risk patterns, and auto‑generates a security policy draft. No cloud accounts, no YAML hand‑authoring, no Docker. Second, the platform or security team deploys the **AgentWall Centralized Enforcement Gateway** — a hardened Rust service that all production agents route through, enforcing the reviewed and approved policy under the security team's control. The developer cannot bypass it, modify it, or disable it.
 
 > **Network prerequisite:** Route all agent egress through the gateway (for example, Kubernetes `NetworkPolicy`) and block direct access to MCP servers. The gateway enforces only the traffic it sees.
 
@@ -92,7 +94,7 @@ Configure agents with your gateway endpoint and OIDC bearer tokens—for example
 
 ---
 
-## Shadow Mode (FR-2)
+## Shadow Mode
 
 Shadow Mode is an **observation-only proxy** — every MCP tool call is forwarded to the upstream server without any policy evaluation or enforcement. All events are persisted locally in SQLite (`~/.agentwall/events.db`) and queryable via a REST API.
 
@@ -160,41 +162,97 @@ Each event object in the response array contains:
 
 ---
 
-## Local Web Dashboard (FR-3)
+# Local Web Dashboard
 
-When running the gateway in `dev` mode, AgentWall automatically serves a rich, real-time web dashboard directly from the binary. It tracks and visualizes tool executions instantly without needing external SIEM setups or frontend dependencies.
+When running the gateway in `dev` mode (`cargo run -- dev`), AgentWall automatically serves a rich, real‑time web dashboard directly from the binary. **In shadow mode the proxy skips policy evaluation**, so the dashboard works without a JWT. To see policy enforcement (allowed/denied calls) you must run the full Docker‑Compose stack, which provides the mock OIDC server and upstream MCP.
 
-### Features
-- **Live Event Stream**: Real-time SSE updates as agents make tool calls.
-- **Inventory & Parameters**: See all observed tools, upstream endpoints, and parameters.
-- **Risk Trends**: View visualizations of request distributions and tool latency.
+#### Features
+- **Live Event Stream**: Real‑time SSE updates as agents make tool calls.
+- **Inventory & Parameters**: View observed tools, upstream endpoints, and call arguments.
+- **Risk Trends**: Visualize request distribution and tool latency.
 - **Policy Drafts**: Instantly generate starter policy YAMLs from observed activity.
 
-### How to test manually
-
-To test the dashboard:
-1. Run the local shadow proxy:
+#### How to test manually (full end‑to‑end)
+1. **Start the full development stack** (includes mock OIDC at port 8081 and mock MCP at port 3000):
+   ```bash
+   docker compose up -d --build
+   ```
+2. **Run the local shadow proxy** (the dashboard UI will open):
    ```bash
    cargo run -- dev
    ```
-2. The dashboard will automatically open in your default browser at `http://127.0.0.1:8080`. (Use `--no-browser` to disable this).
-3. Send tool calls to the proxy at `http://127.0.0.1:8080/` (via POST) or run an agent through it.
-4. Watch the events stream live in the UI!
+3. **Obtain a development JWT** from the mock OIDC server:
+   ```powershell
+   $token = (Invoke-RestMethod "http://localhost:8081/token?sub=dev&aud=agentwall").access_token
+   $headers = @{ Authorization = "Bearer $token" }
+   ```
+4. **Send an allowed tool call** (passes policy):
+   ```powershell
+   $allowedBody = @{
+       jsonrpc = "2.0"
+       method  = "tools/call"
+       params  = @{
+           name      = "safe_tool"
+           arguments = @{ example = "hello" }
+       }
+       id = 1
+   } | ConvertTo-Json -Depth 10
+   Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers -ContentType "application/json" -Body $allowedBody
+   ```
+5. **Send a denied tool call** (blocked by policy):
+   ```powershell
+   $deniedBody = @{
+       jsonrpc = "2.0"
+       method  = "tools/call"
+       params  = @{
+           name      = "leak_secret"
+           arguments = @{}
+       }
+       id = 2
+   } | ConvertTo-Json -Depth 10
+   Invoke-RestMethod "http://localhost:8080/" -Method Post -Headers $headers -ContentType "application/json" -Body $deniedBody
+   ```
+6. **Watch the dashboard** – the live event stream will show both calls in real time.
+
+If you only need to preview the UI without policy enforcement, you can skip steps 1‑3; run `cargo run -- dev` and the dashboard will display events (all calls are treated as allowed).
 
 
 ---
 
-## Quick start
+### Quick start
 
-### Installation
-
-For macOS, Linux, and Windows (via MSYS/Git Bash/WSL), install the precompiled binary with a single command:
+#### 1️⃣ Local development (no Docker)
 
 ```bash
-curl -fsSL https://vexasec.io/install.sh | sh
+# Run the shadow proxy with built‑in dashboard (no policy enforcement, no JWT required)
+cargo run -- dev
 ```
 
-Evaluate AgentWall locally using the Docker Compose stack that mirrors production components (gateway, OIDC, SIEM mock, and a mock upstream MCP server). The steps below are designed to be **copy/paste friendly** on both Windows (PowerShell) and macOS/Linux (bash).
+- The UI opens automatically at `http://127.0.0.1:8080`.
+- All tool calls are logged and shown in real time, but **no policy checks** are performed.
+
+#### 2️⃣ Full end‑to‑end testing (Docker stack)
+
+```bash
+# Start the complete development environment (gateway, mock OIDC, mock MCP)
+docker compose up -d --build
+
+# In a separate terminal, run the dev proxy to serve the dashboard
+cargo run -- dev
+```
+
+- The mock OIDC server on `localhost:8081` issues development JWTs.
+- The mock MCP server on `localhost:3000` receives forwarded tool calls.
+- Use the JWT flow described in the **Local Web Dashboard (FR‑3)** section to test allowed and denied calls.
+
+#### 3️⃣ Clean up
+
+```bash
+# Stop and remove containers
+docker compose down -v
+```
+
+---
 
 ### Prerequisites
 
