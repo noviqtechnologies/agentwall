@@ -17,6 +17,7 @@ Vexa AgentWall is a self-hosted, **centrally deployed** enforcement layer for th
 - [Why AgentWall](#why-agentwall)
 - [Features](#features)
 - [Architecture](#architecture)
+- [Shadow Mode (FR-2)](#shadow-mode-fr-2)
 - [Quick start](#quick-start)
 - [Deployment](#deployment)
 - [Policy management](#policy-management)
@@ -54,6 +55,7 @@ Vexa AgentWall is built for platform and security teams deploying agents at scal
 - **Policy engine** — Schema v2 YAML; typed parameters; auto-anchored regex; **required** inline JSON Schema for `object` parameters.
 - **Default-deny** — Invalid or permissive policy configurations fail at startup; unlisted tools are blocked.
 - **Connection-level enforcement** — On violation, the gateway returns a JSON-RPC error and terminates the MCP session (no remote process kill).
+- **Shadow Mode (FR-2)** — Observation-only proxy: all tool calls are forwarded unconditionally, logged to a local SQLite database, and exposed via a REST events API. No policy evaluation, no blocking. Ideal for baselining traffic before enforcement.
 
 ### Security
 
@@ -66,6 +68,7 @@ Vexa AgentWall is built for platform and security teams deploying agents at scal
 - **Probes** — `GET /healthz`, `GET /readyz`
 - **Metrics** — Prometheus-compatible `GET /metrics`
 - **SIEM export** — Splunk HEC, Datadog Logs, OpenSearch, or local-only fallback
+- **Events API** — `GET /api/events` returns the most recent tool-call events from the local SQLite database (shadow mode)
 
 ---
 
@@ -81,9 +84,79 @@ Vexa AgentWall is built for platform and security teams deploying agents at scal
                          Enterprise SIEM
 ```
 
-**Per-request flow:** OIDC validation → rate limiting → policy + structural validators → durable audit write → forward to upstream MCP → optional response scan.
+**Enforcement flow:** OIDC validation → rate limiting → policy + structural validators → durable audit write → forward to upstream MCP → optional response scan.
+
+**Shadow Mode flow:** forward (unconditionally) → SQLite event log → `GET /api/events`.
 
 Configure agents with your gateway endpoint and OIDC bearer tokens—for example, `AGENTWALL_PROXY_URL` or your ingress URL.
+
+---
+
+## Shadow Mode (FR-2)
+
+Shadow Mode is an **observation-only proxy** — every MCP tool call is forwarded to the upstream server without any policy evaluation or enforcement. All events are persisted locally in SQLite (`~/.agentwall/events.db`) and queryable via a REST API.
+
+Use shadow mode to:
+- **Baseline** all tool calls before writing a policy.
+- **Monitor** agent behaviour in development without blocking anything.
+- **Audit** traffic without deploying enforcement.
+
+### Enabling Shadow Mode
+
+```bash
+# Dedicated dev command — always shadow mode:
+agentwall dev \
+  --listen 127.0.0.1:8080 \
+  --mcp-url http://127.0.0.1:3000
+
+# Or use the start command with the explicit flag:
+agentwall start \
+  --shadow-mode \
+  --listen 127.0.0.1:8080 \
+  --mcp-url http://127.0.0.1:3000
+
+# Via environment variable:
+AGENTWALL_SHADOW_MODE=true agentwall start ...
+```
+
+When active, the startup banner shows:
+
+```
+👁 Mode: SHADOW (Observation Only — no enforcement)
+ℹ  All tool calls forwarded and logged. Enforcement is OFF.
+```
+
+### Events API
+
+Query recently observed tool-call events:
+
+```bash
+# Fetch the most recent 50 events (default):
+curl http://127.0.0.1:8080/api/events
+
+# Fetch up to 100 events (maximum):
+curl "http://127.0.0.1:8080/api/events?limit=100"
+```
+
+Each event object in the response array contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | string (ISO 8601) | When the call was received |
+| `tool_name` | string | MCP tool name (e.g. `read_file`) |
+| `parameters` | string (JSON) | Serialised tool arguments |
+| `response` | string (JSON) | Upstream server response |
+| `upstream_endpoint` | string | MCP server URL |
+| `session_id` | string | Agent session identifier |
+| `latency_ms` | number | Round-trip latency to upstream |
+
+### Storage & Retention
+
+- **Database path:** `~/.agentwall/events.db` (SQLite, created automatically).
+- **Pruning:** The oldest 1 000 rows are deleted automatically when the database file exceeds **500 MiB**.
+- **Stdio proxy:** When `shadow_mode` is active in the stdio bridge, traffic is piped directly without JSON-RPC parsing (zero overhead).
+
+> ⚠️ **Production note:** Shadow Mode disables all enforcement. Never run `--shadow-mode` or `AGENTWALL_SHADOW_MODE=true` in a production enforcement environment.
 
 ---
 
@@ -275,6 +348,8 @@ Verify the audit chain:
 | `AGENTWALL_SIEM_TIMEOUT` | Export timeout in seconds (default `2`) |
 | `AGENTWALL_REPORT_PATH` | Optional session report path on shutdown |
 | `AGENTWALL_DRY_RUN` | Development only: log denials but still forward requests |
+| `AGENTWALL_SHADOW_MODE` | Enable Shadow Mode — observe all traffic without enforcement (FR-2) |
+| `AGENTWALL_INCLUDE_PARAMS` | Store raw tool parameters in audit log (default: hashed only) |
 | `VEXA_GATEWAY_URL` | Target gateway for `agentwall test --gateway` in CI |
 
 Run `agentwall start --help` for all flags.
@@ -331,17 +406,22 @@ Reference policy: [`policy.example.yaml`](policy.example.yaml).
 | Command | Purpose |
 |---------|---------|
 | `agentwall start` | Run the central HTTP MCP gateway |
+| `agentwall start --shadow-mode` | Run the gateway in shadow (observation-only) mode — no enforcement (FR-2) |
+| `agentwall dev` | Start a local shadow proxy with a built-in dashboard endpoint (FR-2) |
 | `agentwall lint` | Validate policy YAML locally (schema + warnings) |
 | `agentwall test` | Validate policy against a **deployed** test gateway and fixture file (CI/CD) |
 | `agentwall verify-log` | Verify HMAC integrity of an audit log |
 | `agentwall report` | Build a session report from an audit log file |
 | `agentwall promote` | Production readiness checks and Ed25519 policy signing |
+| `agentwall validate` | Single-payload policy check for policy authors |
 
 **Notes**
 
 - **`lint`** — Local policy checks. Exit codes: `0` clean, `1` errors, `2` warnings only.
 - **`test`** — Production validation path: requires `--gateway` and `--oidc-token` to exercise the live gateway. Fixture format: `[{ "tool": "name", "params": { ... } }, ...]`.
 - **`promote`** — Validates schema v2 requirements (including identity configuration) before signing.
+- **`dev`** — Equivalent to `start --shadow-mode`; sets `shadow_mode = true`, zero rate-limiter, skips policy loading. Intended for local development baselining.
+- **`start --shadow-mode`** — Same behaviour as `dev` but within the `start` command, allowing environment variable control via `AGENTWALL_SHADOW_MODE`.
 
 Local single-payload checks for policy authors: `agentwall validate --policy policy.yaml --tool read_file --payload call.json`.
 
@@ -356,14 +436,20 @@ Local single-payload checks for policy authors: `agentwall validate --policy pol
 | `/` | `POST` | MCP JSON-RPC proxy |
 | `/healthz` | `GET` | Liveness |
 | `/readyz` | `GET` | Readiness |
-| `/metrics` | `GET` | Prometheus metrics |
+| `/metrics` | `GET` | Prometheus-compatible counters |
+| `/api/events` | `GET` | Most recent tool-call events from SQLite (shadow mode, FR-2). Optional `?limit=N` (max 100). |
 
 ### Repository layout
 
 ```
 agentwall/
 ├── src/
-│   ├── proxy/           # HTTP gateway, sessions, forwarding
+│   ├── proxy/
+│   │   ├── server.rs    # HTTP gateway, routing, /api/events endpoint
+│   │   ├── handler.rs   # ProxyState, policy evaluation, shadow_mode bypass
+│   │   ├── stdio.rs     # Stdio bridge + transparent shadow pipe
+│   │   ├── db.rs        # SQLite event engine (FR-2)
+│   │   └── session.rs   # Per-session isolation
 │   ├── policy/          # Schema, engine, OIDC identity
 │   └── audit/           # HMAC logger, SIEM export
 ├── tests/               # Unit and integration tests
@@ -402,7 +488,7 @@ Use the Docker Compose stack and SIEM integration for local testing. **Productio
 - Network policies that prevent MCP bypass
 - GitOps-managed policies with CI validation against a test gateway
 - OIDC for all production agent sessions
-- No `--dry-run` or `AGENTWALL_DRY_RUN` in production environments
+- No `--dry-run`, `AGENTWALL_DRY_RUN`, `--shadow-mode`, or `AGENTWALL_SHADOW_MODE` in production environments
 
 **Not in scope**
 

@@ -4,3 +4,4 @@ pub mod server;
 pub mod stdio;
 pub mod codec;
 pub mod session;
+pub mod db;

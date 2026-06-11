@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::audit::logger::AuditLogger;
+use super::db::DbManager;
 use crate::kill::KillMode;
 use crate::logging::{self, Level};
 use crate::policy::engine::{CompiledPolicy, EvalResult};
@@ -70,12 +71,14 @@ pub struct ProxyState {
     pub agent_pid: Option<u32>,
     pub upstream_url: String,
     pub dry_run: bool,
+    pub shadow_mode: bool,
     /// FR-113: Whether a policy file was successfully loaded
     pub policy_loaded: std::sync::atomic::AtomicBool,
     pub rate_limiter: RateLimiter,
     pub http_client: reqwest::Client,
     pub safe_mode_scanner: Arc<crate::policy::safe_mode::SafeModeScanner>,
     pub ready: bool,
+    pub db_manager: Arc<DbManager>,
     /// FR-303b: Response scanner for secret detection
     pub response_scanner: Arc<crate::policy::response_scanner::ResponseScanner>,
     /// FR-303b: Response scan configuration

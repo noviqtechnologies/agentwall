@@ -1,4 +1,5 @@
 //! AgentWall — main entry point
+#![allow(deprecated)]
 
 use agentwall::audit;
 use agentwall::check;
@@ -98,6 +99,7 @@ async fn main() {
             siem_token,
             siem_timeout_secs,
             include_params,
+            shadow_mode,
         } => {
             run_start(
                 policy,
@@ -120,6 +122,7 @@ async fn main() {
                 siem_token,
                 siem_timeout_secs,
                 include_params,
+                shadow_mode,
             )
             .await
         }
@@ -153,6 +156,15 @@ async fn main() {
         Commands::StdioProxy { args, scan_responses, block_on_secrets, max_scan_bytes } => {
             run_stdio_proxy(args, scan_responses, block_on_secrets, max_scan_bytes).await
         }
+        Commands::Dev {
+            listen,
+            mcp_url,
+            stdio,
+            no_browser,
+            args,
+        } => {
+            run_dev(listen, mcp_url, stdio, no_browser, args).await
+        }
         Commands::Validate { policy, tool, payload } => {
             match agentwall::validate::execute(&policy, &tool, &payload) {
                 Ok(_) => 0,
@@ -162,6 +174,8 @@ async fn main() {
                 }
             }
         }
+// Duplicate Validate block removed
+
         Commands::Lint { policy } => {
             match agentwall::lint::execute(&policy) {
                 Ok(code) => code,
@@ -186,6 +200,7 @@ fn print_banner() {
     println!("{}", "=".repeat(60).cyan());
 }
 
+#[allow(deprecated)]
 async fn run_stdio_proxy(
     args: Vec<String>,
     scan_responses: bool,
@@ -241,6 +256,8 @@ async fn run_stdio_proxy(
         ],
     };
 
+    let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
+
     let state = Arc::new(ProxyState {
         policy: std::sync::RwLock::new(None), // Safe Mode only for Claude wrap
         audit_logger,
@@ -249,11 +266,13 @@ async fn run_stdio_proxy(
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
+        shadow_mode: false,
         policy_loaded: std::sync::atomic::AtomicBool::new(false),
         rate_limiter: proxy::handler::RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner,
         ready: true,
+        db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
         tool_history: std::sync::Mutex::new(Vec::new()),
@@ -285,6 +304,7 @@ async fn run_stdio_proxy(
     0
 }
 
+#[allow(deprecated)]
 async fn run_start(
     policy_path: Option<String>,
     listen: String,
@@ -306,6 +326,7 @@ async fn run_start(
     siem_token: String,
     siem_timeout_secs: u64,
     include_params: bool,
+    shadow_mode: bool,
 ) -> i32 {
     println!("{} Loading configuration...", "ℹ".blue());
 
@@ -466,6 +487,8 @@ async fn run_start(
         safe_tools: sf_tools,
     };
 
+    let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
+
     let state = Arc::new(ProxyState {
         policy: std::sync::RwLock::new(compiled_policy),
         audit_logger: audit_logger.clone(),
@@ -474,11 +497,13 @@ async fn run_start(
         agent_pid: resolved_pid,
         upstream_url: mcp_url,
         dry_run,
+        shadow_mode,
         policy_loaded: std::sync::atomic::AtomicBool::new(policy_loaded),
         rate_limiter: proxy::handler::RateLimiter::new(rate_limit_val),
         http_client: reqwest::Client::new(),
         safe_mode_scanner,
         ready: true,
+        db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
         tool_history: std::sync::Mutex::new(Vec::new()),
@@ -492,7 +517,15 @@ async fn run_start(
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     });
 
-    if dry_run {
+    if shadow_mode {
+        println!(
+            "{} {} {}",
+            "👁".blue(),
+            "Mode:".bold(),
+            "SHADOW (Observation Only — no enforcement)".cyan().bold()
+        );
+        println!("{} {}", "ℹ".blue(), "All tool calls forwarded and logged. Enforcement is OFF.".blue());
+    } else if dry_run {
         println!(
             "{} {} {}",
             "🛡".blue(),
@@ -710,6 +743,8 @@ async fn run_wrap(
         safe_tools: sf_tools,
     };
 
+    let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
+
     let state = Arc::new(ProxyState {
         policy: std::sync::RwLock::new(compiled_policy),
         audit_logger,
@@ -723,11 +758,13 @@ async fn run_wrap(
         agent_pid: None,
         upstream_url: "".to_string(), // Not used in stdio proxy
         dry_run,
+        shadow_mode: false,
         policy_loaded: std::sync::atomic::AtomicBool::new(policy_loaded),
         rate_limiter: proxy::handler::RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner,
         ready: true,
+        db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
         tool_history: std::sync::Mutex::new(Vec::new()),
@@ -767,6 +804,131 @@ async fn run_wrap(
         return 1;
     }
 
+    0
+}
+
+// FR-2: Shadow Mode (Dev) – observation only proxy
+#[allow(deprecated)]
+async fn run_dev(
+    listen: String,
+    mcp_url: String,
+    _stdio: bool,
+    _no_browser: bool,
+    _args: Vec<String>,
+) -> i32 {
+    // Generate session secret and ID
+    let session_secret: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    // Resolve log path (same as stdio proxy)
+    let bin_path = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("agentwall.exe"));
+    let log_path = bin_path.parent().unwrap_or(std::path::Path::new(".")).join("audit.log");
+
+    let audit_logger = match AuditLogger::new(agentwall::audit::logger::AuditLoggerConfig {
+        log_path,
+        session_id: session_id.clone(),
+        session_secret,
+        max_bytes: 104857600,
+        siem_exporter: None,
+        include_params: false,
+    }) {
+        Ok(l) => Arc::new(l),
+        Err(e) => {
+            eprintln!("{} Cannot create audit logger: {}", "✖".red(), e);
+            return 1;
+        }
+    };
+
+    let safe_mode_scanner = Arc::new(SafeModeScanner::new().expect("Failed to compile SafeMode regexes"));
+    let response_scanner = Arc::new(policy::response_scanner::ResponseScanner::new().expect("Failed to compile ResponseScanner regexes"));
+
+    let response_scan_config = policy::response_scanner::ResponseScanConfig {
+        enabled: false,
+        block_mode: false,
+        dry_run: false,
+        max_scan_bytes: 1048576,
+        scannable_tools: vec![
+            "read_file".to_string(), "exec_command".to_string(), "run_shell".to_string(),
+            "run_command".to_string(), "http_get".to_string(), "http_post".to_string(),
+            "list_files".to_string(), "database_query".to_string(),
+            "bash".to_string(), "execute".to_string(), "terminal".to_string(),
+            "read".to_string(), "cat".to_string(), "shell".to_string(),
+            "leak_secret".to_string(), "secret".to_string()
+        ],
+        safe_tools: vec![
+            "tools/list".to_string(), "get_schema".to_string(), "get_metadata".to_string(), "ping".to_string(),
+            "calculator".to_string(), "weather".to_string(), "datetime".to_string(), "search".to_string(), "grep".to_string()
+        ],
+    };
+
+    let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
+
+    let state = Arc::new(ProxyState {
+        policy: std::sync::RwLock::new(None),
+        audit_logger,
+        session_id,
+        kill_mode: KillMode::Process,
+        agent_pid: None,
+        upstream_url: mcp_url,
+        dry_run: false,
+        shadow_mode: true,
+        policy_loaded: std::sync::atomic::AtomicBool::new(false),
+        rate_limiter: proxy::handler::RateLimiter::new(0),
+        http_client: reqwest::Client::new(),
+        safe_mode_scanner,
+        ready: true,
+        db_manager,
+        response_scanner,
+        response_scan_config: std::sync::RwLock::new(response_scan_config),
+        tool_history: std::sync::Mutex::new(Vec::new()),
+        sessions: dashmap::DashMap::new(),
+        metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_allow_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_deny_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_rate_limited_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    });
+
+    // Parse listen address
+    let listen_addr: SocketAddr = match listen.parse() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{} Invalid listen address: {}", "✖".red(), e);
+            return 1;
+        }
+    };
+
+    println!(
+        "{} {} {}",
+        "👁".blue(),
+        "Mode:".bold(),
+        "SHADOW (Observation Only — no enforcement)".cyan().bold()
+    );
+    println!("{} {}", "ℹ".blue(), "All tool calls forwarded and logged. Enforcement is OFF.".blue());
+    println!(
+        "{} {} {}",
+        "📡".blue(),
+        "Listening on:".bold(),
+        listen.green().underline()
+    );
+    println!("{} Press Ctrl+C to stop", "⌨".blue());
+    println!("{}", "-".repeat(60).cyan());
+
+    // Shutdown channel
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let shutdown_tx_clone = shutdown_tx.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        println!("\n{} Shutdown signal received. Finishing logs...", "ℹ".blue());
+        let _ = shutdown_tx_clone.send(true);
+    });
+
+    if let Err(e) = proxy::server::run_server(state, listen_addr, shutdown_rx).await {
+        eprintln!("{} Server error: {}", "✖".red(), e);
+        return 1;
+    }
     0
 }
 

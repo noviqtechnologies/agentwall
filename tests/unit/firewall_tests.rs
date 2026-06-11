@@ -47,6 +47,7 @@ fn test_tool_history_memory_bounding() {
         include_params: false,
     }).unwrap());
 
+    let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
     let state = ProxyState {
         policy: std::sync::RwLock::new(Some(CompiledPolicy {
             max_calls_per_second: 0,
@@ -62,11 +63,13 @@ fn test_tool_history_memory_bounding() {
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
+        shadow_mode: false,
         policy_loaded: AtomicBool::new(true),
         rate_limiter: RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner: Arc::new(SafeModeScanner::new().unwrap()),
         ready: true,
+        db_manager,
         response_scanner: Arc::new(ResponseScanner::new().unwrap()),
         response_scan_config: std::sync::RwLock::new(ResponseScanConfig::default()),
         tool_history: std::sync::Mutex::new(Vec::new()),
@@ -124,6 +127,7 @@ fn test_cycle_detection_blocking() {
         include_params: false,
     }).unwrap());
 
+    let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
     let state = ProxyState {
         policy: std::sync::RwLock::new(Some(CompiledPolicy {
             max_calls_per_second: 0,
@@ -145,11 +149,13 @@ fn test_cycle_detection_blocking() {
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
+        shadow_mode: false,
         policy_loaded: AtomicBool::new(true),
         rate_limiter: RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner: Arc::new(SafeModeScanner::new().unwrap()),
         ready: true,
+        db_manager,
         response_scanner: Arc::new(ResponseScanner::new().unwrap()),
         response_scan_config: std::sync::RwLock::new(ResponseScanConfig::default()),
         tool_history: std::sync::Mutex::new(Vec::new()),
@@ -221,6 +227,7 @@ fn test_pause_interactive_fallback_in_non_tty() {
         include_params: false,
     }).unwrap());
 
+    let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
     let state = ProxyState {
         policy: std::sync::RwLock::new(Some(CompiledPolicy {
             max_calls_per_second: 0,
@@ -242,11 +249,13 @@ fn test_pause_interactive_fallback_in_non_tty() {
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
+        shadow_mode: false,
         policy_loaded: AtomicBool::new(true),
         rate_limiter: RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner: Arc::new(SafeModeScanner::new().unwrap()),
         ready: true,
+        db_manager,
         response_scanner: Arc::new(ResponseScanner::new().unwrap()),
         response_scan_config: std::sync::RwLock::new(ResponseScanConfig::default()),
         tool_history: std::sync::Mutex::new(Vec::new()),

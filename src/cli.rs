@@ -21,6 +21,29 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Start local shadow proxy (observation only, no enforcement)
+    Dev {
+        /// Listen address for HTTP mode (default: 127.0.0.1:8080)
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        listen: String,
+
+        /// Upstream HTTP MCP server URL (default: http://127.0.0.1:3000)
+        #[arg(long, default_value = "http://127.0.0.1:3000")]
+        mcp_url: String,
+
+        /// Stdio proxy mode (wrap downstream command)
+        #[arg(long, default_value_t = false)]
+        stdio: bool,
+
+        /// Disable automatic browser opening for the dashboard
+        #[arg(long, default_value_t = false)]
+        no_browser: bool,
+
+        /// Downstream command and arguments (for stdio mode)
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+
     /// Run the gateway server
     Start {
         /// YAML policy file path
@@ -124,6 +147,12 @@ pub enum Commands {
         /// Default: params are hashed (SHA-256) rather than stored in plaintext.
         #[arg(long, env = "AGENTWALL_INCLUDE_PARAMS", default_value_t = false)]
         include_params: bool,
+
+        /// Enable shadow mode (FR-2): observe all traffic without enforcement.
+        /// All tool calls are forwarded unconditionally and logged to SQLite.
+        /// Intended for audit/baselining before enabling enforcement.
+        #[arg(long, env = "AGENTWALL_SHADOW_MODE", default_value_t = false)]
+        shadow_mode: bool,
     },
 
     /// Validate a policy against a gateway instance using fixture test calls (FR-204)

@@ -25,6 +25,8 @@ fn create_mock_proxy_state(policy: Option<CompiledPolicy>) -> Arc<ProxyState> {
     };
     let audit_logger = Arc::new(AuditLogger::new(config).unwrap());
 
+    let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
+
     Arc::new(ProxyState {
         policy: std::sync::RwLock::new(policy),
         audit_logger,
@@ -33,11 +35,13 @@ fn create_mock_proxy_state(policy: Option<CompiledPolicy>) -> Arc<ProxyState> {
         agent_pid: None,
         upstream_url: "".to_string(),
         dry_run: false,
+        shadow_mode: false,
         policy_loaded: AtomicBool::new(true),
         rate_limiter: RateLimiter::new(0),
         http_client: reqwest::Client::new(),
         safe_mode_scanner: Arc::new(SafeModeScanner::new().unwrap()),
         ready: true,
+        db_manager,
         response_scanner: Arc::new(ResponseScanner::new().unwrap()),
         response_scan_config: std::sync::RwLock::new(ResponseScanConfig::default()),
         tool_history: std::sync::Mutex::new(Vec::new()),

@@ -99,6 +99,23 @@ fn test_audit_log_rotation() {
             .unwrap();
     }
 
+    // On Windows the logger lazily creates the new active file on the next write after
+    // rotation.  Write one more entry to ensure audit.log exists before we verify it.
+    logger
+        .write_entry(
+            "test-session-123",
+            "test_event",
+            "tool_flush",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
     // Since max_bytes was tiny, it should have rotated a few times.
     let files: Vec<_> = fs::read_dir(dir.path())
         .unwrap()

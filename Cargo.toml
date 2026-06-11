@@ -1,6 +1,6 @@
 [package]
 name = "agentwall"
-version = "1.0.6"
+version = "1.0.9"
 edition = "2021"
 description = "VEXA AgentWall — centralized enterprise security gateway enforcing deterministic policies for AI agent tool calls over MCP"
 license = "Apache-2.0"
@@ -62,6 +62,7 @@ rand = "0.8"
 
 # Reqwest for forwarding
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 shlex = "1.3"
 
 # OS-specific dirs (FR-304: agentwall wrap)

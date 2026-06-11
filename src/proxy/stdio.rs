@@ -108,6 +108,24 @@ pub async fn run_stdio_bridge(
 
     let mut child = command.spawn()?;
 
+    if state.shadow_mode {
+        let mut child_stdin = child.stdin.take().expect("Failed to open stdin");
+        let mut child_stdout = child.stdout.take().expect("Failed to open stdout");
+        let mut agent_stdin = tokio::io::stdin();
+        let mut agent_stdout = tokio::io::stdout();
+
+        let pipe_in = tokio::io::copy(&mut agent_stdin, &mut child_stdin);
+        let pipe_out = tokio::io::copy(&mut child_stdout, &mut agent_stdout);
+
+        tokio::select! {
+            _ = pipe_in => {}
+            _ = pipe_out => {}
+            _ = child.wait() => {}
+        }
+        let _ = child.kill().await;
+        return Ok(());
+    }
+
     let child_stdin = child.stdin.take().expect("Failed to open stdin");
     let child_stdout = child.stdout.take().expect("Failed to open stdout");
 

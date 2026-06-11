@@ -31,6 +31,7 @@ struct JwkKey {
     n: Option<String>,
     e: Option<String>,
     // EC components
+    #[allow(dead_code)]
     crv: Option<String>,
     x: Option<String>,
     y: Option<String>,

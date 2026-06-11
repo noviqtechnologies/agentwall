@@ -247,6 +247,29 @@ async fn handle_request(
     // Health/readiness/metrics endpoints
     if method == hyper::Method::GET {
         match path.as_str() {
+            "/api/events" => {
+                let limit = req.uri().query()
+                    .and_then(|q| {
+                        q.split('&')
+                            .find(|pair| pair.starts_with("limit="))
+                            .and_then(|pair| pair.split('=').nth(1))
+                            .and_then(|val| val.parse::<usize>().ok())
+                    })
+                    .unwrap_or(100)
+                    .min(100);
+                match state.db_manager.get_events(limit).await {
+                    Ok(events) => {
+                        let json_val = serde_json::to_value(&events).unwrap();
+                        return Ok(json_response(StatusCode::OK, &json_val));
+                    }
+                    Err(e) => {
+                        let err = serde_json::json!({
+                            "error": format!("Database error: {}", e)
+                        });
+                        return Ok(json_response(StatusCode::INTERNAL_SERVER_ERROR, &err));
+                    }
+                }
+            }
             "/healthz" => {
                 return Ok(Response::builder()
                     .status(StatusCode::OK)
@@ -310,6 +333,8 @@ async fn handle_request(
         }
     };
 
+    let start_time = std::time::Instant::now();
+
     // Resolve dynamic multi-tenant session context (FR-101)
     let session = match resolve_session(state, auth_header.as_deref(), client_ip).await {
         Ok(s) => s,
@@ -356,6 +381,35 @@ async fn handle_request(
         ProxyAction::KillAndRespond(resp) => (resp, true, StatusCode::OK),
         ProxyAction::KillAndRespondWithStatus(status, resp) => (resp, true, status),
     };
+
+    if body.get("method").and_then(|m| m.as_str()) == Some("tools/call") {
+        let tool_name = body.get("params")
+            .and_then(|p| p.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .to_string();
+        let parameters = body.get("params")
+            .and_then(|p| p.get("arguments"))
+            .map(|a| a.to_string())
+            .unwrap_or_else(|| "{}".to_string());
+        let response_str = response.to_string();
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        
+        let event = crate::proxy::db::Event {
+            timestamp,
+            tool_name,
+            parameters,
+            response: response_str,
+            upstream_endpoint: state.upstream_url.clone(),
+            session_id: session.session_id.clone(),
+            latency_ms: start_time.elapsed().as_secs_f64() * 1000.0,
+        };
+        let db = state.db_manager.clone();
+        tokio::spawn(async move {
+            let _ = db.insert(event).await;
+            db.prune();
+        });
+    }
 
     // Send response first (before kill)
     let http_response = json_response(status_code, &response);
