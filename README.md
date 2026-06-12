@@ -13,7 +13,7 @@ AgentWall operates as two distinct tools with a clean separation of concerns:
 [![Version](https://img.shields.io/badge/version-1.0.10-green.svg)](Cargo.toml)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 
-[Website](https://vexasec.io/agentwall.html) · [Issues](https://github.com/noviqtechnologies/agentwall/issues) · [Security](mailto:security@vexasec.io)
+[Website](https://vexasec.io/) · [Issues](https://github.com/noviqtechnologies/agentwall/issues) · [Security](mailto:security@vexasec.io)
 
 ---
 
