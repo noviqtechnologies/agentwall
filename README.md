@@ -10,7 +10,7 @@ AgentWall operates as two distinct tools with a clean separation of concerns:
 > **Why two separate tools?** A security control operated by the same person it constrains is not a security control. Local enforcement on a developer's machine can be disabled by that developer. The centralized gateway breaks that conflict of interest.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.8-green.svg)](Cargo.toml)
+[![Version](https://img.shields.io/badge/version-1.0.10-green.svg)](Cargo.toml)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 
 [Website](https://vexasec.io/agentwall.html) · [Issues](https://github.com/noviqtechnologies/agentwall/issues) · [Security](mailto:security@vexasec.io)
