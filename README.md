@@ -1,10 +1,10 @@
 # Vexa AgentWall
 
-**MCP security proxy for AI agent tool calls.**
+**Full egress proxy and security gateway for AI agents — MCP, HTTP, HTTPS, and WebSocket.**
 
 AgentWall operates as two distinct tools with a clean separation of concerns:
 
-1. **Local Developer CLI** — shadow-mode observation proxy. Records every MCP tool call the agent makes, surfaces risk patterns in a local dashboard, and generates a YAML security policy draft. No enforcement, no cloud, no signup.
+1. **Local Developer CLI (`agentwall dev`)** — a full egress proxy in shadow mode. Intercepts and records all outbound traffic from your agent: MCP JSON-RPC tool calls, direct HTTP/HTTPS fetches, CONNECT tunnels, and WebSocket connections. Surfaces risk patterns in a local dashboard and generates a YAML security policy draft. No enforcement, no cloud, no signup.
 2. **Centralized Enforcement Gateway** — team/org deployment. Enforces reviewed policies for all production agents. Operated by the platform or security team — not the developer.
 
 > **Why two separate tools?** A security control operated by the same person it constrains is not a security control. Local enforcement on a developer's machine can be disabled by that developer. The centralized gateway breaks that conflict of interest.
@@ -22,7 +22,9 @@ AgentWall operates as two distinct tools with a clean separation of concerns:
 - [What This Is (and Is Not)](#what-this-is-and-is-not)
 - [Installation](#installation)
 - [Quick Start — Local Development](#quick-start--local-development)
+- [Full Egress Proxy — HTTP, HTTPS, WebSocket](#full-egress-proxy--http-https-and-websocket-traffic)
 - [Local Web Dashboard](#local-web-dashboard)
+- [Content-Aware DLP & Secret Detection](#content-aware-dlp--secret-detection)
 - [Auto-Policy Generation](#auto-policy-generation)
 - [Centralized Enforcement Gateway](#centralized-enforcement-gateway)
 - [Policy Reference](#policy-reference)
@@ -39,18 +41,19 @@ AgentWall operates as two distinct tools with a clean separation of concerns:
 ## What This Is (and Is Not)
 
 **This IS:**
-- A locally-installed CLI (`agentwall dev`) for observation, policy generation, and linting.
-- A transparent local MCP proxy (shadow mode only) that records agent behaviour without blocking.
-- A local web dashboard served on `localhost` for visualizing agent tool calls in real time.
-- An auto-policy generator that drafts YAML security policies from observed traffic.
+- A locally-installed CLI (`agentwall dev`) that acts as a **full egress proxy** for all agent outbound traffic — not just MCP.
+- A transparent shadow-mode interceptor for **MCP JSON-RPC**, **HTTP/HTTPS**, **HTTP CONNECT tunnels**, and **WebSocket** connections — logging everything, blocking nothing.
+- A local web dashboard served on `localhost` for visualizing all egress events in real time, with transport-type filtering.
+- An auto-policy generator that drafts YAML security policies from the observed MCP traffic.
 - A centralized enforcement gateway for team/org deployment — enforces reviewed policies, operated by the security team.
+- A content-aware DLP engine that scans outbound requests for credentials, PII, high entropy secrets, and BIP-39 seed phrases.
 - A policy linter (`agentwall lint`) and audit log verifier (`agentwall verify-log`).
 
 **This is NOT:**
 - A SaaS platform, cloud backend, or hosted web application.
 - A local enforcement tool. There is no `--enforce` flag on the developer CLI. Enforcement is centralized infrastructure.
 - An SDK or library that patches LangChain, OpenAI, or Anthropic.
-- A prompt injection detection tool (use Lakera or similar).
+- A semantic prompt injection or jailbreak detector (AgentWall focuses on deterministic policies and hard secret DLP, not semantic LLM evaluation).
 - An LLM observability platform (use LangSmith, AgentOps).
 - A general API gateway (use Kong, Cloudflare).
 
@@ -96,12 +99,12 @@ cargo build --release
 
 ## Quick Start — Local Development
 
-Shadow mode records every MCP tool call without blocking or modifying any traffic. It writes events to a local SQLite database and serves a real-time web dashboard.
+`agentwall dev` is a **full egress proxy** in shadow mode: it records all outbound traffic from your agent — MCP JSON-RPC, plain HTTP, HTTPS CONNECT tunnels, and WebSocket connections — without blocking or modifying any of it. Events land in a local SQLite store and stream live to the web dashboard.
 
 ### Prerequisites
 
 - AgentWall CLI installed (see above).
-- An MCP-compatible agent or tool server running locally (optional — the proxy forwards to `localhost:3000` by default).
+- An MCP-compatible agent or tool server running locally (optional — the proxy forwards to `localhost:3000` by default for MCP traffic).
 
 ### Step 1 — Start the shadow proxy
 
@@ -124,17 +127,65 @@ agentwall dev --stdio -- npx -y @modelcontextprotocol/server-filesystem /workspa
 
 This wraps the downstream MCP process. Update your `claude_desktop_config.json` to use `agentwall dev --stdio --` as the command prefix.
 
-### Step 2 — Run your agent
+### Step 2 — Route your agent's traffic through the proxy
 
-Route MCP traffic through the proxy. The proxy adds no enforcement — all calls pass through unchanged.
+AgentWall proxies **all** outbound traffic — not just MCP. Set standard HTTP proxy environment variables and any HTTP library will route automatically:
 
 ```bash
-# Example: point an HTTP MCP client at the proxy
+export HTTP_PROXY=http://localhost:8080
+export HTTPS_PROXY=http://localhost:8080
+python my_agent.py
+```
+
+Or point only MCP traffic at the proxy:
+
+```bash
 export AGENTWALL_PROXY_URL=http://localhost:8080
 python my_agent.py
 ```
 
-Events appear in `~/.agentwall/events.db` within one second of each tool call.
+All events — regardless of transport type — appear in `~/.agentwall/events.db` within one second.
+
+### Transport support
+
+`agentwall dev` handles all four outbound transport types an AI agent can produce:
+
+| Transport | Protocol | How it works | Event `transport` field |
+|---|---|---|---|
+| **MCP JSON-RPC** | HTTP POST with JSON body | Policy-evaluated, full request/response logged | `mcp` |
+| **Direct HTTP** | HTTP with absolute-URI | Forwarded to upstream, response relayed | `fetch` |
+| **HTTPS / TLS** | HTTP CONNECT tunnel | TCP tunnel opened to target host:port | `http_connect` |
+| **WebSocket** | HTTP Upgrade → WS | Bidirectional frame bridge, session logged on close | `websocket` |
+
+All four land in the same `egress_events` table and appear in the **Session Timeline** panel with a transport badge.
+
+**Example — intercept everything a Python agent sends:**
+
+```bash
+export HTTP_PROXY=http://localhost:8080
+export HTTPS_PROXY=http://localhost:8080
+python my_agent.py   # MCP calls, API calls, WS connections — all captured
+```
+
+**Example — filter events by transport via the API:**
+
+```bash
+# Show only HTTPS tunnel events
+curl -s http://localhost:8080/api/events | \
+  python3 -c "import sys,json; [print(e['target_host'], e['response_status']) \
+    for e in json.load(sys.stdin) if e['transport']=='http_connect']"
+```
+
+**Node.js / curl:**
+
+```bash
+# Node.js
+HTTPS_PROXY=http://localhost:8080 node agent.js
+
+# curl
+curl --proxy http://localhost:8080 https://api.openai.com/v1/models
+```
+
 
 ### Step 3 — Generate a policy draft
 
@@ -244,17 +295,32 @@ The dashboard is served by the same binary — no separate Node.js process, no c
 
 | View | Description |
 |------|-------------|
-| **Tool Inventory** | All observed tools: call count, last seen, risk tier (TIER_1 / TIER_2 / TIER_3). |
-| **Session Timeline** | Chronological list of tool calls with timestamp, parameters (collapsed), response status, and latency. Click to expand full JSON. |
-| **Parameter Explorer** | Per-tool view of observed parameter values, inferred types, bounds, and detected patterns (file paths, URLs, SQL, shell commands). |
+| **Tool Inventory** | All observed MCP tools: call count, last seen, risk tier (TIER_1 / TIER_2 / TIER_3). |
+| **Session Timeline** | Chronological list of all egress events — MCP, HTTP, HTTPS tunnels, WebSocket — with transport badge, timestamp, URL path, response status, and latency. Click any row to expand the full request/response JSON. |
+| **Parameter Explorer** | Per-tool view of observed MCP parameter values, inferred types, bounds, and detected patterns (file paths, URLs, SQL, shell commands). |
 | **Risk Flags** | Auto-detected: path traversal (`../`), shell injection metacharacters, external URLs, unbounded strings, destructive operation names. |
 | **Generate Policy** | Button that calls `agentwall generate-policy` and displays the resulting YAML in-browser with a download option. |
 
-**Live event streaming:** New tool calls appear in the timeline within 500ms via Server-Sent Events (`/api/events/stream`).
+**Live event streaming:** All egress events (any transport) appear in the timeline within 500 ms via Server-Sent Events (`/api/events/stream`).
 
-**Storage:** Events are stored in `~/.agentwall/events.db` (SQLite). Automatic pruning kicks in when the file exceeds 500 MiB.
+**Storage:** Events are stored in `~/.agentwall/events.db` in the `egress_events` table (SQLite). Automatic pruning kicks in when the file exceeds 500 MiB.
 
 > The dashboard is a developer diagnostic tool. It has no login, no user accounts, and no multi-user collaboration. All data stays on the local machine.
+
+---
+
+## Content-Aware DLP & Secret Detection
+
+AgentWall includes a built-in DLP (Data Loss Prevention) engine that actively scans all outbound MCP tool parameters and egress HTTP request bodies/URIs for sensitive data.
+
+**Capabilities:**
+- **Secret Regex Matching:** Detects over 60 common secret patterns including AWS Access Keys, GitHub Tokens, Stripe Keys, SSH Private Keys, Database URIs, and PII (e.g., SSNs, Emirates IDs).
+- **Base64 Recursive Decoding:** Automatically decodes Base64 payloads up to 3 layers deep to catch encoded secrets.
+- **High Entropy Detection:** Calculates Shannon entropy to flag obscure cryptographic material or highly randomized strings.
+- **BIP-39 Detection:** Validates cryptocurrency seed phrases (12 or 24 words) using industry-standard checksums.
+- **Environment Variable Leaks:** Prevents tools from exfiltrating raw environment variables (e.g., `$AWS_SECRET_ACCESS_KEY`).
+
+In shadow mode, violations are logged and displayed in the dashboard. In enforcement mode, requests containing critical secrets are actively blocked with a `403 Forbidden` or JSON-RPC error.
 
 ---
 
@@ -441,9 +507,9 @@ Reference: [`policy.example.yaml`](policy.example.yaml).
 
 | Command | Description |
 |---------|-------------|
-| `agentwall dev` | Start local shadow proxy (observation only, no enforcement). Opens dashboard. |
+| `agentwall dev` | Start full egress proxy in shadow mode — intercepts MCP, HTTP, HTTPS, WebSocket. Opens dashboard. |
 | `agentwall dev --stdio -- <cmd>` | Stdio proxy mode — wraps a downstream MCP process. |
-| `agentwall dev --no-browser` | Start shadow proxy without opening the browser. |
+| `agentwall dev --no-browser` | Start egress proxy without opening the browser. |
 | `agentwall start` | Run the enforcement gateway (requires `--policy`). |
 | `agentwall start --shadow-mode` | Run the gateway in shadow mode via `start` command. |
 | `agentwall generate-policy` | Generate a YAML policy draft from observed shadow-mode traffic. |
@@ -466,9 +532,10 @@ Reference: [`policy.example.yaml`](policy.example.yaml).
 
 | Variable | Command | Description |
 |----------|---------|-------------|
+| `HTTP_PROXY` / `HTTPS_PROXY` | `dev` (client-side) | Standard proxy env vars — set these in your agent process to route all traffic through AgentWall |
 | `AGENTWALL_POLICY_PATH` | `start` | Path to policy YAML |
-| `AGENTWALL_LISTEN` | `start` | Listen address (default `127.0.0.1:8080`) |
-| `AGENTWALL_MCP_URL` | `start`, `dev` | Upstream MCP server URL |
+| `AGENTWALL_LISTEN` | `start`, `dev` | Listen address (default `127.0.0.1:8080`) |
+| `AGENTWALL_MCP_URL` | `start`, `dev` | Upstream MCP server URL (used for MCP-mode forwarding) |
 | `AGENTWALL_LOG_PATH` | `start` | Audit log file path |
 | `AGENTWALL_OIDC_ISSUER` | `start` | OIDC issuer URL |
 | `AGENTWALL_SIEM_BACKEND` | `start` | `splunk`, `datadog`, `opensearch`, or `local` |
@@ -487,17 +554,22 @@ Run `agentwall start --help` for all flags.
 
 ## HTTP Endpoints
 
+These are AgentWall's own management/API endpoints. Any other request to `localhost:8080` (absolute URI, CONNECT, or Upgrade) is treated as egress proxy traffic and forwarded.
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | `GET` | Local web dashboard |
-| `/` | `POST` | MCP JSON-RPC 2.0 proxy |
+| `/` | `POST` | MCP JSON-RPC 2.0 proxy (when body is a JSON-RPC object) |
+| `*` | `CONNECT` | HTTPS tunnel — establishes TCP connection to the target host:port |
+| `*` | `GET` (absolute URI) | HTTP fetch proxy — forwards the request to the upstream host |
+| `*` | `GET` (with `Upgrade: websocket`) | WebSocket proxy — bidirectional frame bridge |
 | `/healthz` | `GET` | Liveness probe |
 | `/readyz` | `GET` | Readiness probe |
 | `/metrics` | `GET` | Prometheus-compatible counters |
-| `/api/events` | `GET` | Recent tool-call events from SQLite. `?limit=N` (max 100, default 50). |
-| `/api/events/stream` | `GET` | Live SSE stream of tool-call events |
+| `/api/events` | `GET` | All egress events from SQLite, all transports. `?limit=N` (max 100, default 50). |
+| `/api/events/stream` | `GET` | Live SSE stream of all egress events |
 | `/api/stats` | `GET` | Real-time event statistics |
-| `/api/generate-policy` | `POST` | Trigger policy generation, returns YAML |
+| `/api/generate-policy` | `POST` | Trigger MCP-only policy generation, returns YAML |
 
 ---
 
@@ -538,16 +610,17 @@ agentwall/
 │   ├── cli.rs               # Clap CLI definitions
 │   ├── proxy/
 │   │   ├── handler.rs       # ProxyState, policy evaluation, shadow-mode bypass
-│   │   ├── server.rs        # HTTP gateway, routing, /api/* endpoints
-│   │   ├── db.rs            # SQLite event store (FR-2)
+│   │   ├── server.rs        # HTTP gateway, routing, /api/* endpoints; egress dispatch
+│   │   ├── egress.rs        # Full egress proxy — CONNECT, fetch, WebSocket (FR-11)
+│   │   ├── db.rs            # SQLite egress_events store — unified schema (FR-11)
 │   │   ├── stdio.rs         # Stdio bridge and transparent shadow pipe
 │   │   └── session.rs       # Per-session isolation
 │   ├── dashboard/
 │   │   ├── mod.rs           # Dashboard module
-│   │   └── dashboard.html   # Embedded dashboard UI (FR-3)
+│   │   └── dashboard.html   # Embedded dashboard UI — transport-aware (FR-3)
 │   ├── policy/              # Schema, engine, OIDC identity, response scanner
 │   ├── audit/               # HMAC logger, SIEM export
-│   ├── generate_policy.rs   # Auto-policy generator (FR-4)
+│   ├── generate_policy.rs   # Auto-policy generator — MCP events only (FR-4)
 │   └── lint.rs              # Policy linter
 ├── tests/
 │   └── unit/                # Unit tests (68+ passing)

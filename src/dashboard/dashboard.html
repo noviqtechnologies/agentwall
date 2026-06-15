@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AgentWall | Developer Dashboard</title>
-  <meta name="description" content="VEXA AgentWall local developer dashboard — real-time visibility into your AI agent's tool calls.">
+  <meta name="description"
+    content="VEXA AgentWall local developer dashboard — real-time visibility into your AI agent's tool calls.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
   <style>
     :root {
       --bg: #05070a;
@@ -29,11 +33,17 @@
       --font-mono: 'JetBrains Mono', monospace;
       --radius: 12px;
       --radius-sm: 6px;
-      --shadow: 0 8px 32px rgba(0,0,0,0.4);
-      --shadow-sm: 0 2px 8px rgba(0,0,0,0.2);
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
       font-family: var(--font);
@@ -58,8 +68,8 @@
 
     .logo-area {
       padding: 32px 24px 24px;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      background: linear-gradient(180deg, rgba(83,155,245,0.06) 0%, transparent 100%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      background: linear-gradient(180deg, rgba(83, 155, 245, 0.06) 0%, transparent 100%);
     }
 
     .logo-vexa {
@@ -93,8 +103,8 @@
       gap: 6px;
       margin-top: 10px;
       padding: 4px 10px;
-      background: rgba(83,155,245,0.1);
-      border: 1px solid rgba(83,155,245,0.2);
+      background: rgba(83, 155, 245, 0.1);
+      border: 1px solid rgba(83, 155, 245, 0.2);
       border-radius: 20px;
       font-family: var(--font-mono);
       font-size: 0.6rem;
@@ -104,15 +114,23 @@
     }
 
     .shadow-dot {
-      width: 6px; height: 6px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: var(--accent);
       animation: pulse-blue 2s infinite;
     }
 
     @keyframes pulse-blue {
-      0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
-      50% { box-shadow: 0 0 0 6px transparent; }
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 var(--accent-glow);
+      }
+
+      50% {
+        box-shadow: 0 0 0 6px transparent;
+      }
     }
 
     .nav-items {
@@ -137,13 +155,13 @@
 
     .nav-item:hover {
       color: var(--text-bright);
-      background: rgba(255,255,255,0.03);
+      background: rgba(255, 255, 255, 0.03);
       padding-left: 28px;
     }
 
     .nav-item.active {
       color: var(--accent);
-      background: rgba(83,155,245,0.07);
+      background: rgba(83, 155, 245, 0.07);
       border-left-color: var(--accent);
       padding-left: 28px;
     }
@@ -151,7 +169,7 @@
     .nav-icon {
       font-family: var(--font-mono);
       font-size: 0.65rem;
-      background: rgba(255,255,255,0.05);
+      background: rgba(255, 255, 255, 0.05);
       padding: 3px 7px;
       border-radius: 4px;
       min-width: 28px;
@@ -160,7 +178,7 @@
 
     .sidebar-footer {
       padding: 20px 24px;
-      border-top: 1px solid rgba(255,255,255,0.04);
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
       display: flex;
       align-items: center;
       gap: 10px;
@@ -171,7 +189,8 @@
     }
 
     .status-dot {
-      width: 9px; height: 9px;
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
       background: #484f58;
       flex-shrink: 0;
@@ -183,8 +202,15 @@
     }
 
     @keyframes pulse-green {
-      0%, 100% { box-shadow: 0 0 0 0 var(--green-glow); }
-      50% { box-shadow: 0 0 0 8px transparent; }
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 var(--green-glow);
+      }
+
+      50% {
+        box-shadow: 0 0 0 8px transparent;
+      }
     }
 
     /* ── Main Content ── */
@@ -200,8 +226,8 @@
     #offline-banner {
       display: none;
       padding: 10px 24px;
-      background: rgba(210,153,34,0.1);
-      border-bottom: 1px solid rgba(210,153,34,0.2);
+      background: rgba(210, 153, 34, 0.1);
+      border-bottom: 1px solid rgba(210, 153, 34, 0.2);
       color: var(--amber);
       font-size: 0.8rem;
       font-weight: 500;
@@ -215,15 +241,25 @@
       scroll-behavior: smooth;
     }
 
-    .panel { display: none; }
+    .panel {
+      display: none;
+    }
+
     .panel.active {
       display: block;
       animation: fadeIn 0.25s ease-out;
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .panel-header {
@@ -289,7 +325,10 @@
       transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+    }
 
     .stat-label {
       font-size: 0.7rem;
@@ -308,13 +347,27 @@
       line-height: 1;
     }
 
-    .stat-value.accent { color: var(--accent); }
-    .stat-value.green  { color: var(--green); }
-    .stat-value.red    { color: var(--red); }
-    .stat-value.amber  { color: var(--amber); }
+    .stat-value.accent {
+      color: var(--accent);
+    }
+
+    .stat-value.green {
+      color: var(--green);
+    }
+
+    .stat-value.red {
+      color: var(--red);
+    }
+
+    .stat-value.amber {
+      color: var(--amber);
+    }
 
     /* ── Tables ── */
-    .table-wrap { overflow-x: auto; border-radius: var(--radius-sm); }
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius-sm);
+    }
 
     table {
       width: 100%;
@@ -335,13 +388,18 @@
     }
 
     tbody tr {
-      border-bottom: 1px solid rgba(48,54,61,0.4);
+      border-bottom: 1px solid rgba(48, 54, 61, 0.4);
       transition: background 0.15s ease;
       cursor: default;
     }
 
-    tbody tr:hover { background: rgba(83,155,245,0.04); }
-    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover {
+      background: rgba(83, 155, 245, 0.04);
+    }
+
+    tbody tr:last-child {
+      border-bottom: none;
+    }
 
     td {
       padding: 11px 14px;
@@ -377,11 +435,35 @@
       white-space: nowrap;
     }
 
-    .badge.green  { background: rgba(63,185,80,0.12);  color: var(--green);  border: 1px solid rgba(63,185,80,0.25); }
-    .badge.red    { background: rgba(248,81,73,0.12);  color: var(--red);    border: 1px solid rgba(248,81,73,0.25); }
-    .badge.amber  { background: rgba(210,153,34,0.12); color: var(--amber);  border: 1px solid rgba(210,153,34,0.25); }
-    .badge.blue   { background: rgba(83,155,245,0.12); color: var(--accent); border: 1px solid rgba(83,155,245,0.25); }
-    .badge.muted  { background: rgba(118,131,144,0.1); color: var(--text-muted); border: 1px solid rgba(118,131,144,0.2); }
+    .badge.green {
+      background: rgba(63, 185, 80, 0.12);
+      color: var(--green);
+      border: 1px solid rgba(63, 185, 80, 0.25);
+    }
+
+    .badge.red {
+      background: rgba(248, 81, 73, 0.12);
+      color: var(--red);
+      border: 1px solid rgba(248, 81, 73, 0.25);
+    }
+
+    .badge.amber {
+      background: rgba(210, 153, 34, 0.12);
+      color: var(--amber);
+      border: 1px solid rgba(210, 153, 34, 0.25);
+    }
+
+    .badge.blue {
+      background: rgba(83, 155, 245, 0.12);
+      color: var(--accent);
+      border: 1px solid rgba(83, 155, 245, 0.25);
+    }
+
+    .badge.muted {
+      background: rgba(118, 131, 144, 0.1);
+      color: var(--text-muted);
+      border: 1px solid rgba(118, 131, 144, 0.2);
+    }
 
     /* ── Buttons ── */
     .btn {
@@ -401,20 +483,39 @@
       user-select: none;
     }
 
-    .btn:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); }
-    .btn:active { transform: scale(0.98); }
-    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
 
     .btn-primary {
       background: var(--accent);
       border-color: var(--accent);
       color: #fff;
-      box-shadow: 0 4px 14px rgba(83,155,245,0.3);
+      box-shadow: 0 4px 14px rgba(83, 155, 245, 0.3);
     }
 
-    .btn-primary:hover { background: #6aabf7; box-shadow: 0 6px 20px rgba(83,155,245,0.4); transform: translateY(-1px); }
+    .btn-primary:hover {
+      background: #6aabf7;
+      box-shadow: 0 6px 20px rgba(83, 155, 245, 0.4);
+      transform: translateY(-1px);
+    }
 
-    .btn-lg { padding: 13px 28px; font-size: 1rem; font-weight: 700; border-radius: 8px; }
+    .btn-lg {
+      padding: 13px 28px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 8px;
+    }
 
     /* ── Timeline ── */
     .filter-row {
@@ -426,7 +527,7 @@
 
     .filter-input {
       flex: 1;
-      background: rgba(0,0,0,0.3);
+      background: rgba(0, 0, 0, 0.3);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       color: var(--text-bright);
@@ -436,7 +537,11 @@
       transition: border-color 0.2s;
     }
 
-    .filter-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .filter-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
 
     #timeline-list {
       display: flex;
@@ -446,7 +551,7 @@
       overflow-y: auto;
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      background: rgba(0,0,0,0.2);
+      background: rgba(0, 0, 0, 0.2);
     }
 
     .tl-row {
@@ -454,20 +559,66 @@
       align-items: flex-start;
       gap: 14px;
       padding: 10px 16px;
-      border-bottom: 1px solid rgba(48,54,61,0.3);
+      border-bottom: 1px solid rgba(48, 54, 61, 0.3);
       cursor: pointer;
       transition: background 0.15s;
       flex-wrap: wrap;
     }
 
-    .tl-row:last-child { border-bottom: none; }
-    .tl-row:hover { background: rgba(83,155,245,0.04); }
-    .tl-row.expanded { background: rgba(83,155,245,0.06); border-left: 3px solid var(--accent); }
+    .tl-row:last-child {
+      border-bottom: none;
+    }
 
-    .tl-ts { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); min-width: 80px; padding-top: 2px; }
-    .tl-tool { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-bright); font-weight: 500; min-width: 140px; }
-    .tl-params { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tl-latency { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+    .tl-row:hover {
+      background: rgba(83, 155, 245, 0.04);
+    }
+
+    .tl-row.expanded {
+      background: rgba(83, 155, 245, 0.06);
+      border-left: 3px solid var(--accent);
+    }
+
+    .tl-row.blocked-row {
+      background: rgba(248, 81, 73, 0.04);
+      border-left: 3px solid var(--red);
+    }
+
+    .tl-row.blocked-row.expanded {
+      background: rgba(248, 81, 73, 0.06);
+    }
+
+    .tl-ts {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      min-width: 80px;
+      padding-top: 2px;
+    }
+
+    .tl-tool {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-bright);
+      font-weight: 500;
+      min-width: 140px;
+    }
+
+    .tl-params {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tl-latency {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
 
     .tl-expand {
       display: none;
@@ -477,7 +628,9 @@
       border-top: 1px solid var(--border);
     }
 
-    .tl-row.expanded .tl-expand { display: block; }
+    .tl-row.expanded .tl-expand {
+      display: block;
+    }
 
     .json-block {
       background: #0d1117;
@@ -503,11 +656,13 @@
       margin-top: 10px;
     }
 
-    .json-label:first-child { margin-top: 0; }
+    .json-label:first-child {
+      margin-top: 0;
+    }
 
     /* ── Param Explorer ── */
     .tool-selector {
-      background: rgba(0,0,0,0.3);
+      background: rgba(0, 0, 0, 0.3);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       color: var(--text-bright);
@@ -520,8 +675,14 @@
       cursor: pointer;
     }
 
-    .tool-selector:focus { outline: none; border-color: var(--accent); }
-    .tool-selector option { background: #1c2128; }
+    .tool-selector:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .tool-selector option {
+      background: #1c2128;
+    }
 
     /* ── Risk Flags ── */
     .risk-empty {
@@ -538,8 +699,8 @@
 
     /* ── Policy Generator ── */
     .policy-info {
-      background: rgba(83,155,245,0.06);
-      border: 1px solid rgba(83,155,245,0.15);
+      background: rgba(83, 155, 245, 0.06);
+      border: 1px solid rgba(83, 155, 245, 0.15);
       border-radius: var(--radius);
       padding: 16px 20px;
       margin-bottom: 20px;
@@ -573,15 +734,20 @@
 
     /* ── Spinner ── */
     .spinner {
-      width: 16px; height: 16px;
-      border: 2px solid rgba(255,255,255,0.2);
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
       border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
       display: none;
     }
 
-    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
 
     /* ── Empty State ── */
     .empty-state {
@@ -590,13 +756,27 @@
       color: var(--text-muted);
     }
 
-    .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 14px; display: block; }
-    .empty-state h3 { font-family: var(--font-head); color: var(--text-main); margin-bottom: 8px; font-size: 1rem; }
-    .empty-state p { font-size: 0.85rem; line-height: 1.6; }
+    .empty-state .empty-icon {
+      font-size: 2.5rem;
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .empty-state h3 {
+      font-family: var(--font-head);
+      color: var(--text-main);
+      margin-bottom: 8px;
+      font-size: 1rem;
+    }
+
+    .empty-state p {
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
 
     .cmd-hint {
       display: inline-block;
-      background: rgba(0,0,0,0.4);
+      background: rgba(0, 0, 0, 0.4);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       padding: 6px 12px;
@@ -609,7 +789,8 @@
     /* ── Toast ── */
     #toast-container {
       position: fixed;
-      top: 20px; right: 20px;
+      top: 20px;
+      right: 20px;
       z-index: 9999;
       display: flex;
       flex-direction: column;
@@ -626,747 +807,845 @@
       color: var(--text-bright);
       box-shadow: var(--shadow);
       pointer-events: auto;
-      animation: toast-in 0.3s cubic-bezier(0.16,1,0.3,1);
+      animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
       min-width: 260px;
       display: flex;
       align-items: center;
       gap: 10px;
     }
 
-    .toast.success { border-left: 4px solid var(--green); }
-    .toast.error   { border-left: 4px solid var(--red); }
-    .toast.info    { border-left: 4px solid var(--accent); }
+    .toast.success {
+      border-left: 4px solid var(--green);
+    }
+
+    .toast.error {
+      border-left: 4px solid var(--red);
+    }
+
+    .toast.info {
+      border-left: 4px solid var(--accent);
+    }
 
     @keyframes toast-in {
-      from { transform: translateX(120%) scale(0.9); opacity: 0; }
-      to   { transform: translateX(0) scale(1); opacity: 1; }
+      from {
+        transform: translateX(120%) scale(0.9);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+      }
     }
 
     /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
 
     /* ── Responsive ── */
     @media (max-width: 1024px) {
-      .stats-bar { grid-template-columns: repeat(2, 1fr); }
+      .stats-bar {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
   </style>
 </head>
+
 <body>
 
-<!-- Sidebar -->
-<nav class="sidebar">
-  <div class="logo-area">
-    <div class="logo-vexa">VEXA</div>
-    <div class="logo-name">AgentWall</div>
-    <div class="logo-tag">Local Developer Dashboard</div>
-    <div class="shadow-badge">
-      <span class="shadow-dot"></span>
-      SHADOW MODE
-    </div>
-  </div>
-
-  <div class="nav-items">
-    <div class="nav-item active" data-panel="panel-inventory">
-      <span class="nav-icon">01</span> Tool Inventory
-    </div>
-    <div class="nav-item" data-panel="panel-timeline">
-      <span class="nav-icon">02</span> Session Timeline
-    </div>
-    <div class="nav-item" data-panel="panel-params">
-      <span class="nav-icon">03</span> Parameter Explorer
-    </div>
-    <div class="nav-item" data-panel="panel-risks">
-      <span class="nav-icon">04</span> Risk Flags
-    </div>
-    <div class="nav-item" data-panel="panel-policy">
-      <span class="nav-icon">05</span> Generate Policy
-    </div>
-  </div>
-
-  <div class="sidebar-footer">
-    <span id="status-dot" class="status-dot"></span>
-    <span id="status-text">CONNECTING...</span>
-  </div>
-</nav>
-
-<!-- Main content -->
-<div class="main-content">
-  <div id="offline-banner">
-    ⚠ Proxy offline — retrying connection...
-  </div>
-
-  <div class="panel-container">
-
-    <!-- Panel 1: Tool Inventory -->
-    <div id="panel-inventory" class="panel active">
-      <div class="panel-header">
-        <h2>🛠 Tool Inventory</h2>
-        <span class="badge blue" id="inv-last-update">Live</span>
-      </div>
-
-      <div class="stats-bar">
-        <div class="stat-card">
-          <div class="stat-label">Total Calls</div>
-          <div class="stat-value accent" id="stat-total">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Unique Tools</div>
-          <div class="stat-value" id="stat-tools">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Risk Flags</div>
-          <div class="stat-value red" id="stat-risks">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Session Time</div>
-          <div class="stat-value" id="stat-uptime">—</div>
-        </div>
-      </div>
-
-      <div class="card" style="padding: 0; overflow: hidden;">
-        <div class="table-wrap">
-          <table id="tbl-inventory">
-            <thead>
-              <tr>
-                <th>Tool Name</th>
-                <th>Calls</th>
-                <th>Last Called</th>
-                <th>Risk Tier</th>
-              </tr>
-            </thead>
-            <tbody id="inv-body">
-              <tr><td colspan="4">
-                <div class="empty-state">
-                  <span class="empty-icon">👁</span>
-                  <h3>No tool calls recorded yet</h3>
-                  <p>Start your AI agent and point it to the proxy.</p>
-                  <span class="cmd-hint">AGENTWALL_PROXY_URL=http://localhost:8080</span>
-                </div>
-              </td></tr>
-            </tbody>
-          </table>
-        </div>
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="logo-area">
+      <div class="logo-vexa">VEXA</div>
+      <div class="logo-name">AgentWall</div>
+      <div class="logo-tag">Local Developer Dashboard</div>
+      <div class="shadow-badge">
+        <span class="shadow-dot"></span>
+        SHADOW MODE
       </div>
     </div>
 
-    <!-- Panel 2: Session Timeline -->
-    <div id="panel-timeline" class="panel">
-      <div class="panel-header">
-        <h2>⏱ Session Timeline</h2>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <span id="tl-live-badge" class="badge green">● LIVE</span>
-          <span id="tl-count" class="badge muted">0 events</span>
-        </div>
+    <div class="nav-items">
+      <div class="nav-item active" data-panel="panel-inventory">
+        <span class="nav-icon">01</span> Tool Inventory
       </div>
-
-      <div class="filter-row">
-        <input id="tl-filter" class="filter-input" type="text" placeholder="Filter by tool name..." autocomplete="off">
-        <button class="btn" id="tl-clear">Clear</button>
+      <div class="nav-item" data-panel="panel-timeline">
+        <span class="nav-icon">02</span> Session Timeline
       </div>
-
-      <div id="timeline-list">
-        <div id="tl-empty" class="empty-state">
-          <span class="empty-icon">📡</span>
-          <h3>Waiting for tool calls...</h3>
-          <p>Events will stream here in real time as your agent makes tool calls.</p>
-        </div>
+      <div class="nav-item" data-panel="panel-params">
+        <span class="nav-icon">03</span> Parameter Explorer
+      </div>
+      <div class="nav-item" data-panel="panel-risks">
+        <span class="nav-icon">04</span> Risk Flags
+      </div>
+      <div class="nav-item" data-panel="panel-policy">
+        <span class="nav-icon">05</span> Generate Policy
       </div>
     </div>
 
-    <!-- Panel 3: Parameter Explorer -->
-    <div id="panel-params" class="panel">
-      <div class="panel-header">
-        <h2>🔍 Parameter Explorer</h2>
-      </div>
+    <div class="sidebar-footer">
+      <span id="status-dot" class="status-dot"></span>
+      <span id="status-text">CONNECTING...</span>
+    </div>
+  </nav>
 
-      <div class="card">
-        <h3>Select a Tool</h3>
-        <select id="tool-selector" class="tool-selector">
-          <option value="">— choose a tool —</option>
-        </select>
-
-        <div class="table-wrap" id="params-table-wrap" style="display:none;">
-          <table>
-            <thead>
-              <tr>
-                <th>Parameter</th>
-                <th>Inferred Type</th>
-                <th>Sample Values</th>
-                <th>Detected Pattern</th>
-              </tr>
-            </thead>
-            <tbody id="params-body"></tbody>
-          </table>
-        </div>
-
-        <div id="params-empty" class="empty-state" style="display:none;">
-          <span class="empty-icon">🔎</span>
-          <h3>No parameters recorded for this tool</h3>
-        </div>
-      </div>
+  <!-- Main content -->
+  <div class="main-content">
+    <div id="offline-banner">
+      ⚠ Proxy offline — retrying connection...
     </div>
 
-    <!-- Panel 4: Risk Flags -->
-    <div id="panel-risks" class="panel">
-      <div class="panel-header">
-        <h2>⚠ Risk Flags</h2>
-        <span id="risk-count-badge" class="badge muted">0 flags</span>
-      </div>
+    <div class="panel-container">
 
-      <div class="card" style="padding: 0; overflow: hidden;" id="risks-card">
-        <div class="table-wrap">
-          <table id="tbl-risks">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Tool</th>
-                <th>Risk Type</th>
-                <th>Parameter</th>
-                <th>Severity</th>
-              </tr>
-            </thead>
-            <tbody id="risks-body"></tbody>
-          </table>
+      <!-- Panel 1: Tool Inventory -->
+      <div id="panel-inventory" class="panel active">
+        <div class="panel-header">
+          <h2>🛠 Tool Inventory</h2>
+          <span class="badge blue" id="inv-last-update">Live</span>
+        </div>
+
+        <div class="stats-bar">
+          <div class="stat-card">
+            <div class="stat-label">Total Calls</div>
+            <div class="stat-value accent" id="stat-total">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Unique Tools</div>
+            <div class="stat-value" id="stat-tools">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Risk Flags</div>
+            <div class="stat-value red" id="stat-risks">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Session Time</div>
+            <div class="stat-value" id="stat-uptime">—</div>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div class="table-wrap">
+            <table id="tbl-inventory">
+              <thead>
+                <tr>
+                  <th>Tool Name</th>
+                  <th>Calls</th>
+                  <th>Last Called</th>
+                  <th>Risk Tier</th>
+                </tr>
+              </thead>
+              <tbody id="inv-body">
+                <tr>
+                  <td colspan="4">
+                    <div class="empty-state">
+                      <span class="empty-icon">👁</span>
+                      <h3>No tool calls recorded yet</h3>
+                      <p>Start your AI agent and point it to the proxy.</p>
+                      <span class="cmd-hint">AGENTWALL_PROXY_URL=http://localhost:8080</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      <div id="risks-empty" class="card" style="display:none;">
-        <div class="risk-empty">
-          <span class="big-check">✅</span>
-          <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No Risk Flags Detected</h3>
-          <p style="font-size: 0.85rem;">All observed tool calls look clean. Keep observing to build confidence.</p>
+      <!-- Panel 2: Session Timeline -->
+      <div id="panel-timeline" class="panel">
+        <div class="panel-header">
+          <h2>⏱ Session Timeline</h2>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <span id="tl-live-badge" class="badge green">● LIVE</span>
+            <span id="tl-count" class="badge muted">0 events</span>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <input id="tl-filter" class="filter-input" type="text" placeholder="Filter by tool name..."
+            autocomplete="off">
+          <button class="btn" id="tl-clear">Clear</button>
+        </div>
+
+        <div id="timeline-list">
+          <div id="tl-empty" class="empty-state">
+            <span class="empty-icon">📡</span>
+            <h3>Waiting for tool calls...</h3>
+            <p>Events will stream here in real time as your agent makes tool calls.</p>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Panel 5: Generate Policy -->
-    <div id="panel-policy" class="panel">
-      <div class="panel-header">
-        <h2>📋 Generate Policy</h2>
+      <!-- Panel 3: Parameter Explorer -->
+      <div id="panel-params" class="panel">
+        <div class="panel-header">
+          <h2>🔍 Parameter Explorer</h2>
+        </div>
+
+        <div class="card">
+          <h3>Select a Tool</h3>
+          <select id="tool-selector" class="tool-selector">
+            <option value="">— choose a tool —</option>
+          </select>
+
+          <div class="table-wrap" id="params-table-wrap" style="display:none;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Parameter</th>
+                  <th>Inferred Type</th>
+                  <th>Sample Values</th>
+                  <th>Detected Pattern</th>
+                </tr>
+              </thead>
+              <tbody id="params-body"></tbody>
+            </table>
+          </div>
+
+          <div id="params-empty" class="empty-state" style="display:none;">
+            <span class="empty-icon">🔎</span>
+            <h3>No parameters recorded for this tool</h3>
+          </div>
+        </div>
       </div>
 
-      <div class="policy-info">
-        <strong>How it works:</strong> AgentWall analyzes all observed tool calls and auto-generates a YAML security policy draft.
-        The policy allowlists every tool your agent actually used, with parameter schemas inferred from real traffic.
-        Review it carefully before handing it to your security team.
+      <!-- Panel 4: Risk Flags -->
+      <div id="panel-risks" class="panel">
+        <div class="panel-header">
+          <h2>⚠ Risk Flags</h2>
+          <span id="risk-count-badge" class="badge muted">0 flags</span>
+        </div>
+
+        <div class="card" style="padding: 0; overflow: hidden;" id="risks-card">
+          <div class="table-wrap">
+            <table id="tbl-risks">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Tool</th>
+                  <th>Risk Type</th>
+                  <th>Parameter</th>
+                  <th>Severity</th>
+                </tr>
+              </thead>
+              <tbody id="risks-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="risks-empty" class="card" style="display:none;">
+          <div class="risk-empty">
+            <span class="big-check">✅</span>
+            <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No Risk Flags Detected
+            </h3>
+            <p style="font-size: 0.85rem;">All observed tool calls look clean. Keep observing to build confidence.</p>
+          </div>
+        </div>
       </div>
 
-      <div class="card">
-        <h3>Generate from Observed Traffic</h3>
-        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:20px;">
-          Reads all events from <code style="font-family:var(--font-mono); color:var(--accent)">~/.agentwall/events.db</code> and produces a draft <code style="font-family:var(--font-mono); color:var(--accent)">agentwall-policy.yaml</code>.
-        </p>
+      <!-- Panel 5: Generate Policy -->
+      <div id="panel-policy" class="panel">
+        <div class="panel-header">
+          <h2>📋 Generate Policy</h2>
+        </div>
 
-        <button class="btn btn-primary btn-lg" id="btn-generate">
-          <div class="spinner" id="gen-spinner"></div>
-          <span id="gen-btn-text">⚡ Generate Policy</span>
-        </button>
+        <div class="policy-info">
+          <strong>How it works:</strong> AgentWall analyzes all observed tool calls and auto-generates a YAML security
+          policy draft.
+          The policy allowlists every tool your agent actually used, with parameter schemas inferred from real traffic.
+          Review it carefully before handing it to your security team.
+        </div>
+
+        <div class="card">
+          <h3>Generate from Observed Traffic</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:20px;">
+            Reads all events from <code
+              style="font-family:var(--font-mono); color:var(--accent)">~/.agentwall/events.db</code> and produces a
+            draft <code style="font-family:var(--font-mono); color:var(--accent)">agentwall-policy.yaml</code>.
+          </p>
+
+          <button class="btn btn-primary btn-lg" id="btn-generate">
+            <div class="spinner" id="gen-spinner"></div>
+            <span id="gen-btn-text">⚡ Generate Policy</span>
+          </button>
+        </div>
+
+        <pre id="policy-output"></pre>
+
+        <div class="policy-actions" id="policy-actions" style="display:none;">
+          <button class="btn btn-primary" id="btn-download">⬇ Download agentwall-policy.yaml</button>
+          <button class="btn" id="btn-copy-policy">📋 Copy to Clipboard</button>
+        </div>
       </div>
 
-      <pre id="policy-output"></pre>
+    </div><!-- panel-container -->
+  </div><!-- main-content -->
 
-      <div class="policy-actions" id="policy-actions" style="display:none;">
-        <button class="btn btn-primary" id="btn-download">⬇ Download agentwall-policy.yaml</button>
-        <button class="btn" id="btn-copy-policy">📋 Copy to Clipboard</button>
-      </div>
-    </div>
+  <div id="toast-container"></div>
 
-  </div><!-- panel-container -->
-</div><!-- main-content -->
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────────
+    let allEvents = [];
+    let sessionStart = Date.now();
+    let sseSource = null;
+    let pollTimer = null;
+    let retryTimer = null;
+    let tlFilterText = '';
 
-<div id="toast-container"></div>
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function fmtTime(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(Number(iso) / 1000000);
+        return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } catch { return iso; }
+    }
 
-<script>
-// ── State ──────────────────────────────────────────────────────────────────
-let allEvents = [];
-let sessionStart = Date.now();
-let sseSource = null;
-let pollTimer = null;
-let retryTimer = null;
-let tlFilterText = '';
+    function fmtLatency(ms) {
+      if (ms == null) return '';
+      if (ms < 1) return '<1ms';
+      return Math.round(ms) + 'ms';
+    }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function fmtTime(iso) {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
-  } catch { return iso.slice(11, 19) || ''; }
-}
+    function escHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
 
-function fmtLatency(ms) {
-  if (ms == null) return '';
-  if (ms < 1) return '<1ms';
-  return Math.round(ms) + 'ms';
-}
+    function inferType(val) {
+      if (val === null || val === undefined) return 'null';
+      if (typeof val === 'boolean') return 'boolean';
+      if (typeof val === 'number') return Number.isInteger(val) ? 'integer' : 'number';
+      if (Array.isArray(val)) return 'array';
+      if (typeof val === 'object') return 'object';
+      return 'string';
+    }
 
-function escHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
-}
+    function detectPattern(val) {
+      const s = String(val ?? '');
+      if (/^(\/|\.\/|~\/)/.test(s) || /^[A-Za-z]:\\/.test(s)) return 'path';
+      if (/^https?:\/\//i.test(s)) return 'url';
+      if (/\b(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i.test(s)) return 'sql';
+      if (/[;|`]|\|\||&&/.test(s)) return 'shell';
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return 'email';
+      return '';
+    }
 
-function inferType(val) {
-  if (val === null || val === undefined) return 'null';
-  if (typeof val === 'boolean') return 'boolean';
-  if (typeof val === 'number') return Number.isInteger(val) ? 'integer' : 'number';
-  if (Array.isArray(val)) return 'array';
-  if (typeof val === 'object') return 'object';
-  return 'string';
-}
+    const DESTRUCTIVE_RE = /\b(delete|drop|wipe|rm|remove|execute|bash|shell)\b/i;
+    const TIER1_RE = DESTRUCTIVE_RE;
 
-function detectPattern(val) {
-  const s = String(val ?? '');
-  if (/^(\/|\.\/|~\/)/.test(s) || /^[A-Za-z]:\\/.test(s)) return 'path';
-  if (/^https?:\/\//i.test(s)) return 'url';
-  if (/\b(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i.test(s)) return 'sql';
-  if (/[;|`]|\|\||&&/.test(s)) return 'shell';
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return 'email';
-  return '';
-}
+    function riskTier(toolName) {
+      if (TIER1_RE.test(toolName)) return { tier: 'TIER_1', cls: 'red', label: 'TIER 1' };
+      if (/\b(write|insert|update|send|post|query|database|email|message)\b/i.test(toolName))
+        return { tier: 'TIER_2', cls: 'amber', label: 'TIER 2' };
+      return { tier: 'TIER_3', cls: 'green', label: 'TIER 3' };
+    }
 
-const DESTRUCTIVE_RE = /\b(delete|drop|wipe|rm|remove|execute|bash|shell)\b/i;
-const TIER1_RE = DESTRUCTIVE_RE;
+    function parseParams(event) {
+      try {
+        const raw = event.request_body || '{}';
+        return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch { return {}; }
+    }
 
-function riskTier(toolName) {
-  if (TIER1_RE.test(toolName)) return { tier: 'TIER_1', cls: 'red', label: 'TIER 1' };
-  if (/\b(write|insert|update|send|post|query|database|email|message)\b/i.test(toolName))
-    return { tier: 'TIER_2', cls: 'amber', label: 'TIER 2' };
-  return { tier: 'TIER_3', cls: 'green', label: 'TIER 3' };
-}
+    function toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = 'toast ' + type;
+      el.textContent = msg;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(() => el.remove(), 3500);
+    }
 
-function parseParams(event) {
-  try {
-    const raw = event.parameters || '{}';
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
-  } catch { return {}; }
-}
+    // ── Risk Detection ─────────────────────────────────────────────────────────
+    function detectRisks(event) {
+      const risks = [];
+      const params = parseParams(event);
+      const tool = event.url_path || '';
+      const ts = event.timestamp_ns || '';
 
-function toast(msg, type = 'info') {
-  const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  el.textContent = msg;
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => el.remove(), 3500);
-}
+      // Destructive tool name
+      if (DESTRUCTIVE_RE.test(tool)) {
+        risks.push({ ts, tool, type: 'DESTRUCTIVE_OP', param: 'tool_name', severity: 'high' });
+      }
 
-// ── Risk Detection ─────────────────────────────────────────────────────────
-function detectRisks(event) {
-  const risks = [];
-  const params = parseParams(event);
-  const tool = event.tool_name || '';
-  const ts = event.timestamp || '';
+      function scanValue(key, val) {
+        const s = String(val ?? '');
+        if (s.includes('../')) risks.push({ ts, tool, type: 'PATH_TRAVERSAL', param: key, severity: 'high' });
+        if (/[;`]|\|\||&&/.test(s)) risks.push({ ts, tool, type: 'SHELL_INJECTION', param: key, severity: 'high' });
+        if (/https?:\/\//i.test(s) && !/localhost|127\.0\.0\.1/i.test(s))
+          risks.push({ ts, tool, type: 'EXTERNAL_URL', param: key, severity: 'medium' });
+        if (s.length > 1000 && typeof val === 'string')
+          risks.push({ ts, tool, type: 'UNBOUNDED_STRING', param: key, severity: 'medium' });
+      }
 
-  // Destructive tool name
-  if (DESTRUCTIVE_RE.test(tool)) {
-    risks.push({ ts, tool, type: 'DESTRUCTIVE_OP', param: 'tool_name', severity: 'high' });
-  }
+      function walkObj(obj, prefix) {
+        if (!obj || typeof obj !== 'object') { scanValue(prefix, obj); return; }
+        if (Array.isArray(obj)) { obj.forEach((v, i) => walkObj(v, prefix + '[' + i + ']')); return; }
+        for (const [k, v] of Object.entries(obj)) walkObj(v, prefix ? prefix + '.' + k : k);
+      }
 
-  function scanValue(key, val) {
-    const s = String(val ?? '');
-    if (s.includes('../')) risks.push({ ts, tool, type: 'PATH_TRAVERSAL', param: key, severity: 'high' });
-    if (/[;`]|\|\||&&/.test(s)) risks.push({ ts, tool, type: 'SHELL_INJECTION', param: key, severity: 'high' });
-    if (/https?:\/\//i.test(s) && !/localhost|127\.0\.0\.1/i.test(s))
-      risks.push({ ts, tool, type: 'EXTERNAL_URL', param: key, severity: 'medium' });
-    if (s.length > 1000 && typeof val === 'string')
-      risks.push({ ts, tool, type: 'UNBOUNDED_STRING', param: key, severity: 'medium' });
-  }
+      walkObj(params, '');
+      return risks;
+    }
 
-  function walkObj(obj, prefix) {
-    if (!obj || typeof obj !== 'object') { scanValue(prefix, obj); return; }
-    if (Array.isArray(obj)) { obj.forEach((v,i) => walkObj(v, prefix + '[' + i + ']')); return; }
-    for (const [k, v] of Object.entries(obj)) walkObj(v, prefix ? prefix + '.' + k : k);
-  }
+    // ── Data fetch ─────────────────────────────────────────────────────────────
+    async function fetchEvents() {
+      const r = await fetch('/api/events?limit=200');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }
 
-  walkObj(params, '');
-  return risks;
-}
+    async function fetchStats() {
+      const r = await fetch('/api/stats');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }
 
-// ── Data fetch ─────────────────────────────────────────────────────────────
-async function fetchEvents() {
-  const r = await fetch('/api/events?limit=200');
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  return r.json();
-}
+    function setOnline(online) {
+      document.getElementById('offline-banner').style.display = online ? 'none' : 'block';
+      const dot = document.getElementById('status-dot');
+      const txt = document.getElementById('status-text');
+      if (online) {
+        dot.className = 'status-dot live';
+        txt.textContent = 'LIVE';
+      } else {
+        dot.className = 'status-dot';
+        txt.textContent = 'OFFLINE';
+      }
+    }
 
-async function fetchStats() {
-  const r = await fetch('/api/stats');
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  return r.json();
-}
+    // ── Inventory Panel ────────────────────────────────────────────────────────
+    function renderInventory(events, stats) {
+      // Stats bar
+      if (stats) {
+        document.getElementById('stat-total').textContent = stats.total_events ?? events.length;
+        document.getElementById('stat-tools').textContent = stats.unique_tools ?? 0;
+      } else {
+        document.getElementById('stat-total').textContent = events.length;
+        const tools = new Set(events.map(e => e.url_path)).size;
+        document.getElementById('stat-tools').textContent = tools;
+      }
 
-function setOnline(online) {
-  document.getElementById('offline-banner').style.display = online ? 'none' : 'block';
-  const dot = document.getElementById('status-dot');
-  const txt = document.getElementById('status-text');
-  if (online) {
-    dot.className = 'status-dot live';
-    txt.textContent = 'LIVE';
-  } else {
-    dot.className = 'status-dot';
-    txt.textContent = 'OFFLINE';
-  }
-}
+      const allRisks = events.flatMap(detectRisks);
+      document.getElementById('stat-risks').textContent = allRisks.length;
 
-// ── Inventory Panel ────────────────────────────────────────────────────────
-function renderInventory(events, stats) {
-  // Stats bar
-  if (stats) {
-    document.getElementById('stat-total').textContent = stats.total_events ?? events.length;
-    document.getElementById('stat-tools').textContent = stats.unique_tools ?? 0;
-  } else {
-    document.getElementById('stat-total').textContent = events.length;
-    const tools = new Set(events.map(e => e.tool_name)).size;
-    document.getElementById('stat-tools').textContent = tools;
-  }
+      const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+      const h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
+      document.getElementById('stat-uptime').textContent =
+        h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
 
-  const allRisks = events.flatMap(detectRisks);
-  document.getElementById('stat-risks').textContent = allRisks.length;
+      // Build tool map
+      const toolMap = {};
+      for (const e of events) {
+        const t = e.url_path || 'unknown';
+        if (!toolMap[t]) toolMap[t] = { count: 0, last: '' };
+        toolMap[t].count++;
+        if (!toolMap[t].last || e.timestamp_ns > toolMap[t].last) toolMap[t].last = e.timestamp_ns;
+      }
 
-  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
-  const h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
-  document.getElementById('stat-uptime').textContent =
-    h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
-
-  // Build tool map
-  const toolMap = {};
-  for (const e of events) {
-    const t = e.tool_name || 'unknown';
-    if (!toolMap[t]) toolMap[t] = { count: 0, last: '' };
-    toolMap[t].count++;
-    if (!toolMap[t].last || e.timestamp > toolMap[t].last) toolMap[t].last = e.timestamp;
-  }
-
-  const body = document.getElementById('inv-body');
-  if (Object.keys(toolMap).length === 0) {
-    body.innerHTML = `<tr><td colspan="4"><div class="empty-state">
+      const body = document.getElementById('inv-body');
+      if (Object.keys(toolMap).length === 0) {
+        body.innerHTML = `<tr><td colspan="4"><div class="empty-state">
       <span class="empty-icon">👁</span>
       <h3>No tool calls recorded yet</h3>
       <p>Start your AI agent and point it to the proxy.</p>
       <span class="cmd-hint">AGENTWALL_PROXY_URL=http://localhost:8080</span>
     </div></td></tr>`;
-    return;
-  }
+        return;
+      }
 
-  const rows = Object.entries(toolMap)
-    .sort((a,b) => b[1].count - a[1].count)
-    .map(([tool, info]) => {
-      const rt = riskTier(tool);
-      return `<tr>
+      const rows = Object.entries(toolMap)
+        .sort((a, b) => b[1].count - a[1].count)
+        .map(([tool, info]) => {
+          const rt = riskTier(tool);
+          return `<tr>
         <td class="tool-name">${escHtml(tool)}</td>
         <td><strong>${info.count}</strong></td>
         <td class="ts">${fmtTime(info.last)}</td>
         <td><span class="badge ${rt.cls}">${rt.label}</span></td>
       </tr>`;
-    }).join('');
-  body.innerHTML = rows;
-}
+        }).join('');
+      body.innerHTML = rows;
+    }
 
-// ── Timeline Panel ─────────────────────────────────────────────────────────
-function addTimelineRow(event) {
-  const list = document.getElementById('timeline-list');
-  const empty = document.getElementById('tl-empty');
-  if (empty) empty.style.display = 'none';
+    // ── Timeline Panel ─────────────────────────────────────────────────────────
+    function addTimelineRow(event) {
+      const list = document.getElementById('timeline-list');
+      const empty = document.getElementById('tl-empty');
+      if (empty) empty.style.display = 'none';
 
-  const tool = event.tool_name || '';
-  const paramsStr = event.parameters || '{}';
-  let paramPreview = '';
-  try { paramPreview = JSON.stringify(JSON.parse(paramsStr)).slice(0, 80); } catch { paramPreview = paramsStr.slice(0,80); }
+      // Determine transport label & color
+      const transport = event.transport || 'unknown';
+      let transBadge = 'muted';
+      let transLabel = transport.toUpperCase();
+      if (transport === 'mcp') { transBadge = 'blue'; transLabel = 'MCP'; }
+      else if (transport === 'fetch') { transBadge = 'blue'; transLabel = 'HTTP FETCH'; }
+      else if (transport === 'http_connect') { transBadge = 'amber'; transLabel = 'CONNECT'; }
+      else if (transport === 'websocket') { transBadge = 'green'; transLabel = 'WS'; }
 
-  if (tlFilterText && !tool.toLowerCase().includes(tlFilterText.toLowerCase())) return;
+      // Verdict badge
+      const isDenied = event.verdict === 'deny' || event.response_status === 403;
+      const verdictClass = isDenied ? 'red' : 'green';
+      const verdictLabel = isDenied ? 'BLOCKED' : 'ALLOWED';
 
-  const rt = riskTier(tool);
-  const row = document.createElement('div');
-  row.className = 'tl-row';
-  row.innerHTML = `
-    <span class="tl-ts">${fmtTime(event.timestamp)}</span>
-    <span class="tl-tool"><span class="badge ${rt.cls}" style="margin-right:6px">${rt.label}</span>${escHtml(tool)}</span>
-    <span class="tl-params">${escHtml(paramPreview)}</span>
+      // Format destination & description
+      const host = event.target_host || 'localhost';
+      const port = event.target_port ? `:${event.target_port}` : '';
+      const path = event.url_path || '';
+      const method = event.method || '';
+
+      const destStr = `${method} ${host}${port}${path}`.trim();
+
+      // Filter check (applied in renderTimeline as well)
+      if (tlFilterText && !destStr.toLowerCase().includes(tlFilterText.toLowerCase())) return;
+
+      const paramsStr = event.request_body || '{}';
+      let paramPreview = '';
+      try { paramPreview = JSON.stringify(JSON.parse(paramsStr)).slice(0, 80); } catch { paramPreview = paramsStr.slice(0, 80); }
+
+      const row = document.createElement('div');
+      row.className = 'tl-row' + (isDenied ? ' blocked-row' : '');
+
+      // DLP Findings parsing
+      let dlpBlockHtml = '';
+      if (event.dlp_findings) {
+        try {
+          const parsed = JSON.parse(event.dlp_findings);
+          if (parsed && parsed.findings && parsed.findings.length > 0) {
+            const listItems = parsed.findings.map(f => `<li style="margin-left: 16px; margin-top: 4px;">${escHtml(f)}</li>`).join('');
+            dlpBlockHtml = `
+          <div class="json-label" style="color: var(--red); display: flex; align-items: center; gap: 6px; font-weight: 700; margin-top: 12px; font-size: 0.75rem;">
+            🛡️ Content-Aware DLP Finding
+          </div>
+          <div style="background: rgba(248,81,73,0.08); border: 1px solid var(--red); border-radius: var(--radius-sm); padding: 10px 14px; font-family: var(--font-mono); font-size: 0.78rem; color: #ffb4b0; margin-top: 6px;">
+            <ul style="list-style-type: square; margin: 0; padding: 0;">
+              ${listItems}
+            </ul>
+          </div>
+        `;
+          }
+        } catch (e) {
+          dlpBlockHtml = `
+        <div class="json-label" style="color: var(--red); margin-top: 12px;">🛡️ DLP Finding</div>
+        <div class="json-block" style="border-color: var(--red); color: #ffb4b0;">${escHtml(event.dlp_findings)}</div>
+      `;
+        }
+      }
+
+      row.innerHTML = `
+    <span class="tl-ts">${fmtTime(event.timestamp_ns)}</span>
+    <span class="tl-tool" style="min-width: 280px; display: inline-flex; align-items: center; gap: 6px;">
+      <span class="badge ${transBadge}" style="font-size: 0.55rem; padding: 2px 6px;">${transLabel}</span>
+      <span class="badge ${verdictClass}" style="font-size: 0.55rem; padding: 2px 6px;">${verdictLabel}</span>
+      <span style="font-weight: 600; color: var(--text-bright); font-family: var(--font-mono); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escHtml(destStr)}</span>
+    </span>
+    <span class="tl-params">${escHtml(paramPreview || (isDenied ? 'Blocked due to secret exfiltration prevention' : ''))}</span>
     <span class="tl-latency">${fmtLatency(event.latency_ms)}</span>
-    <div class="tl-expand">
-      <div class="json-label">Parameters</div>
+    <div class="tl-expand" style="width: 100%;">
+      ${dlpBlockHtml}
+      <div class="json-label">Parameters / Payload</div>
       <div class="json-block">${escHtml((() => { try { return JSON.stringify(JSON.parse(paramsStr), null, 2); } catch { return paramsStr; } })())}</div>
       <div class="json-label">Response</div>
-      <div class="json-block">${escHtml((() => { try { return JSON.stringify(JSON.parse(event.response || '{}'), null, 2); } catch { return (event.response || ''); } })())}</div>
+      <div class="json-block">${escHtml((() => { try { return JSON.stringify(JSON.parse(event.response_body || '{}'), null, 2); } catch { return (event.response_body || ''); } })())}</div>
     </div>`;
 
-  row.addEventListener('click', () => row.classList.toggle('expanded'));
+      row.addEventListener('click', () => row.classList.toggle('expanded'));
 
-  // Keep max 200 rows
-  const rows = list.querySelectorAll('.tl-row');
-  if (rows.length >= 200) rows[0].remove();
+      // Keep max 200 rows
+      const rows = list.querySelectorAll('.tl-row');
+      if (rows.length >= 200) rows[0].remove();
 
-  list.appendChild(row);
-  list.scrollTop = list.scrollHeight;
+      list.appendChild(row);
+      list.scrollTop = list.scrollHeight;
 
-  document.getElementById('tl-count').textContent = list.querySelectorAll('.tl-row').length + ' events';
-}
-
-function renderTimeline(events) {
-  const list = document.getElementById('timeline-list');
-  const empty = document.getElementById('tl-empty');
-  list.querySelectorAll('.tl-row').forEach(r => r.remove());
-
-  const filtered = events.filter(e =>
-    !tlFilterText || (e.tool_name || '').toLowerCase().includes(tlFilterText.toLowerCase())
-  );
-
-  if (filtered.length === 0) {
-    if (empty) empty.style.display = '';
-    return;
-  }
-
-  if (empty) empty.style.display = 'none';
-  filtered.slice(-200).forEach(addTimelineRow);
-}
-
-// ── Parameter Explorer ─────────────────────────────────────────────────────
-function renderParamExplorer(events) {
-  const selector = document.getElementById('tool-selector');
-  const tools = [...new Set(events.map(e => e.tool_name).filter(Boolean))].sort();
-  const current = selector.value;
-
-  selector.innerHTML = '<option value="">— choose a tool —</option>' +
-    tools.map(t => `<option value="${escHtml(t)}" ${t === current ? 'selected' : ''}>${escHtml(t)}</option>`).join('');
-
-  if (current) renderParamsForTool(events, current);
-}
-
-function renderParamsForTool(events, toolName) {
-  const wrap = document.getElementById('params-table-wrap');
-  const empty = document.getElementById('params-empty');
-  const body = document.getElementById('params-body');
-
-  const toolEvents = events.filter(e => e.tool_name === toolName);
-  if (toolEvents.length === 0) {
-    wrap.style.display = 'none';
-    empty.style.display = '';
-    return;
-  }
-
-  // Collect param observations
-  const paramObs = {}; // key → { types: Set, samples: [], patterns: Set }
-
-  for (const e of toolEvents) {
-    let params = {};
-    try { params = JSON.parse(e.parameters || '{}'); } catch {}
-    for (const [k, v] of Object.entries(params)) {
-      if (!paramObs[k]) paramObs[k] = { types: new Set(), samples: [], patterns: new Set() };
-      paramObs[k].types.add(inferType(v));
-      if (paramObs[k].samples.length < 3) paramObs[k].samples.push(v);
-      const pat = detectPattern(v);
-      if (pat) paramObs[k].patterns.add(pat);
+      document.getElementById('tl-count').textContent = list.querySelectorAll('.tl-row').length + ' events';
     }
-  }
 
-  if (Object.keys(paramObs).length === 0) {
-    wrap.style.display = 'none';
-    empty.style.display = '';
-    return;
-  }
+    function renderTimeline(events) {
+      const list = document.getElementById('timeline-list');
+      const empty = document.getElementById('tl-empty');
+      list.querySelectorAll('.tl-row').forEach(r => r.remove());
 
-  wrap.style.display = '';
-  empty.style.display = 'none';
+      const filtered = events.filter(e => {
+        if (!tlFilterText) return true;
+        const host = e.target_host || 'localhost';
+        const port = e.target_port ? `:${e.target_port}` : '';
+        const path = e.url_path || '';
+        const method = e.method || '';
+        const destStr = `${method} ${host}${port}${path}`.trim();
+        return destStr.toLowerCase().includes(tlFilterText.toLowerCase());
+      });
 
-  body.innerHTML = Object.entries(paramObs).map(([k, obs]) => {
-    const types = [...obs.types].join(', ');
-    const samples = obs.samples.map(s => {
-      const str = typeof s === 'object' ? JSON.stringify(s) : String(s ?? '');
-      return `<code style="font-family:var(--font-mono);font-size:0.72rem;color:var(--accent)">${escHtml(str.slice(0,40))}</code>`;
-    }).join(' ');
-    const patterns = [...obs.patterns].map(p => `<span class="badge amber">${p}</span>`).join(' ') || '<span style="color:var(--text-muted)">—</span>';
-    return `<tr>
+      if (filtered.length === 0) {
+        if (empty) empty.style.display = '';
+        return;
+      }
+
+      if (empty) empty.style.display = 'none';
+      filtered.slice(-200).forEach(addTimelineRow);
+    }
+
+    // ── Parameter Explorer ─────────────────────────────────────────────────────
+    function renderParamExplorer(events) {
+      const selector = document.getElementById('tool-selector');
+      const tools = [...new Set(events.map(e => e.url_path).filter(Boolean))].sort();
+      const current = selector.value;
+
+      selector.innerHTML = '<option value="">— choose a tool —</option>' +
+        tools.map(t => `<option value="${escHtml(t)}" ${t === current ? 'selected' : ''}>${escHtml(t)}</option>`).join('');
+
+      if (current) renderParamsForTool(events, current);
+    }
+
+    function renderParamsForTool(events, toolName) {
+      const wrap = document.getElementById('params-table-wrap');
+      const empty = document.getElementById('params-empty');
+      const body = document.getElementById('params-body');
+
+      const toolEvents = events.filter(e => e.url_path === toolName);
+      if (toolEvents.length === 0) {
+        wrap.style.display = 'none';
+        empty.style.display = '';
+        return;
+      }
+
+      // Collect param observations
+      const paramObs = {}; // key → { types: Set, samples: [], patterns: Set }
+
+      for (const e of toolEvents) {
+        let params = {};
+        try { params = JSON.parse(e.request_body || '{}'); } catch { }
+        for (const [k, v] of Object.entries(params)) {
+          if (!paramObs[k]) paramObs[k] = { types: new Set(), samples: [], patterns: new Set() };
+          paramObs[k].types.add(inferType(v));
+          if (paramObs[k].samples.length < 3) paramObs[k].samples.push(v);
+          const pat = detectPattern(v);
+          if (pat) paramObs[k].patterns.add(pat);
+        }
+      }
+
+      if (Object.keys(paramObs).length === 0) {
+        wrap.style.display = 'none';
+        empty.style.display = '';
+        return;
+      }
+
+      wrap.style.display = '';
+      empty.style.display = 'none';
+
+      body.innerHTML = Object.entries(paramObs).map(([k, obs]) => {
+        const types = [...obs.types].join(', ');
+        const samples = obs.samples.map(s => {
+          const str = typeof s === 'object' ? JSON.stringify(s) : String(s ?? '');
+          return `<code style="font-family:var(--font-mono);font-size:0.72rem;color:var(--accent)">${escHtml(str.slice(0, 40))}</code>`;
+        }).join(' ');
+        const patterns = [...obs.patterns].map(p => `<span class="badge amber">${p}</span>`).join(' ') || '<span style="color:var(--text-muted)">—</span>';
+        return `<tr>
       <td class="tool-name">${escHtml(k)}</td>
       <td><span class="badge muted">${escHtml(types)}</span></td>
       <td>${samples || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>${patterns}</td>
     </tr>`;
-  }).join('');
-}
+      }).join('');
+    }
 
-// ── Risk Flags Panel ───────────────────────────────────────────────────────
-function renderRisks(events) {
-  const allRisks = events.flatMap(detectRisks);
-  const body = document.getElementById('risks-body');
-  const card = document.getElementById('risks-card');
-  const emptyEl = document.getElementById('risks-empty');
+    // ── Risk Flags Panel ───────────────────────────────────────────────────────
+    function renderRisks(events) {
+      const allRisks = events.flatMap(detectRisks);
+      const body = document.getElementById('risks-body');
+      const card = document.getElementById('risks-card');
+      const emptyEl = document.getElementById('risks-empty');
 
-  document.getElementById('risk-count-badge').textContent = allRisks.length + ' flags';
+      document.getElementById('risk-count-badge').textContent = allRisks.length + ' flags';
 
-  if (allRisks.length === 0) {
-    card.style.display = 'none';
-    emptyEl.style.display = '';
-    return;
-  }
+      if (allRisks.length === 0) {
+        card.style.display = 'none';
+        emptyEl.style.display = '';
+        return;
+      }
 
-  card.style.display = '';
-  emptyEl.style.display = 'none';
+      card.style.display = '';
+      emptyEl.style.display = 'none';
 
-  body.innerHTML = allRisks.map(r => {
-    const sev = r.severity === 'high' ? 'red' : 'amber';
-    return `<tr>
+      body.innerHTML = allRisks.map(r => {
+        const sev = r.severity === 'high' ? 'red' : 'amber';
+        return `<tr>
       <td class="ts">${fmtTime(r.ts)}</td>
       <td class="tool-name">${escHtml(r.tool)}</td>
       <td><span class="badge ${sev}">${escHtml(r.type)}</span></td>
       <td><code style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted)">${escHtml(r.param)}</code></td>
       <td><span class="badge ${sev}">${r.severity.toUpperCase()}</span></td>
     </tr>`;
-  }).join('');
-}
-
-// ── Poll & refresh all panels ──────────────────────────────────────────────
-async function refresh() {
-  let stats = null;
-  try {
-    [allEvents, stats] = await Promise.all([fetchEvents(), fetchStats().catch(() => null)]);
-    setOnline(true);
-    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
-  } catch {
-    setOnline(false);
-    if (!retryTimer) retryTimer = setTimeout(refresh, 5000);
-    return;
-  }
-
-  renderInventory(allEvents, stats);
-  renderRisks(allEvents);
-  renderParamExplorer(allEvents);
-
-  document.getElementById('inv-last-update').textContent =
-    new Date().toLocaleTimeString('en-US', { hour12: false });
-}
-
-// ── SSE for timeline ───────────────────────────────────────────────────────
-function connectSSE() {
-  if (sseSource) { sseSource.close(); sseSource = null; }
-
-  const src = new EventSource('/api/events/stream');
-  sseSource = src;
-
-  src.onopen = () => {
-    document.getElementById('tl-live-badge').textContent = '● LIVE';
-    document.getElementById('tl-live-badge').className = 'badge green';
-  };
-
-  src.onmessage = (e) => {
-    try {
-      const event = JSON.parse(e.data);
-      addTimelineRow(event);
-      // Also update allEvents for other panels
-      allEvents.push(event);
-      renderInventory(allEvents, null);
-      renderRisks(allEvents);
-    } catch {}
-  };
-
-  src.onerror = () => {
-    document.getElementById('tl-live-badge').textContent = '○ RECONNECTING';
-    document.getElementById('tl-live-badge').className = 'badge amber';
-    src.close();
-    sseSource = null;
-    setTimeout(connectSSE, 3000);
-  };
-}
-
-// ── Nav switching ──────────────────────────────────────────────────────────
-document.querySelectorAll('.nav-item').forEach(item => {
-  item.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    item.classList.add('active');
-    const target = item.dataset.panel;
-    const panel = document.getElementById(target);
-    if (panel) panel.classList.add('active');
-
-    if (target === 'panel-timeline') {
-      if (!sseSource) connectSSE();
+      }).join('');
     }
-  });
-});
 
-// ── Timeline filter ────────────────────────────────────────────────────────
-document.getElementById('tl-filter').addEventListener('input', (e) => {
-  tlFilterText = e.target.value.trim();
-  renderTimeline(allEvents);
-});
+    // ── Poll & refresh all panels ──────────────────────────────────────────────
+    async function refresh() {
+      let stats = null;
+      try {
+        [allEvents, stats] = await Promise.all([fetchEvents(), fetchStats().catch(() => null)]);
+        setOnline(true);
+        if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      } catch {
+        setOnline(false);
+        if (!retryTimer) retryTimer = setTimeout(refresh, 5000);
+        return;
+      }
 
-document.getElementById('tl-clear').addEventListener('click', () => {
-  document.getElementById('tl-filter').value = '';
-  tlFilterText = '';
-  renderTimeline(allEvents);
-});
+      renderInventory(allEvents, stats);
+      renderRisks(allEvents);
+      renderParamExplorer(allEvents);
 
-// ── Param explorer tool selector ──────────────────────────────────────────
-document.getElementById('tool-selector').addEventListener('change', (e) => {
-  renderParamsForTool(allEvents, e.target.value);
-});
+      document.getElementById('inv-last-update').textContent =
+        new Date().toLocaleTimeString('en-US', { hour12: false });
+    }
 
-// ── Generate Policy ────────────────────────────────────────────────────────
-let lastPolicyYaml = '';
+    // ── SSE for timeline ───────────────────────────────────────────────────────
+    function connectSSE() {
+      if (sseSource) { sseSource.close(); sseSource = null; }
 
-document.getElementById('btn-generate').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-generate');
-  const spinner = document.getElementById('gen-spinner');
-  const btnText = document.getElementById('gen-btn-text');
-  const output = document.getElementById('policy-output');
-  const actions = document.getElementById('policy-actions');
+      const src = new EventSource('/api/events/stream');
+      sseSource = src;
 
-  btn.disabled = true;
-  spinner.style.display = 'block';
-  btnText.textContent = 'Generating...';
-  output.style.display = 'none';
-  actions.style.display = 'none';
+      src.onopen = () => {
+        document.getElementById('tl-live-badge').textContent = '● LIVE';
+        document.getElementById('tl-live-badge').className = 'badge green';
+      };
 
-  try {
-    const r = await fetch('/api/generate-policy', { method: 'POST' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    lastPolicyYaml = await r.text();
-    output.textContent = lastPolicyYaml;
-    output.style.display = 'block';
-    actions.style.display = 'flex';
-    toast('Policy generated successfully!', 'success');
-  } catch (err) {
-    toast('Failed to generate policy: ' + err.message, 'error');
-  } finally {
-    btn.disabled = false;
-    spinner.style.display = 'none';
-    btnText.textContent = '⚡ Generate Policy';
-  }
-});
+      src.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data);
+          addTimelineRow(event);
+          // Also update allEvents for other panels
+          allEvents.push(event);
+          renderInventory(allEvents, null);
+          renderRisks(allEvents);
+        } catch { }
+      };
 
-document.getElementById('btn-download').addEventListener('click', () => {
-  if (!lastPolicyYaml) return;
-  const blob = new Blob([lastPolicyYaml], { type: 'text/yaml' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'agentwall-policy.yaml';
-  a.click();
-  URL.revokeObjectURL(a.href);
-  toast('Policy downloaded.', 'info');
-});
+      src.onerror = () => {
+        document.getElementById('tl-live-badge').textContent = '○ RECONNECTING';
+        document.getElementById('tl-live-badge').className = 'badge amber';
+        src.close();
+        sseSource = null;
+        setTimeout(connectSSE, 3000);
+      };
+    }
 
-document.getElementById('btn-copy-policy').addEventListener('click', async () => {
-  if (!lastPolicyYaml) return;
-  try {
-    await navigator.clipboard.writeText(lastPolicyYaml);
-    toast('Copied to clipboard!', 'success');
-  } catch {
-    toast('Copy failed — use the download button instead.', 'error');
-  }
-});
+    // ── Nav switching ──────────────────────────────────────────────────────────
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        item.classList.add('active');
+        const target = item.dataset.panel;
+        const panel = document.getElementById(target);
+        if (panel) panel.classList.add('active');
 
-// ── Init ──────────────────────────────────────────────────────────────────
-(async function init() {
-  await refresh();
-  pollTimer = setInterval(refresh, 5000);
-  connectSSE();
-  // Render initial timeline
-  renderTimeline(allEvents);
-})();
-</script>
+        if (target === 'panel-timeline') {
+          if (!sseSource) connectSSE();
+        }
+      });
+    });
+
+    // ── Timeline filter ────────────────────────────────────────────────────────
+    document.getElementById('tl-filter').addEventListener('input', (e) => {
+      tlFilterText = e.target.value.trim();
+      renderTimeline(allEvents);
+    });
+
+    document.getElementById('tl-clear').addEventListener('click', () => {
+      document.getElementById('tl-filter').value = '';
+      tlFilterText = '';
+      renderTimeline(allEvents);
+    });
+
+    // ── Param explorer tool selector ──────────────────────────────────────────
+    document.getElementById('tool-selector').addEventListener('change', (e) => {
+      renderParamsForTool(allEvents, e.target.value);
+    });
+
+    // ── Generate Policy ────────────────────────────────────────────────────────
+    let lastPolicyYaml = '';
+
+    document.getElementById('btn-generate').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-generate');
+      const spinner = document.getElementById('gen-spinner');
+      const btnText = document.getElementById('gen-btn-text');
+      const output = document.getElementById('policy-output');
+      const actions = document.getElementById('policy-actions');
+
+      btn.disabled = true;
+      spinner.style.display = 'block';
+      btnText.textContent = 'Generating...';
+      output.style.display = 'none';
+      actions.style.display = 'none';
+
+      try {
+        const r = await fetch('/api/generate-policy', { method: 'POST' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        lastPolicyYaml = await r.text();
+        output.textContent = lastPolicyYaml;
+        output.style.display = 'block';
+        actions.style.display = 'flex';
+        toast('Policy generated successfully!', 'success');
+      } catch (err) {
+        toast('Failed to generate policy: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+        btnText.textContent = '⚡ Generate Policy';
+      }
+    });
+
+    document.getElementById('btn-download').addEventListener('click', () => {
+      if (!lastPolicyYaml) return;
+      const blob = new Blob([lastPolicyYaml], { type: 'text/yaml' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'agentwall-policy.yaml';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('Policy downloaded.', 'info');
+    });
+
+    document.getElementById('btn-copy-policy').addEventListener('click', async () => {
+      if (!lastPolicyYaml) return;
+      try {
+        await navigator.clipboard.writeText(lastPolicyYaml);
+        toast('Copied to clipboard!', 'success');
+      } catch {
+        toast('Copy failed — use the download button instead.', 'error');
+      }
+    });
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    (async function init() {
+      await refresh();
+      pollTimer = setInterval(refresh, 5000);
+      connectSSE();
+      // Render initial timeline
+      renderTimeline(allEvents);
+    })();
+  </script>
 </body>
+
 </html>

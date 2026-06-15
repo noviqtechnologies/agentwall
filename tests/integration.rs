@@ -5,4 +5,5 @@ mod integration {
     mod multi_tenant_tests;
     mod audit_integration_tests;
     mod dashboard_test;
+    mod egress_proxy_tests;
 }

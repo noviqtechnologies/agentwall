@@ -83,6 +83,8 @@ pub struct ProxyState {
     pub response_scanner: Arc<crate::policy::response_scanner::ResponseScanner>,
     /// FR-303b: Response scan configuration
     pub response_scan_config: std::sync::RwLock<crate::policy::response_scanner::ResponseScanConfig>,
+    /// FR-12: Content-Aware DLP & Secret Detection on outbound requests
+    pub dlp_scanner: Arc<crate::policy::dlp::DlpScanner>,
     /// FR-306: Sliding window of recent tool call fingerprints (bounded to 5).
     pub tool_history: std::sync::Mutex<Vec<ToolCallFingerprint>>,
     
@@ -258,6 +260,34 @@ pub async fn evaluate_jsonrpc(
 
     // Increment total requests counter after rate limit pass
     state.metrics_requests_total.fetch_add(1, Ordering::Relaxed);
+
+    // FR-12: Content-Aware DLP & Secret Detection on outbound tool call parameters
+    let params_str = tool_params.to_string();
+    let dlp_findings = state.dlp_scanner.scan_content(&params_str);
+    if !dlp_findings.is_empty() {
+        if state.shadow_mode {
+            logging::log_event(
+                Level::Warn,
+                "dlp_finding",
+                json!({
+                    "tool": tool_name,
+                    "session": &session.session_id,
+                    "findings": dlp_findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()
+                }),
+            );
+        } else {
+            let critical = dlp_findings.iter().any(|f| f.category != crate::policy::dlp::SecretCategory::EnvVar);
+            if critical {
+                return handle_deny(
+                    state, &session.session_id, &id, tool_name,
+                    &format!("dlp: {}", dlp_findings[0].pattern_name),
+                    session.identity_sub.clone(), session.identity_email.clone(),
+                    session.request_ip.clone(),
+                    true, None, None,
+                ).await;
+            }
+        }
+    }
 
     // FR-306: Cycle Detection (Agent Firewall) — strictly isolated per session
     let cycle_action_to_take = {

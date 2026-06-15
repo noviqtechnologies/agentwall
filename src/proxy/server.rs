@@ -90,7 +90,7 @@ pub async fn run_server(
                                     .unwrap());
                             }
 
-                            let res = handle_request(req, &state, &client_ip).await?;
+                            let res = handle_request(req, state.clone(), &client_ip).await?;
                             use http_body_util::BodyExt;
                             Ok::<_, hyper::Error>(res.map(|b| b.map_err(|e| match e {}).boxed()))
                         }
@@ -98,6 +98,7 @@ pub async fn run_server(
 
                     if let Err(e) = http1::Builder::new()
                         .serve_connection(io, service)
+                        .with_upgrades()
                         .await
                     {
                         // Connection errors are expected during kill
@@ -263,11 +264,35 @@ async fn resolve_session(
 /// Handle a single HTTP request
 async fn handle_request(
     req: Request<Incoming>,
-    state: &ProxyState,
+    state: Arc<ProxyState>,
     client_ip: &str,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
+
+    // Determine if this is an egress proxy request (CONNECT, WebSocket upgrade, or absolute URI)
+    let is_egress = method == hyper::Method::CONNECT
+        || hyper_tungstenite::is_upgrade_request(&req)
+        || req.uri().authority().is_some();
+
+    if is_egress {
+        // Resolve dynamic multi-tenant session context for egress
+        let auth_header = req.headers().get(hyper::header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+        
+        let session = match resolve_session(&state, auth_header.as_deref(), client_ip).await {
+            Ok(s) => s,
+            Err((status, err_msg)) => {
+                let err = serde_json::json!({
+                    "error": {"code": -32099, "message": err_msg}
+                });
+                return Ok(json_response(status, &err));
+            }
+        };
+
+        return crate::proxy::egress::handle_egress(req, state, &session, client_ip).await;
+    }
 
     // Health/readiness/metrics/dashboard endpoints
     if method == hyper::Method::GET {
@@ -337,7 +362,7 @@ async fn handle_request(
                 }
             }
             "/metrics" => {
-                return Ok(prometheus_metrics_response(state));
+                return Ok(prometheus_metrics_response(&state));
             }
             _ => {}
         }
@@ -404,7 +429,7 @@ async fn handle_request(
     let start_time = std::time::Instant::now();
 
     // Resolve dynamic multi-tenant session context (FR-101)
-    let session = match resolve_session(state, auth_header.as_deref(), client_ip).await {
+    let session = match resolve_session(&state, auth_header.as_deref(), client_ip).await {
         Ok(s) => s,
         Err((status, err_msg)) => {
             let err = serde_json::json!({
@@ -417,7 +442,7 @@ async fn handle_request(
     };
 
     // Handle the JSON-RPC call against the dynamic session context
-    let action = handler::evaluate_jsonrpc(state, &session, &body).await;
+    let action = handler::evaluate_jsonrpc(&state, &session, &body).await;
 
     // Extract tool name from original request for response scanning context
     let tool_name = body.get("params")
@@ -430,7 +455,7 @@ async fn handle_request(
             match forward::forward_request(&state.http_client, &state.upstream_url, &body).await {
                 Ok(resp) => {
                     // FR-303b: Response scanning
-                    let processed = scan_and_process_response(state, &session, &resp, tool_name);
+                    let processed = scan_and_process_response(&state, &session, &resp, tool_name);
                     (processed, false, StatusCode::OK)
                 },
                 Err(e) => (
@@ -461,16 +486,26 @@ async fn handle_request(
             .map(|a| a.to_string())
             .unwrap_or_else(|| "{}".to_string());
         let response_str = response.to_string();
-        let timestamp = chrono::Utc::now().to_rfc3339();
+        let timestamp_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
         
-        let event = crate::proxy::db::Event {
-            timestamp,
-            tool_name,
-            parameters,
-            response: response_str,
-            upstream_endpoint: state.upstream_url.clone(),
+        let event = crate::proxy::db::EgressEvent {
+            timestamp_ns,
             session_id: session.session_id.clone(),
-            latency_ms: start_time.elapsed().as_secs_f64() * 1000.0,
+            transport: "mcp".to_string(),
+            method: Some("tools/call".to_string()),
+            target_host: state.upstream_url.clone(),
+            target_port: None,
+            url_path: Some(tool_name),
+            request_headers: None,
+            request_body: Some(parameters),
+            request_body_hash: None,
+            response_status: Some(status_code.as_u16() as i64),
+            response_body: Some(response_str),
+            response_body_hash: None,
+            dlp_findings: None,
+            injection_findings: None,
+            latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
+            verdict: Some(if should_kill { "deny".to_string() } else { "allow".to_string() }),
         };
         let db = state.db_manager.clone();
         

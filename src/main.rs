@@ -278,6 +278,7 @@ async fn run_stdio_proxy(
         db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
+        dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new().expect("Failed to compile DLP regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -510,6 +511,7 @@ async fn run_start(
         db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
+        dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new().expect("Failed to compile DLP regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -772,6 +774,7 @@ async fn run_wrap(
         db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
+        dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new().expect("Failed to compile DLP regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -886,6 +889,7 @@ async fn run_dev(
         db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
+        dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new().expect("Failed to compile DLP regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -989,7 +993,7 @@ async fn run_generate_policy(output_path: String) -> i32 {
         events.len().to_string().cyan(),
         events
             .iter()
-            .map(|e| e.tool_name.as_str())
+            .filter_map(|e| e.url_path.as_deref())
             .collect::<std::collections::HashSet<_>>()
             .len()
             .to_string()

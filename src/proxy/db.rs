@@ -7,14 +7,24 @@ use tokio::sync::{mpsc, oneshot};
 use rusqlite::{params, Connection, Transaction};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Event {
-    pub timestamp: String,
-    pub tool_name: String,
-    pub parameters: String,
-    pub response: String,
-    pub upstream_endpoint: String,
+pub struct EgressEvent {
+    pub timestamp_ns: i64,
     pub session_id: String,
-    pub latency_ms: f64,
+    pub transport: String,
+    pub method: Option<String>,
+    pub target_host: String,
+    pub target_port: Option<i64>,
+    pub url_path: Option<String>,
+    pub request_headers: Option<String>,
+    pub request_body: Option<String>,
+    pub request_body_hash: Option<String>,
+    pub response_status: Option<i64>,
+    pub response_body: Option<String>,
+    pub response_body_hash: Option<String>,
+    pub dlp_findings: Option<String>,
+    pub injection_findings: Option<String>,
+    pub latency_ms: Option<f64>,
+    pub verdict: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26,15 +36,15 @@ pub struct DbStats {
 
 // Commands sent to the DB manager thread
 enum DbCmd {
-    Insert(Event),
+    Insert(EgressEvent),
     Fetch {
         limit: usize,
-        responder: oneshot::Sender<Result<Vec<Event>, String>>,
+        responder: oneshot::Sender<Result<Vec<EgressEvent>, String>>,
     },
     /// Fetch all events in chronological order (oldest first) — used by generate-policy (FR-4)
     FetchAll {
         limit: usize,
-        responder: oneshot::Sender<Result<Vec<Event>, String>>,
+        responder: oneshot::Sender<Result<Vec<EgressEvent>, String>>,
     },
     GetStats {
         responder: oneshot::Sender<Result<DbStats, String>>,
@@ -68,19 +78,29 @@ impl DbManager {
         let conn = Connection::open(&db_path).expect("Failed to open SQLite DB");
         // Ensure schema exists
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS events (
+            "CREATE TABLE IF NOT EXISTS egress_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                tool_name TEXT NOT NULL,
-                parameters TEXT NOT NULL,
-                response TEXT NOT NULL,
-                upstream_endpoint TEXT NOT NULL,
+                timestamp_ns INTEGER NOT NULL,
                 session_id TEXT NOT NULL,
-                latency_ms REAL NOT NULL
+                transport TEXT NOT NULL,
+                method TEXT,
+                target_host TEXT NOT NULL,
+                target_port INTEGER,
+                url_path TEXT,
+                request_headers TEXT,
+                request_body TEXT,
+                request_body_hash TEXT,
+                response_status INTEGER,
+                response_body TEXT,
+                response_body_hash TEXT,
+                dlp_findings TEXT,
+                injection_findings TEXT,
+                latency_ms REAL,
+                verdict TEXT
             )",
             [],
         )
-        .expect("Failed to create events table");
+        .expect("Failed to create egress_events table");
 
         // Channel for commands
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<DbCmd>();
@@ -95,52 +115,48 @@ impl DbManager {
                 match cmd_rx.blocking_recv() {
                     Some(cmd) => match cmd {
                         DbCmd::Insert(event) => {
-                            // Use existing transaction if present, otherwise direct exec
+                            let sql = "INSERT INTO egress_events (
+                                timestamp_ns, session_id, transport, method, target_host, target_port, url_path,
+                                request_headers, request_body, request_body_hash, response_status, response_body, response_body_hash,
+                                dlp_findings, injection_findings, latency_ms, verdict
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                            let params_arr = params![
+                                event.timestamp_ns, event.session_id, event.transport, event.method, event.target_host,
+                                event.target_port, event.url_path, event.request_headers, event.request_body, event.request_body_hash,
+                                event.response_status, event.response_body, event.response_body_hash, event.dlp_findings, event.injection_findings,
+                                event.latency_ms, event.verdict
+                            ];
                             if let Some(ref mut tx) = tx {
-                                tx.execute(
-                                    "INSERT INTO events (timestamp, tool_name, parameters, response, upstream_endpoint, session_id, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                    params![
-                                        event.timestamp,
-                                        event.tool_name,
-                                        event.parameters,
-                                        event.response,
-                                        event.upstream_endpoint,
-                                        event.session_id,
-                                        event.latency_ms,
-                                    ],
-                                )
-                                .ok();
+                                tx.execute(sql, params_arr).ok();
                             } else {
-                                conn.execute(
-                                    "INSERT INTO events (timestamp, tool_name, parameters, response, upstream_endpoint, session_id, latency_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                    params![
-                                        event.timestamp,
-                                        event.tool_name,
-                                        event.parameters,
-                                        event.response,
-                                        event.upstream_endpoint,
-                                        event.session_id,
-                                        event.latency_ms,
-                                    ],
-                                )
-                                .ok();
+                                conn.execute(sql, params_arr).ok();
                             }
                         }
                         DbCmd::Fetch { limit, responder } => {
                             let mut stmt = conn.prepare(
-                                "SELECT timestamp, tool_name, parameters, response, upstream_endpoint, session_id, latency_ms FROM events ORDER BY id DESC LIMIT ?",
+                                "SELECT timestamp_ns, session_id, transport, method, target_host, target_port, url_path, request_headers, request_body, request_body_hash, response_status, response_body, response_body_hash, dlp_findings, injection_findings, latency_ms, verdict FROM egress_events ORDER BY id DESC LIMIT ?",
                             )
                             .expect("Failed to prepare fetch stmt");
                             let rows = stmt
                                 .query_map(params![limit as i64], |row| {
-                                    Ok(Event {
-                                        timestamp: row.get(0)?,
-                                        tool_name: row.get(1)?,
-                                        parameters: row.get(2)?,
-                                        response: row.get(3)?,
-                                        upstream_endpoint: row.get(4)?,
-                                        session_id: row.get(5)?,
-                                        latency_ms: row.get(6)?,
+                                    Ok(EgressEvent {
+                                        timestamp_ns: row.get(0)?,
+                                        session_id: row.get(1)?,
+                                        transport: row.get(2)?,
+                                        method: row.get(3)?,
+                                        target_host: row.get(4)?,
+                                        target_port: row.get(5)?,
+                                        url_path: row.get(6)?,
+                                        request_headers: row.get(7)?,
+                                        request_body: row.get(8)?,
+                                        request_body_hash: row.get(9)?,
+                                        response_status: row.get(10)?,
+                                        response_body: row.get(11)?,
+                                        response_body_hash: row.get(12)?,
+                                        dlp_findings: row.get(13)?,
+                                        injection_findings: row.get(14)?,
+                                        latency_ms: row.get(15)?,
+                                        verdict: row.get(16)?,
                                     })
                                 })
                                 .expect("Failed to query events");
@@ -155,19 +171,29 @@ impl DbManager {
                         DbCmd::FetchAll { limit, responder } => {
                             // Oldest-first ordering for policy generation corpus (FR-4)
                             let mut stmt = conn.prepare(
-                                "SELECT timestamp, tool_name, parameters, response, upstream_endpoint, session_id, latency_ms FROM events ORDER BY id ASC LIMIT ?",
+                                "SELECT timestamp_ns, session_id, transport, method, target_host, target_port, url_path, request_headers, request_body, request_body_hash, response_status, response_body, response_body_hash, dlp_findings, injection_findings, latency_ms, verdict FROM egress_events ORDER BY id ASC LIMIT ?",
                             )
                             .expect("Failed to prepare fetch-all stmt");
                             let rows = stmt
                                 .query_map(params![limit as i64], |row| {
-                                    Ok(Event {
-                                        timestamp: row.get(0)?,
-                                        tool_name: row.get(1)?,
-                                        parameters: row.get(2)?,
-                                        response: row.get(3)?,
-                                        upstream_endpoint: row.get(4)?,
-                                        session_id: row.get(5)?,
-                                        latency_ms: row.get(6)?,
+                                    Ok(EgressEvent {
+                                        timestamp_ns: row.get(0)?,
+                                        session_id: row.get(1)?,
+                                        transport: row.get(2)?,
+                                        method: row.get(3)?,
+                                        target_host: row.get(4)?,
+                                        target_port: row.get(5)?,
+                                        url_path: row.get(6)?,
+                                        request_headers: row.get(7)?,
+                                        request_body: row.get(8)?,
+                                        request_body_hash: row.get(9)?,
+                                        response_status: row.get(10)?,
+                                        response_body: row.get(11)?,
+                                        response_body_hash: row.get(12)?,
+                                        dlp_findings: row.get(13)?,
+                                        injection_findings: row.get(14)?,
+                                        latency_ms: row.get(15)?,
+                                        verdict: row.get(16)?,
                                     })
                                 })
                                 .expect("Failed to query all events");
@@ -181,13 +207,13 @@ impl DbManager {
                         }
                         DbCmd::GetStats { responder } => {
                             let total_events: i64 = conn.query_row(
-                                "SELECT COUNT(*) FROM events",
+                                "SELECT COUNT(*) FROM egress_events",
                                 [],
                                 |row| row.get(0),
                             ).unwrap_or(0);
                             
                             let unique_tools: i64 = conn.query_row(
-                                "SELECT COUNT(DISTINCT tool_name) FROM events",
+                                "SELECT COUNT(DISTINCT url_path) FROM egress_events WHERE transport='mcp'",
                                 [],
                                 |row| row.get(0),
                             ).unwrap_or(0);
@@ -204,7 +230,7 @@ impl DbManager {
                                 if metadata.len() > 500 * 1024 * 1024 {
                                     // Delete oldest 1000 rows
                                     conn.execute(
-                                        "DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY id ASC LIMIT 1000)",
+                                        "DELETE FROM egress_events WHERE id IN (SELECT id FROM egress_events ORDER BY id ASC LIMIT 1000)",
                                         [],
                                     )
                                     .ok();
@@ -224,14 +250,14 @@ impl DbManager {
     }
 
     /// Async insert of an event.
-    pub async fn insert(&self, event: Event) -> Result<(), String> {
+    pub async fn insert(&self, event: EgressEvent) -> Result<(), String> {
         self.cmd_tx
             .send(DbCmd::Insert(event))
             .map_err(|e| format!("Failed to send insert cmd: {}", e))
     }
 
     /// Async fetch of recent events in reverse-chronological order (newest first), limited to `limit`.
-    pub async fn get_events(&self, limit: usize) -> Result<Vec<Event>, String> {
+    pub async fn get_events(&self, limit: usize) -> Result<Vec<EgressEvent>, String> {
         let (tx, rx) = oneshot::channel();
         self.cmd_tx
             .send(DbCmd::Fetch { limit, responder: tx })
@@ -241,7 +267,7 @@ impl DbManager {
 
     /// Async fetch of all events in chronological order (oldest first) for policy generation (FR-4).
     /// `limit` is capped at 500 by the `generate-policy` command.
-    pub async fn get_all_events(&self, limit: usize) -> Result<Vec<Event>, String> {
+    pub async fn get_all_events(&self, limit: usize) -> Result<Vec<EgressEvent>, String> {
         let (tx, rx) = oneshot::channel();
         self.cmd_tx
             .send(DbCmd::FetchAll { limit, responder: tx })

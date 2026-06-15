@@ -1,16 +1,26 @@
 use agentwall::generate_policy::generate_from_events;
-use agentwall::proxy::db::Event;
+use agentwall::proxy::db::EgressEvent;
 use std::time::Instant;
 
-fn make_event(tool: &str, params: &str, timestamp: &str) -> Event {
-    Event {
-        timestamp: timestamp.to_string(),
-        tool_name: tool.to_string(),
-        parameters: params.to_string(),
-        response: "{}".to_string(),
-        upstream_endpoint: "http://127.0.0.1:3000".to_string(),
+fn make_event(tool: &str, params: &str, timestamp: &str) -> EgressEvent {
+    EgressEvent {
+        timestamp_ns: 123456789,
         session_id: "test_session".to_string(),
-        latency_ms: 10.0,
+        transport: "mcp".to_string(),
+        method: Some("tools/call".to_string()),
+        target_host: "http://127.0.0.1:3000".to_string(),
+        target_port: Some(3000),
+        url_path: Some(tool.to_string()),
+        request_headers: None,
+        request_body: Some(params.to_string()),
+        request_body_hash: None,
+        response_status: Some(200),
+        response_body: Some("{}".to_string()),
+        response_body_hash: None,
+        dlp_findings: None,
+        injection_findings: None,
+        latency_ms: Some(10.0),
+        verdict: Some("allow".to_string()),
     }
 }
 
