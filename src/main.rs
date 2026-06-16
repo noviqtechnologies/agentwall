@@ -161,9 +161,10 @@ async fn main() {
             mcp_url,
             stdio,
             no_browser,
+            enforce,
             args,
         } => {
-            run_dev(listen, mcp_url, stdio, no_browser, args).await
+            run_dev(listen, mcp_url, stdio, no_browser, enforce, args).await
         }
         Commands::GeneratePolicy { output } => {
             run_generate_policy(output).await
@@ -279,6 +280,7 @@ async fn run_stdio_proxy(
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
         dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new().expect("Failed to compile DLP regexes")),
+        injection_scanner: std::sync::Arc::new(crate::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -512,6 +514,7 @@ async fn run_start(
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
         dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new().expect("Failed to compile DLP regexes")),
+        injection_scanner: std::sync::Arc::new(crate::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -775,6 +778,7 @@ async fn run_wrap(
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
         dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new().expect("Failed to compile DLP regexes")),
+        injection_scanner: std::sync::Arc::new(crate::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -816,13 +820,14 @@ async fn run_wrap(
     0
 }
 
-// FR-2: Shadow Mode (Dev) – observation only proxy
+// FR-2: Shadow Mode (Dev) – observation only proxy (pass --enforce to activate blocking)
 #[allow(deprecated)]
 async fn run_dev(
     listen: String,
     mcp_url: String,
     _stdio: bool,
     no_browser: bool,
+    enforce: bool,
     _args: Vec<String>,
 ) -> i32 {
     // Generate session secret and ID
@@ -880,7 +885,9 @@ async fn run_dev(
         agent_pid: None,
         upstream_url: mcp_url,
         dry_run: false,
-        shadow_mode: true,
+        // When --enforce is passed, shadow_mode is false → injection/DLP scanners block.
+        // Default (no --enforce) keeps the original observation-only behaviour.
+        shadow_mode: !enforce,
         policy_loaded: std::sync::atomic::AtomicBool::new(false),
         rate_limiter: proxy::handler::RateLimiter::new(0),
         http_client: reqwest::Client::new(),
@@ -890,6 +897,7 @@ async fn run_dev(
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
         dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new().expect("Failed to compile DLP regexes")),
+        injection_scanner: std::sync::Arc::new(crate::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),

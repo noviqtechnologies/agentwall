@@ -254,6 +254,8 @@ pub async fn handle_egress(
     
     let mut response_status = 502;
     
+    let mut injection_findings_json = None;
+
     let final_res = match req_builder.send().await {
         Ok(upstream_res) => {
             response_status = upstream_res.status().as_u16();
@@ -262,7 +264,47 @@ pub async fn handle_egress(
                 builder = builder.header(k, v);
             }
             if let Ok(bytes) = upstream_res.bytes().await {
-                builder.body(Full::new(bytes)).unwrap_or_default()
+                let body_str = String::from_utf8_lossy(&bytes);
+                // Scan for Prompt Injection
+                let enforce_mode = !state.shadow_mode;
+                let scan_val = serde_json::json!({ "content": body_str.to_string() });
+                let inj_scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    state.injection_scanner.scan_response(&scan_val, "http_fetch", &session_id, enforce_mode)
+                }));
+                
+                let mut is_blocked = false;
+                match inj_scan_result {
+                    Ok(crate::policy::injection::ScanResult::Block { findings }) => {
+                        let f = &findings[0];
+                        let findings_json = serde_json::json!({
+                            "findings": findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()
+                        });
+                        injection_findings_json = Some(findings_json.to_string());
+                        verdict = "deny".to_string();
+                        response_status = 403;
+                        is_blocked = true;
+                        
+                        let _ = state.audit_logger.write_entry(&session_id, "injection_blocked", "http_fetch", None,
+                            Some(format!("pattern={} preview={}", f.pattern_name, f.preview)), None, None, None, None, None);
+                    }
+                    Ok(crate::policy::injection::ScanResult::Warn { findings }) => {
+                        let findings_json = serde_json::json!({
+                            "findings": findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()
+                        });
+                        injection_findings_json = Some(findings_json.to_string());
+                    }
+                    _ => {}
+                }
+
+                if is_blocked {
+                    Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .header("X-AgentWall-Block-Reason", "injection_detected")
+                        .body(Full::new(Bytes::from("AgentWall Blocked: Prompt Injection Detected")))
+                        .unwrap()
+                } else {
+                    builder.body(Full::new(bytes)).unwrap_or_default()
+                }
             } else {
                 builder.body(Full::new(Bytes::new())).unwrap_or_default()
             }
@@ -291,7 +333,7 @@ pub async fn handle_egress(
         response_body: None,
         response_body_hash: None,
         dlp_findings: dlp_findings_json,
-        injection_findings: None,
+        injection_findings: injection_findings_json,
         latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
         verdict: Some(verdict),
     };

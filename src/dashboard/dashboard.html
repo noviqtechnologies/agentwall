@@ -311,7 +311,7 @@
     /* ── Stats Bar ── */
     .stats-bar {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 16px;
       margin-bottom: 24px;
     }
@@ -893,8 +893,11 @@
       <div class="nav-item" data-panel="panel-risks">
         <span class="nav-icon">04</span> Risk Flags
       </div>
+      <div class="nav-item" data-panel="panel-injection">
+        <span class="nav-icon">05</span> Injection & Poisoning
+      </div>
       <div class="nav-item" data-panel="panel-policy">
-        <span class="nav-icon">05</span> Generate Policy
+        <span class="nav-icon">06</span> Generate Policy
       </div>
     </div>
 
@@ -931,6 +934,10 @@
           <div class="stat-card">
             <div class="stat-label">Risk Flags</div>
             <div class="stat-value red" id="stat-risks">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Injections Blocked</div>
+            <div class="stat-value red" id="stat-injections">—</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Session Time</div>
@@ -1058,7 +1065,40 @@
         </div>
       </div>
 
-      <!-- Panel 5: Generate Policy -->
+      <!-- Panel 5: Injection & Poisoning -->
+      <div id="panel-injection" class="panel">
+        <div class="panel-header">
+          <h2>🛡️ Injection & Poisoning</h2>
+          <span id="inj-count-badge" class="badge muted">0 detections</span>
+        </div>
+
+        <div class="card" style="padding: 0; overflow: hidden;" id="inj-card">
+          <div class="table-wrap">
+            <table id="tbl-injections">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Tool/Context</th>
+                  <th>Category</th>
+                  <th>Rule/Pattern Name</th>
+                  <th>Payload Preview</th>
+                </tr>
+              </thead>
+              <tbody id="inj-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="inj-empty" class="card" style="display:none;">
+          <div class="risk-empty">
+            <span class="big-check">🛡️</span>
+            <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No Injections/Poisoning Detected</h3>
+            <p style="font-size: 0.85rem;">All observed responses from tools, models, and external APIs are clean of prompt injections.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 6: Generate Policy -->
       <div id="panel-policy" class="panel">
         <div class="panel-header">
           <h2>📋 Generate Policy</h2>
@@ -1186,6 +1226,35 @@
         risks.push({ ts, tool, type: 'DESTRUCTIVE_OP', param: 'tool_name', severity: 'high' });
       }
 
+      // Prompt Injection findings (FR-13)
+      if (event.injection_findings) {
+        try {
+          const parsed = JSON.parse(event.injection_findings);
+          if (parsed && parsed.findings) {
+            parsed.findings.forEach(f => {
+              const parts = f.split(': ');
+              const category = parts[0] || 'Prompt Injection';
+              const detail = parts.slice(1).join(': ') || f;
+              risks.push({
+                ts,
+                tool,
+                type: 'INJECTION_ATTEMPT',
+                param: category,
+                severity: 'high'
+              });
+            });
+          }
+        } catch {
+          risks.push({
+            ts,
+            tool,
+            type: 'INJECTION_ATTEMPT',
+            param: 'response_scan',
+            severity: 'high'
+          });
+        }
+      }
+
       function scanValue(key, val) {
         const s = String(val ?? '');
         if (s.includes('../')) risks.push({ ts, tool, type: 'PATH_TRAVERSAL', param: key, severity: 'high' });
@@ -1247,6 +1316,21 @@
       const allRisks = events.flatMap(detectRisks);
       document.getElementById('stat-risks').textContent = allRisks.length;
 
+      let injectionCount = 0;
+      for (const e of events) {
+        if (e.injection_findings) {
+          try {
+            const parsed = JSON.parse(e.injection_findings);
+            if (parsed && parsed.findings) {
+              injectionCount += parsed.findings.length;
+            }
+          } catch {
+            injectionCount++;
+          }
+        }
+      }
+      document.getElementById('stat-injections').textContent = injectionCount;
+
       const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
       const h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
       document.getElementById('stat-uptime').textContent =
@@ -1303,8 +1387,13 @@
 
       // Verdict badge
       const isDenied = event.verdict === 'deny' || event.response_status === 403;
-      const verdictClass = isDenied ? 'red' : 'green';
-      const verdictLabel = isDenied ? 'BLOCKED' : 'ALLOWED';
+      let verdictClass = isDenied ? 'red' : 'green';
+      let verdictLabel = isDenied ? 'BLOCKED' : 'ALLOWED';
+
+      if (!isDenied && event.injection_findings) {
+        verdictClass = 'amber';
+        verdictLabel = 'INJECTION WARN';
+      }
 
       // Format destination & description
       const host = event.target_host || 'localhost';
@@ -1350,6 +1439,32 @@
         }
       }
 
+      // Injection Findings parsing (FR-13)
+      let injectionBlockHtml = '';
+      if (event.injection_findings) {
+        try {
+          const parsed = JSON.parse(event.injection_findings);
+          if (parsed && parsed.findings && parsed.findings.length > 0) {
+            const listItems = parsed.findings.map(f => `<li style="margin-left: 16px; margin-top: 4px;">${escHtml(f)}</li>`).join('');
+            injectionBlockHtml = `
+          <div class="json-label" style="color: var(--red); display: flex; align-items: center; gap: 6px; font-weight: 700; margin-top: 12px; font-size: 0.75rem;">
+            🛡️ Prompt Injection / Poisoning Detected
+          </div>
+          <div style="background: rgba(248,81,73,0.08); border: 1px solid var(--red); border-radius: var(--radius-sm); padding: 10px 14px; font-family: var(--font-mono); font-size: 0.78rem; color: #ffb4b0; margin-top: 6px;">
+            <ul style="list-style-type: square; margin: 0; padding: 0;">
+              ${listItems}
+            </ul>
+          </div>
+        `;
+          }
+        } catch (e) {
+          injectionBlockHtml = `
+        <div class="json-label" style="color: var(--red); margin-top: 12px;">🛡️ Injection Finding</div>
+        <div class="json-block" style="border-color: var(--red); color: #ffb4b0;">${escHtml(event.injection_findings)}</div>
+      `;
+        }
+      }
+
       row.innerHTML = `
     <span class="tl-ts">${fmtTime(event.timestamp_ns)}</span>
     <span class="tl-tool" style="min-width: 280px; display: inline-flex; align-items: center; gap: 6px;">
@@ -1357,10 +1472,11 @@
       <span class="badge ${verdictClass}" style="font-size: 0.55rem; padding: 2px 6px;">${verdictLabel}</span>
       <span style="font-weight: 600; color: var(--text-bright); font-family: var(--font-mono); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escHtml(destStr)}</span>
     </span>
-    <span class="tl-params">${escHtml(paramPreview || (isDenied ? 'Blocked due to secret exfiltration prevention' : ''))}</span>
+    <span class="tl-params">${escHtml(paramPreview || (isDenied ? 'Blocked due to policy or threat detection' : ''))}</span>
     <span class="tl-latency">${fmtLatency(event.latency_ms)}</span>
     <div class="tl-expand" style="width: 100%;">
       ${dlpBlockHtml}
+      ${injectionBlockHtml}
       <div class="json-label">Parameters / Payload</div>
       <div class="json-block">${escHtml((() => { try { return JSON.stringify(JSON.parse(paramsStr), null, 2); } catch { return paramsStr; } })())}</div>
       <div class="json-label">Response</div>
@@ -1497,6 +1613,68 @@
       }).join('');
     }
 
+    // ── Injection & Poisoning Panel ─────────────────────────────────────────────
+    function renderInjections(events) {
+      const body = document.getElementById('inj-body');
+      const card = document.getElementById('inj-card');
+      const emptyEl = document.getElementById('inj-empty');
+      const badge = document.getElementById('inj-count-badge');
+
+      const injectionFindings = [];
+      for (const e of events) {
+        if (e.injection_findings) {
+          try {
+            const parsed = JSON.parse(e.injection_findings);
+            if (parsed && parsed.findings) {
+              parsed.findings.forEach(f => {
+                const parts = f.split(': ');
+                const category = parts[0] || 'Prompt Injection';
+                const preview = parts.slice(1).join(': ') || f;
+                injectionFindings.push({
+                  ts: e.timestamp_ns,
+                  tool: e.url_path || 'unknown',
+                  category: category,
+                  preview: preview
+                });
+              });
+            }
+          } catch {
+            injectionFindings.push({
+              ts: e.timestamp_ns,
+              tool: e.url_path || 'unknown',
+              category: 'Detection Error',
+              preview: e.injection_findings
+            });
+          }
+        }
+      }
+
+      badge.textContent = injectionFindings.length + ' detections';
+
+      if (injectionFindings.length === 0) {
+        card.style.display = 'none';
+        emptyEl.style.display = '';
+        return;
+      }
+
+      card.style.display = '';
+      emptyEl.style.display = 'none';
+
+      body.innerHTML = injectionFindings.map(r => {
+        let badgeColor = 'red';
+        if (r.category.includes('Preference')) {
+          badgeColor = 'amber';
+        }
+        return `<tr>
+      <td class="ts">${fmtTime(r.ts)}</td>
+      <td class="tool-name">${escHtml(r.tool)}</td>
+      <td><span class="badge ${badgeColor}">${escHtml(r.category)}</span></td>
+      <td><code style="font-family:var(--font-mono);font-size:0.72rem;color:var(--accent)">FR-13 Scan Rule</code></td>
+      <td><code style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-bright)">${escHtml(r.preview)}</code></td>
+    </tr>`;
+      }).join('');
+    }
+
     // ── Poll & refresh all panels ──────────────────────────────────────────────
     async function refresh() {
       let stats = null;
@@ -1512,6 +1690,7 @@
 
       renderInventory(allEvents, stats);
       renderRisks(allEvents);
+      renderInjections(allEvents);
       renderParamExplorer(allEvents);
 
       document.getElementById('inv-last-update').textContent =
@@ -1538,6 +1717,7 @@
           allEvents.push(event);
           renderInventory(allEvents, null);
           renderRisks(allEvents);
+          renderInjections(allEvents);
         } catch { }
       };
 

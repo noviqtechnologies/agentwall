@@ -39,6 +39,12 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         no_browser: bool,
 
+        /// Enable active enforcement (FR-13 injection blocking, DLP blocking).
+        /// By default dev runs in observation-only (shadow) mode.
+        /// Pass --enforce to test blocking behaviour without a full `start` deployment.
+        #[arg(long, default_value_t = false)]
+        enforce: bool,
+
         /// Downstream command and arguments (for stdio mode)
         #[arg(last = true)]
         args: Vec<String>,

@@ -450,12 +450,22 @@ async fn handle_request(
         .and_then(|n| n.as_str())
         .unwrap_or("");
 
+    let mut dlp_findings_json = None;
+    let mut injection_findings_json = None;
+
     let (response, should_kill, status_code) = match action {
         ProxyAction::Forward => {
             match forward::forward_request(&state.http_client, &state.upstream_url, &body).await {
                 Ok(resp) => {
                     // FR-303b: Response scanning
-                    let processed = scan_and_process_response(&state, &session, &resp, tool_name);
+                    let processed = scan_and_process_response(
+                        &state,
+                        &session,
+                        &resp,
+                        tool_name,
+                        &mut dlp_findings_json,
+                        &mut injection_findings_json,
+                    );
                     (processed, false, StatusCode::OK)
                 },
                 Err(e) => (
@@ -502,10 +512,10 @@ async fn handle_request(
             response_status: Some(status_code.as_u16() as i64),
             response_body: Some(response_str),
             response_body_hash: None,
-            dlp_findings: None,
-            injection_findings: None,
+            dlp_findings: dlp_findings_json.clone(),
+            injection_findings: injection_findings_json.clone(),
             latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
-            verdict: Some(if should_kill { "deny".to_string() } else { "allow".to_string() }),
+            verdict: Some(if should_kill || response.get("error").is_some() { "deny".to_string() } else { "allow".to_string() }),
         };
         let db = state.db_manager.clone();
         
@@ -594,14 +604,129 @@ fn scan_and_process_response(
     session: &super::session::SessionContext,
     response: &serde_json::Value,
     tool_name: &str,
+    dlp_findings_json: &mut Option<String>,
+    injection_findings_json: &mut Option<String>,
 ) -> serde_json::Value {
+    let session_id = &session.session_id;
+
+    // 1. Prompt Injection Scanning (FR-13)
+    let enforce_mode = !state.shadow_mode;
+    let inj_scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state.injection_scanner.scan_response(response, tool_name, session_id, enforce_mode)
+    }));
+
+    match inj_scan_result {
+        Ok(crate::policy::injection::ScanResult::Block { findings }) => {
+            let f = &findings[0];
+            let _ = state.audit_logger.write_entry(
+                session_id,
+                "injection_blocked",
+                tool_name,
+                None,
+                Some(format!("pattern={} preview={}", f.pattern_name, f.preview)),
+                None,
+                session.identity_sub.clone(),
+                session.identity_email.clone(),
+                None,
+                session.request_ip.clone(),
+            );
+            logging::log_event(
+                logging::Level::Warn,
+                "injection_blocked",
+                serde_json::json!({"tool": tool_name, "session": session_id, "pattern": &f.pattern_name}),
+            );
+
+            let findings_json = serde_json::json!({
+                "findings": findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()
+            });
+            *injection_findings_json = Some(findings_json.to_string());
+
+            let id = response.get("id").cloned().unwrap_or(serde_json::Value::Null);
+            return serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32002,
+                    "message": format!("Response blocked: prompt injection detected ({}).", f.pattern_name),
+                    "data": {
+                        "session_id": session_id,
+                        "pattern": &f.pattern_name
+                    }
+                }
+            });
+        }
+        Ok(crate::policy::injection::ScanResult::Warn { findings }) => {
+            let f = &findings[0];
+            let _ = state.audit_logger.write_entry(
+                session_id,
+                "injection_warning",
+                tool_name,
+                None,
+                Some(format!("pattern={} preview={}", f.pattern_name, f.preview)),
+                None,
+                session.identity_sub.clone(),
+                session.identity_email.clone(),
+                None,
+                session.request_ip.clone(),
+            );
+            logging::log_event(
+                logging::Level::Warn,
+                "injection_warning",
+                serde_json::json!({"tool": tool_name, "session": session_id, "pattern": &f.pattern_name, "count": findings.len()}),
+            );
+
+            let findings_json = serde_json::json!({
+                "findings": findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()
+            });
+            *injection_findings_json = Some(findings_json.to_string());
+        }
+        Ok(crate::policy::injection::ScanResult::ScannerError { error }) => {
+            let _ = state.audit_logger.write_entry(
+                session_id,
+                "INJECTION_SCANNER_FAILURE",
+                tool_name,
+                None,
+                Some(format!("Scanner error: {} — fail-open applied", error)),
+                None,
+                session.identity_sub.clone(),
+                session.identity_email.clone(),
+                None,
+                session.request_ip.clone(),
+            );
+            logging::log_event(
+                logging::Level::Error,
+                "INJECTION_SCANNER_FAILURE",
+                serde_json::json!({"tool": tool_name, "session": session_id, "error": &error}),
+            );
+        }
+        Ok(crate::policy::injection::ScanResult::Clean) => {}
+        Err(_) => {
+            let _ = state.audit_logger.write_entry(
+                session_id,
+                "INJECTION_SCANNER_FAILURE",
+                tool_name,
+                None,
+                Some("Injection scanner panicked — fail-open applied".to_string()),
+                None,
+                session.identity_sub.clone(),
+                session.identity_email.clone(),
+                None,
+                session.request_ip.clone(),
+            );
+            logging::log_event(
+                logging::Level::Error,
+                "INJECTION_SCANNER_FAILURE",
+                serde_json::json!({"tool": tool_name, "session": session_id, "reason": "scanner_panic"}),
+            );
+        }
+    }
+
+    // 2. DLP/Secrets Scanning
     let scan_config = state.response_scan_config.read().unwrap();
     // Catch panics — fail-open on any error
     let scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         state.response_scanner.scan_response(response, tool_name, &scan_config)
     }));
-
-    let session_id = &session.session_id;
 
     let scan_result = match scan_result {
         Ok(result) => result,
@@ -653,6 +778,11 @@ fn scan_and_process_response(
         }
 
         ScanResult::Redact { findings } => {
+            let findings_json = serde_json::json!({
+                "findings": findings.iter().map(|f| format!("{}: redact preview={}", f.pattern_name, f.preview)).collect::<Vec<_>>()
+            });
+            *dlp_findings_json = Some(findings_json.to_string());
+
             if scan_config.dry_run {
                 // Dry-run: log what would be redacted but pass through
                 for f in &findings {
@@ -709,6 +839,11 @@ fn scan_and_process_response(
         }
 
         ScanResult::Block { findings } => {
+            let findings_json = serde_json::json!({
+                "findings": findings.iter().map(|f| format!("{}: block preview={}", f.pattern_name, f.preview)).collect::<Vec<_>>()
+            });
+            *dlp_findings_json = Some(findings_json.to_string());
+
             if scan_config.dry_run {
                 for f in &findings {
                     let _ = state.audit_logger.write_entry(

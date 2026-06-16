@@ -45,6 +45,7 @@ fn create_mock_proxy_state(policy: Option<CompiledPolicy>) -> Arc<ProxyState> {
         response_scanner: Arc::new(ResponseScanner::new().unwrap()),
         response_scan_config: std::sync::RwLock::new(ResponseScanConfig::default()),
         dlp_scanner: std::sync::Arc::new(agentwall::policy::dlp::DlpScanner::new().unwrap()),
+        injection_scanner: Arc::new(agentwall::policy::injection::InjectionScanner::default()),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(AtomicU64::new(0)),

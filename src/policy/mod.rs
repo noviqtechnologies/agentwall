@@ -5,3 +5,4 @@ pub mod schema;
 pub mod safe_mode;
 pub mod response_scanner;
 pub mod dlp;
+pub mod injection;

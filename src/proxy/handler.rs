@@ -85,6 +85,8 @@ pub struct ProxyState {
     pub response_scan_config: std::sync::RwLock<crate::policy::response_scanner::ResponseScanConfig>,
     /// FR-12: Content-Aware DLP & Secret Detection on outbound requests
     pub dlp_scanner: Arc<crate::policy::dlp::DlpScanner>,
+    /// FR-13: Injection & Poisoning Detector
+    pub injection_scanner: Arc<crate::policy::injection::InjectionScanner>,
     /// FR-306: Sliding window of recent tool call fingerprints (bounded to 5).
     pub tool_history: std::sync::Mutex<Vec<ToolCallFingerprint>>,
     

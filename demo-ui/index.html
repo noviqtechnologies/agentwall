@@ -809,6 +809,18 @@ response_scanning:
                                 </p>
                             </div>
 
+                            <!-- Scenario 8: Prompt Injection -->
+                            <div class="card" style="cursor: pointer; border-left: 4px solid var(--red);" onclick="quickFill('read_file', '{\x22path\x22: \x22/workspace/data/untrusted.txt\x22}'); document.getElementById('btn-call').click();">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                    <span class="badge red">Injection Risk</span>
+                                    <span style="font-size: 0.7rem; color: var(--text-muted);">FR-13 SCANNER</span>
+                                </div>
+                                <h4 style="color: var(--text-bright); margin-bottom: 8px;">Prompt Injection Payload</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
+                                    <b>Problem:</b> Agent reads a file containing a jailbreak phrase or new instructions.<br>
+                                    <b>Value:</b> Injection Scanner normalizes and blocks malicious response payloads.
+                                </p>
+                            </div>
                         </div>
 
                         <!-- Technical Sandbox (Hidden by default) -->
@@ -1405,7 +1417,7 @@ async function loadAuditLog() {
         
         let blocked = 0;
         logs.forEach(l => {
-            if (l.event === 'tool_deny' || l.event === 'rate_limit_deny' || l.event === 'secret_redacted') blocked++;
+            if (l.event === 'tool_deny' || l.event === 'rate_limit_deny' || l.event === 'secret_redacted' || l.event === 'injection_blocked') blocked++;
         });
 
         const statTotal = el('stat-total');
@@ -1424,7 +1436,7 @@ async function loadAuditLog() {
                 return `
                     <tr>
                         <td style="color:var(--text-muted); font-size: 0.8rem;">${ts}</td>
-                        <td><span class="badge ${l.level === 'error' || event.includes('deny') || event.includes('redact') ? 'red' : 'muted'}">${event.toUpperCase()}</span></td>
+                        <td><span class="badge ${l.level === 'error' || event.includes('deny') || event.includes('redact') || event.includes('block') ? 'red' : 'muted'}">${event.toUpperCase()}</span></td>
                         <td style="font-family:var(--font-mono); font-size: 0.8rem; color: var(--accent);">${tool}</td>
                         <td style="font-size: 0.8rem;">${latency}</td>
                     </tr>

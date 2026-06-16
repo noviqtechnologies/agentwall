@@ -311,7 +311,9 @@ The dashboard is served by the same binary — no separate Node.js process, no c
 
 ## Content-Aware DLP & Secret Detection
 
-AgentWall includes a built-in DLP (Data Loss Prevention) engine that actively scans all outbound MCP tool parameters and egress HTTP request bodies/URIs for sensitive data.
+- **Content-Aware DLP**: Scans outbound tool arguments to redact AWS keys, GitHub tokens, and PII before they leave your perimeter.
+- **Prompt Injection & Response Poisoning Prevention**: Real-time 6-pass normalizer and 29-pattern injection scanner blocks inbound tool responses and external API payloads from compromising your agent's instructions or state.
+- **Agent Firewall**: Analyzes tool call trajectories to detect and block recursive runaway loops, forcing agents to pivot.
 
 **Capabilities:**
 - **Secret Regex Matching:** Detects over 60 common secret patterns including AWS Access Keys, GitHub Tokens, Stripe Keys, SSH Private Keys, Database URIs, and PII (e.g., SSNs, Emirates IDs).

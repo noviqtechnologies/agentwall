@@ -257,6 +257,102 @@ fn stdio_scan_response(
     response: &serde_json::Value,
     tool_name: &str,
 ) -> serde_json::Value {
+    // 1. Injection & Poisoning Scan (FR-13)
+    let enforce_mode = !state.shadow_mode;
+    let inj_scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state.injection_scanner.scan_response(response, tool_name, session_id, enforce_mode)
+    }));
+
+    match inj_scan_result {
+        Ok(crate::policy::injection::ScanResult::Block { findings }) => {
+            let f = &findings[0];
+            let _ = state.audit_logger.write_entry(session_id, "injection_blocked", tool_name, None,
+                Some(format!("pattern={} preview={}", f.pattern_name, f.preview)), None, None, None, None, None);
+            logging::log_event(logging::Level::Warn, "injection_blocked",
+                serde_json::json!({"tool": tool_name, "session": session_id, "pattern": &f.pattern_name}));
+
+            // Notify UI
+            let event = crate::proxy::db::EgressEvent {
+                timestamp_ns: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
+                session_id: session_id.to_string(),
+                transport: "stdio".to_string(),
+                method: Some(tool_name.to_string()),
+                target_host: "localhost".to_string(),
+                target_port: None,
+                url_path: None,
+                request_headers: None,
+                request_body: None,
+                request_body_hash: None,
+                response_status: Some(403),
+                response_body: None,
+                response_body_hash: None,
+                dlp_findings: None,
+                injection_findings: Some(serde_json::json!({"findings": findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()}).to_string()),
+                latency_ms: Some(0.0),
+                verdict: Some("deny".to_string()),
+            };
+            if let Ok(json_str) = serde_json::to_string(&event) {
+                let _ = state.event_tx.send(json_str);
+            }
+
+            let id = response.get("id").cloned().unwrap_or(serde_json::Value::Null);
+            return serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32002,
+                    "message": format!("Response blocked: prompt injection detected ({}).", f.pattern_name),
+                    "data": { "session_id": session_id, "pattern": &f.pattern_name }
+                }
+            });
+        }
+        Ok(crate::policy::injection::ScanResult::Warn { findings }) => {
+            let f = &findings[0];
+            let _ = state.audit_logger.write_entry(session_id, "injection_warning", tool_name, None,
+                Some(format!("pattern={} preview={}", f.pattern_name, f.preview)), None, None, None, None, None);
+            logging::log_event(logging::Level::Warn, "injection_warning",
+                serde_json::json!({"tool": tool_name, "session": session_id, "pattern": &f.pattern_name, "count": findings.len()}));
+            
+            // Notify UI
+            let event = crate::proxy::db::EgressEvent {
+                timestamp_ns: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
+                session_id: session_id.to_string(),
+                transport: "stdio".to_string(),
+                method: Some(tool_name.to_string()),
+                target_host: "localhost".to_string(),
+                target_port: None,
+                url_path: None,
+                request_headers: None,
+                request_body: None,
+                request_body_hash: None,
+                response_status: Some(200),
+                response_body: None,
+                response_body_hash: None,
+                dlp_findings: None,
+                injection_findings: Some(serde_json::json!({"findings": findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()}).to_string()),
+                latency_ms: Some(0.0),
+                verdict: Some("allow".to_string()),
+            };
+            if let Ok(json_str) = serde_json::to_string(&event) {
+                let _ = state.event_tx.send(json_str);
+            }
+        }
+        Ok(crate::policy::injection::ScanResult::ScannerError { error }) => {
+            let _ = state.audit_logger.write_entry(session_id, "INJECTION_SCANNER_FAILURE", tool_name, None,
+                Some(format!("Scanner error: {} — fail-open applied", error)), None, None, None, None, None);
+            logging::log_event(logging::Level::Error, "INJECTION_SCANNER_FAILURE",
+                serde_json::json!({"tool": tool_name, "session": session_id, "error": &error}));
+        }
+        Err(_) => {
+            let _ = state.audit_logger.write_entry(session_id, "INJECTION_SCANNER_FAILURE", tool_name, None,
+                Some("Injection scanner panicked — fail-open applied".to_string()), None, None, None, None, None);
+            logging::log_event(logging::Level::Error, "INJECTION_SCANNER_FAILURE",
+                serde_json::json!({"tool": tool_name, "session": session_id, "reason": "scanner_panic"}));
+        }
+        Ok(crate::policy::injection::ScanResult::Clean) => {}
+    }
+
+    // 2. Secret Response Scanner (FR-303b)
     let scan_config = state.response_scan_config.read().unwrap();
     let scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         state.response_scanner.scan_response(response, tool_name, &scan_config)
