@@ -1,73 +1,7 @@
 use agentwall::audit::logger::{AuditLogger, AuditLoggerConfig};
-use agentwall::init::generate_policy_from_log;
 use agentwall::report::{format_text_report, generate_report};
 use serde_json::json;
 use tempfile::NamedTempFile;
-
-#[test]
-fn test_phase_1_1_init_from_log() {
-    let log_file = NamedTempFile::new().unwrap();
-    let session_id = "test-init-session".to_string();
-    let secret = b"test-secret-123456789012345678901".to_vec();
-
-    let config = AuditLoggerConfig {
-        log_path: log_file.path().to_path_buf(),
-        session_id: session_id.clone(),
-        session_secret: secret.clone(),
-        max_bytes: 100000,
-        siem_exporter: None,
-        include_params: true,
-    };
-    let logger = AuditLogger::new(config).unwrap();
-
-    // Mock a dry-run active log
-    logger
-        .write_entry(
-            &session_id,
-            "dry_run_active",
-            "system",
-            None,
-            Some("dry run active".to_string()),
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-
-    // Mock an allowed tool (in dry run allow-all sentinel mode)
-    logger
-        .write_entry(
-            &session_id,
-            "tool_allow",
-            "git_clone",
-            Some(json!({"repo": "https://github.com/foo/bar.git", "depth": 1})),
-            None,
-            Some(2.5),
-            None,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-
-    // Drop the logger to flush the background writer
-    drop(logger);
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    // Generate the policy
-    let generated_policy = generate_policy_from_log(log_file.path()).unwrap();
-
-    // Assert it contains the tool and the correctly inferred parameters
-    assert!(generated_policy.contains("name: \"git_clone\""));
-    assert!(generated_policy.contains("name: \"repo\""));
-    assert!(generated_policy.contains("type: string"));
-    assert!(generated_policy.contains("name: \"depth\""));
-    assert!(generated_policy.contains("type: number"));
-    assert!(generated_policy.contains("required: true")); // because it appeared in the only call
-    assert!(generated_policy.contains("# TODO: add pattern constraint"));
-}
 
 #[test]
 fn test_phase_1_1_developer_observability_report() {

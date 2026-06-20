@@ -1,0 +1,33 @@
+name: AgentWall Assessment
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/*.yaml'
+      - '**/*.yml'
+  workflow_dispatch:
+
+jobs:
+  assess-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install AgentWall
+        run: |
+          curl -sL https://raw.githubusercontent.com/vexa/agentwall/main/install.sh | bash
+          echo "$HOME/.agentwall/bin" >> $GITHUB_PATH
+
+      - name: Validate Policy Format
+        run: |
+          # Use AgentWall to lint/validate the policy file
+          # Adjust the policy path depending on where it's stored
+          agentwall lint policy.yaml
+
+      - name: Run Shadow Analysis
+        run: |
+          # Example step showing how to run agentwall in test mode
+          agentwall test --gateway "http://test-environment" --policy policy.yaml test_fixtures/mcp_traffic.json

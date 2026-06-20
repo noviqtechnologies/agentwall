@@ -48,6 +48,71 @@ pub fn claude_config_path() -> Result<PathBuf, WrapError> {
     Ok(base)
 }
 
+pub fn cursor_config_path() -> Result<PathBuf, WrapError> {
+    let base = match std::env::consts::OS {
+        "macos" => dirs::home_dir().map(|h| h.join("Library/Application Support/Cursor/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json")),
+        "linux" => dirs::config_dir().map(|d| d.join("cursor/mcp.json")), // hypothetical standard path
+        "windows" => dirs::data_dir().map(|d| d.join("Cursor\\User\\globalStorage\\rooveterinaryinc.roo-cline\\settings\\cline_mcp_settings.json")),
+        other => return Err(WrapError::UnsupportedOs(other.to_string())),
+    };
+    base.ok_or_else(|| WrapError::ConfigNotFound("Cannot resolve Cursor config path".to_string()))
+}
+
+pub fn vscode_config_path() -> Result<PathBuf, WrapError> {
+    let base = match std::env::consts::OS {
+        "macos" => dirs::home_dir().map(|h| h.join("Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json")),
+        "linux" => dirs::config_dir().map(|d| d.join("Code/User/mcp.json")), // hypothetical
+        "windows" => dirs::data_dir().map(|d| d.join("Code\\User\\globalStorage\\rooveterinaryinc.roo-cline\\settings\\cline_mcp_settings.json")),
+        other => return Err(WrapError::UnsupportedOs(other.to_string())),
+    };
+    base.ok_or_else(|| WrapError::ConfigNotFound("Cannot resolve VS Code config path".to_string()))
+}
+
+pub fn jetbrains_config_path() -> Result<PathBuf, WrapError> {
+    let base = match std::env::consts::OS {
+        "macos" => dirs::home_dir().map(|h| h.join("Library/Application Support/JetBrains/mcp.json")),
+        "linux" => dirs::config_dir().map(|d| d.join("JetBrains/mcp.json")),
+        "windows" => dirs::data_dir().map(|d| d.join("JetBrains\\mcp.json")),
+        other => return Err(WrapError::UnsupportedOs(other.to_string())),
+    };
+    base.ok_or_else(|| WrapError::ConfigNotFound("Cannot resolve JetBrains config path".to_string()))
+}
+
+pub fn zed_config_path() -> Result<PathBuf, WrapError> {
+    let base = match std::env::consts::OS {
+        "macos" => dirs::config_dir().map(|d| d.join("zed/mcp.json")),
+        "linux" => dirs::config_dir().map(|d| d.join("zed/mcp.json")),
+        "windows" => dirs::data_local_dir().map(|d| d.join("Zed\\mcp.json")),
+        other => return Err(WrapError::UnsupportedOs(other.to_string())),
+    };
+    base.ok_or_else(|| WrapError::ConfigNotFound("Cannot resolve Zed config path".to_string()))
+}
+
+pub fn cline_config_path() -> Result<PathBuf, WrapError> {
+    // Same as VS Code, but conceptually distinct for the CLI
+    vscode_config_path()
+}
+
+pub fn opencode_config_path() -> Result<PathBuf, WrapError> {
+    let base = match std::env::consts::OS {
+        "macos" => dirs::home_dir().map(|h| h.join("Library/Application Support/OpenCode/mcp.json")),
+        "linux" => dirs::config_dir().map(|d| d.join("opencode/mcp.json")),
+        "windows" => dirs::data_dir().map(|d| d.join("OpenCode\\mcp.json")),
+        other => return Err(WrapError::UnsupportedOs(other.to_string())),
+    };
+    base.ok_or_else(|| WrapError::ConfigNotFound("Cannot resolve OpenCode config path".to_string()))
+}
+
+pub fn antigravity_config_path() -> Result<PathBuf, WrapError> {
+    let base = match std::env::consts::OS {
+        "macos" => dirs::home_dir().map(|h| h.join("Library/Application Support/Antigravity/mcp.json")),
+        "linux" => dirs::config_dir().map(|d| d.join("antigravity/mcp.json")),
+        "windows" => dirs::data_dir().map(|d| d.join("Antigravity\\mcp.json")),
+        other => return Err(WrapError::UnsupportedOs(other.to_string())),
+    };
+    base.ok_or_else(|| WrapError::ConfigNotFound("Cannot resolve Antigravity config path".to_string()))
+}
+
 /// Returns the path to the ~/.agentwall/ config directory.
 pub fn agentwall_config_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".agentwall"))

@@ -248,27 +248,9 @@ pub enum Commands {
         output: String,
     },
 
-    /// [DEPRECATED v6.1] Generate a starter policy from a dry-run audit log
-    ///
-    /// ## Removed in v6.1
-    ///
-    /// `agentwall init` encouraged ad-hoc policy creation outside of version control.
-    /// Enterprise security policies require GitOps workflows with peer review, automated
-    /// validation, and CI/CD deployment.
-    ///
-    /// ## Migration
-    ///
-    /// 1. Use `agentwall generate-policy` to draft a policy from observed traffic.
-    /// 2. Validate with: `agentwall test --gateway <URL> --policy policy.yaml fixture.json`
-    /// 3. Deploy via CI/CD pipeline with `--gateway` pointing to your test environment.
     Init {
-        /// Audit log to derive policy from
-        #[arg(long)]
-        from_log: String,
-
-        /// Output policy file path
-        #[arg(long, default_value = "policy.yaml")]
-        output: String,
+        #[command(subcommand)]
+        target: Option<InitTarget>,
     },
 
     /// Automatically wrap an existing agent command with AgentWall (FR-301, FR-302)
@@ -391,6 +373,20 @@ pub enum WrapTarget {
         #[arg(long, default_value_t = false)]
         block_on_secrets: bool,
     },
+    /// Wrap Cursor IDE with AgentWall
+    Cursor { #[arg(long, default_value_t = false)] dry_run: bool },
+    /// Wrap VS Code with AgentWall
+    Vscode { #[arg(long, default_value_t = false)] dry_run: bool },
+    /// Wrap JetBrains IDEs with AgentWall
+    Jetbrains { #[arg(long, default_value_t = false)] dry_run: bool },
+    /// Wrap Zed Editor with AgentWall
+    Zed { #[arg(long, default_value_t = false)] dry_run: bool },
+    /// Wrap Cline Extension with AgentWall
+    Cline { #[arg(long, default_value_t = false)] dry_run: bool },
+    /// Wrap OpenCode with AgentWall
+    Opencode { #[arg(long, default_value_t = false)] dry_run: bool },
+    /// Wrap Antigravity IDE with AgentWall
+    Antigravity { #[arg(long, default_value_t = false)] dry_run: bool },
 }
 
 #[derive(Subcommand)]
@@ -400,5 +396,29 @@ pub enum UnwrapTarget {
         /// Restore even if backup is missing — prints manual cleanup instructions
         #[arg(long, default_value_t = false)]
         force: bool,
+    },
+    /// Restore Cursor config
+    Cursor { #[arg(long, default_value_t = false)] force: bool },
+    /// Restore VS Code config
+    Vscode { #[arg(long, default_value_t = false)] force: bool },
+    /// Restore JetBrains config
+    Jetbrains { #[arg(long, default_value_t = false)] force: bool },
+    /// Restore Zed config
+    Zed { #[arg(long, default_value_t = false)] force: bool },
+    /// Restore Cline config
+    Cline { #[arg(long, default_value_t = false)] force: bool },
+    /// Restore OpenCode config
+    Opencode { #[arg(long, default_value_t = false)] force: bool },
+    /// Restore Antigravity config
+    Antigravity { #[arg(long, default_value_t = false)] force: bool },
+}
+
+#[derive(Subcommand)]
+pub enum InitTarget {
+    /// Generate a Kubernetes sidecar manifest for AgentWall proxy
+    Sidecar {
+        /// Upstream MCP server URL
+        #[arg(long, default_value = "http://mcp-server:3000")]
+        mcp_upstream: String,
     },
 }

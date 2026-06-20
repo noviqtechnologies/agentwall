@@ -22,6 +22,7 @@ AgentWall operates as two distinct tools with a clean separation of concerns:
 - [What This Is (and Is Not)](#what-this-is-and-is-not)
 - [Installation](#installation)
 - [Quick Start — Local Development](#quick-start--local-development)
+- [Ecosystem Integrations (IDEs & Sidecar)](#ecosystem-integrations-ides--sidecar)
 - [Full Egress Proxy — HTTP, HTTPS, WebSocket](#full-egress-proxy--http-https-and-websocket-traffic)
 - [Local Web Dashboard](#local-web-dashboard)
 - [Content-Aware DLP & Secret Detection](#content-aware-dlp--secret-detection)
@@ -285,6 +286,38 @@ docker compose down -v
 
 ---
 
+## Ecosystem Integrations (IDEs & Sidecar)
+
+AgentWall can automatically discover and patch your local IDE and agent configurations to route their traffic securely through the proxy.
+
+### Local IDE Integrations
+
+Run these commands to patch your local `mcp.json` or `claude_desktop_config.json` configurations without manually modifying files:
+
+| Target | Integration Command | Un-Integration Command |
+|--------|---------------------|------------------------|
+| **Claude Desktop** | `agentwall wrap claude` | `agentwall unwrap claude` |
+| **Cursor IDE** | `agentwall wrap cursor` | `agentwall unwrap cursor` |
+| **VS Code** | `agentwall wrap vscode` | `agentwall unwrap vscode` |
+| **JetBrains** | `agentwall wrap jetbrains` | `agentwall unwrap jetbrains` |
+| **Zed Editor** | `agentwall wrap zed` | `agentwall unwrap zed` |
+| **Cline** | `agentwall wrap cline` | `agentwall unwrap cline` |
+| **OpenCode** | `agentwall wrap opencode` | `agentwall unwrap opencode` |
+| **Antigravity** | `agentwall wrap antigravity` | `agentwall unwrap antigravity` |
+
+**Safe by default:** Appending `--dry-run` to any wrap command previews changes without modifying the file.
+
+### Cloud & Kubernetes (Sidecar)
+
+Generate a Kubernetes Deployment + Service manifest to place AgentWall as a transparent proxy in front of an existing MCP server.
+
+```bash
+agentwall init sidecar --mcp-upstream http://my-upstream-mcp:3000 > sidecar.yaml
+kubectl apply -f sidecar.yaml
+```
+
+---
+
 ## Local Web Dashboard
 
 When `agentwall dev` starts, it automatically opens `http://127.0.0.1:8080` in the default browser. Use `--no-browser` to suppress this.
@@ -521,8 +554,10 @@ Reference: [`policy.example.yaml`](policy.example.yaml).
 | `agentwall report <log>` | Generate a session report from an audit log. |
 | `agentwall validate` | Single-payload policy check for policy authors. |
 | `agentwall promote` | Production readiness checks and Ed25519 policy signing. |
-| `agentwall wrap claude` | Patch Claude Desktop config to route MCP through AgentWall. |
-| `agentwall unwrap claude` | Restore Claude Desktop config from the AgentWall backup. |
+| `agentwall init` | Discover known IDE configurations locally. |
+| `agentwall init sidecar` | Generate Kubernetes Sidecar YAML for upstream MCP proxy. |
+| `agentwall wrap <target>` | Patch IDE config to route MCP through AgentWall (claude, cursor, vscode, jetbrains, zed, cline, opencode, antigravity). |
+| `agentwall unwrap <target>` | Restore IDE config from the AgentWall backup. |
 
 **`agentwall lint` exit codes:** `0` = clean, `1` = errors, `2` = malformed YAML.
 

@@ -899,6 +899,9 @@
       <div class="nav-item" data-panel="panel-policy">
         <span class="nav-icon">06</span> Generate Policy
       </div>
+      <div class="nav-item" data-panel="panel-integrations">
+        <span class="nav-icon">07</span> Integrations (FR-20)
+      </div>
     </div>
 
     <div class="sidebar-footer">
@@ -1133,6 +1136,80 @@
         </div>
       </div>
 
+      <!-- Panel 7: Integrations -->
+      <div id="panel-integrations" class="panel">
+        <div class="panel-header">
+          <h2>🧩 Integrations (FR-20)</h2>
+        </div>
+
+        <div class="policy-info">
+          <strong>Secure Your Development Environment:</strong> AgentWall can automatically wrap your local MCP
+          servers and IDEs to provide real-time policy enforcement and secret scanning without code changes.
+        </div>
+
+        <div class="card">
+          <h3>Local IDE Integrations</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:20px;">
+            Run these commands in your terminal to wrap your MCP configurations with AgentWall.
+          </p>
+
+          <table style="margin-top: 10px;">
+            <thead>
+              <tr>
+                <th>Target</th>
+                <th>Integration Command</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="tool-name">Claude Desktop</td>
+                <td><code>agentwall wrap claude</code></td>
+              </tr>
+              <tr>
+                <td class="tool-name">Cursor IDE</td>
+                <td><code>agentwall wrap cursor</code></td>
+              </tr>
+              <tr>
+                <td class="tool-name">VS Code</td>
+                <td><code>agentwall wrap vscode</code></td>
+              </tr>
+              <tr>
+                <td class="tool-name">JetBrains</td>
+                <td><code>agentwall wrap jetbrains</code></td>
+              </tr>
+              <tr>
+                <td class="tool-name">Zed Editor</td>
+                <td><code>agentwall wrap zed</code></td>
+              </tr>
+              <tr>
+                <td class="tool-name">Cline</td>
+                <td><code>agentwall wrap cline</code></td>
+              </tr>
+              <tr>
+                <td class="tool-name">OpenCode</td>
+                <td><code>agentwall wrap opencode</code></td>
+              </tr>
+              <tr>
+                <td class="tool-name">Antigravity</td>
+                <td><code>agentwall wrap antigravity</code></td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="font-size:0.75rem; color:var(--text-muted); margin-top:20px;">
+            To see what would change without modifying files, append <code style="color:var(--accent)">--dry-run</code> to the command.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Cloud & Kubernetes (Sidecar)</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:20px;">
+            Generate a Kubernetes Sidecar deployment manifest to place AgentWall in front of an upstream MCP service.
+          </p>
+          <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; font-family: var(--font-mono); font-size: 0.8rem;">
+            <span style="color:var(--accent)">agentwall</span> init sidecar --mcp-upstream http://mcp-server:3000
+          </div>
+        </div>
+      </div>
     </div><!-- panel-container -->
   </div><!-- main-content -->
 

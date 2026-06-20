@@ -59,8 +59,8 @@ async fn main() {
             max_scan_bytes,
             target,
         } => {
-            if let Some(cli::WrapTarget::Claude { dry_run, scan_responses, block_on_secrets: _ }) = target {
-                run_wrap_claude(dry_run, scan_responses)
+            if let Some(target) = target {
+                agentwall::wrap::run_wrap_target(&target)
             } else {
                 run_wrap(
                     command,
@@ -149,10 +149,8 @@ async fn main() {
             format,
             report_include_params,
         } => run_report(&log_path, output.as_deref(), &format, report_include_params),
-        Commands::Init { from_log, output } => init::run_init(&from_log, &output),
-        Commands::Unwrap { target: cli::UnwrapTarget::Claude { force } } => {
-            run_unwrap_claude(force)
-        }
+        Commands::Init { target } => init::run_init(&target),
+        Commands::Unwrap { target } => agentwall::wrap::run_unwrap_target(&target),
         Commands::StdioProxy { args, scan_responses, block_on_secrets, max_scan_bytes } => {
             run_stdio_proxy(args, scan_responses, block_on_secrets, max_scan_bytes).await
         }
@@ -1033,58 +1031,4 @@ async fn run_generate_policy(output_path: String) -> i32 {
     }
 }
 
-// ─── FR-304: agentwall wrap claude / unwrap claude ──────────────────────────
 
-fn run_wrap_claude(dry_run: bool, scan_responses: bool) -> i32 {
-    if dry_run {
-        println!("{} {} {}", "🔍".blue(), "Mode:".bold(), "DRY-RUN (no writes)".yellow().bold());
-    } else {
-        println!("{} Wrapping Claude Desktop...", "ℹ".blue());
-    }
-
-    match wrap::claude::wrap_claude(dry_run, scan_responses) {
-        Ok(result) => {
-            if !dry_run {
-                wrap::claude::print_wrap_summary(&result);
-            }
-            0
-        }
-        Err(wrap::WrapError::AlreadyWrapped) => {
-            println!(
-                "{} Already wrapped. Run 'agentwall unwrap claude' first if you want to re-wrap.",
-                "ℹ".blue()
-            );
-            0 // Not an error — idempotent
-        }
-        Err(wrap::WrapError::NoMcpServers) => {
-            println!(
-                "{} No MCP servers found in Claude Desktop config. Nothing to wrap.",
-                "⚠".yellow()
-            );
-            0
-        }
-        Err(e) => {
-            eprintln!("{} {}", "✖".red(), e);
-            1
-        }
-    }
-}
-
-fn run_unwrap_claude(force: bool) -> i32 {
-    println!("{} Restoring Claude Desktop config...", "ℹ".blue());
-
-    match wrap::claude::unwrap_claude(force) {
-        Ok(result) => {
-            wrap::claude::print_unwrap_summary(&result);
-            0
-        }
-        Err(wrap::WrapError::NoBackupFound) if force => {
-            // Instructions already printed inside unwrap_claude
-            1
-        }
-        Err(e) => {
-            eprintln!("{} {}", "✖".red(), e);
-            1
-        }
-    }
-}
