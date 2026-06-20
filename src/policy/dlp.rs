@@ -116,7 +116,6 @@ impl DlpScanner {
             let pat = &self.patterns[idx];
             for m in pat.individual_regex.find_iter(&decoded) {
                 let text = m.as_str();
-                if idx == 5 && text.starts_with("sk-ant-") { continue; } // OpenAI vs Anthropic overlap
                 
                 // Optional: checksum validation
                 if pat.name == "Emirates ID" && !validate_emirates_id(text) { continue; }
@@ -130,6 +129,16 @@ impl DlpScanner {
                 });
             }
         }
+
+        // Fix 6: Deduplicate findings by position to prevent regex pattern overlap false positives
+        // (e.g. OpenAI sk- pattern vs Anthropic sk-ant- pattern).
+        // If two findings share the exact same start position, keep the longer match.
+        findings.sort_by(|a, b| {
+            a.position.cmp(&b.position)
+                .then(b.length.cmp(&a.length)) // Descending length so the longer match is first
+                .then(a.pattern_name.cmp(&b.pattern_name)) // e.g. Anthropic < OpenAI
+        });
+        findings.dedup_by(|a, b| a.position == b.position);
 
         // BIP-39 detection
         if let Some(phrase) = detect_bip39(&decoded) {
@@ -149,7 +158,8 @@ impl DlpScanner {
                 // Ignore if it matches a known pattern to avoid double reporting
                 let mut known = false;
                 for f in &findings {
-                    if w.contains(&f.preview.replace("*", "")) { known = true; break; }
+                    let parts: Vec<&str> = f.preview.split("****").collect();
+                    if parts.iter().all(|p| w.contains(p)) { known = true; break; }
                 }
                 if !known && !is_base64_like(w) { 
                     findings.push(SecretFinding {
@@ -303,8 +313,20 @@ mod tests {
         assert_eq!(findings_valid[0].category, SecretCategory::Pii);
 
         // Invalid Luhn Emirates ID (sum is 65, not divisible by 10)
-        let invalid_id = "My Emirates ID is 784-1982-1234567-1";
+        let invalid_id = "My Emirates ID is 784-1982-1234567-5";
         let findings_invalid = scanner.scan_content(invalid_id);
         assert_eq!(findings_invalid.len(), 0);
+    }
+
+    #[test]
+    fn test_overlap_deduplication() {
+        // Fix 6: Verify Anthropic keys don't trigger OpenAI false positives due to dedup
+        let scanner = DlpScanner::new().unwrap();
+        let text = "Here is my key: sk-ant-api03-abcdefghijklmnopqrstuvwxyz12345";
+        let findings = scanner.scan_content(text);
+        
+        // It should match Anthropic, not OpenAI, and there should only be ONE finding
+        assert_eq!(findings.len(), 1, "Should deduplicate overlapping patterns");
+        assert_eq!(findings[0].category, SecretCategory::AnthropicApiKey);
     }
 }

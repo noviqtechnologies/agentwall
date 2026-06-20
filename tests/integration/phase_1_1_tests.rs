@@ -3,8 +3,8 @@ use agentwall::report::{format_text_report, generate_report};
 use serde_json::json;
 use tempfile::NamedTempFile;
 
-#[test]
-fn test_phase_1_1_developer_observability_report() {
+#[tokio::test]
+async fn test_phase_1_1_developer_observability_report() {
     let log_file = NamedTempFile::new().unwrap();
     let session_id = "test-report-session".to_string();
     let secret = b"test-secret-123456789012345678901".to_vec();
@@ -32,6 +32,7 @@ fn test_phase_1_1_developer_observability_report() {
             None,
             None,
         )
+        .await
         .unwrap();
 
     logger
@@ -47,11 +48,12 @@ fn test_phase_1_1_developer_observability_report() {
             None,
             None,
         )
+        .await
         .unwrap();
 
     // Drop the logger to flush the background writer
     drop(logger);
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let report = generate_report(
         log_file.path(),

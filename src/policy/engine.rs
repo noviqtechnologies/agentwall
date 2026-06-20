@@ -328,7 +328,8 @@ impl CompiledPolicy {
                 let is_valid = match validator {
                     CompiledValidator::PathTraversal => {
                         if let Some(s) = value.as_str() {
-                            !s.contains("../") && !s.contains("..\\")
+                            let s_upper = s.to_ascii_uppercase();
+                            !s.contains("../") && !s.contains("..\\") && !s_upper.contains("%2E%2E%2F") && !s_upper.contains("%2E%2E/") && !s_upper.contains("..%2F")
                         } else {
                             true
                         }

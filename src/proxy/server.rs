@@ -117,20 +117,35 @@ pub async fn run_server(
     Ok(())
 }
 
+/// Evict sessions older than SESSION_TTL_SECS from the DashMap (Fix 3: session memory leak).
+/// Called lazily on each new session creation so no background thread is required.
+fn evict_expired_sessions(state: &ProxyState) {
+    state.sessions.retain(|_, session| !session.is_expired());
+}
+
 /// Helper to resolve or create a SessionContext from the incoming request (FR-101)
 async fn resolve_session(
     state: &ProxyState,
     auth_header: Option<&str>,
     client_ip: &str,
 ) -> Result<Arc<super::session::SessionContext>, (StatusCode, String)> {
-    // 1. Check if OIDC is configured in the current policy.
-    // Wrap in a block to ensure that the policy_guard (RwLockReadGuard)
-    // is dropped before any async await boundary occurs, making the future Send.
+    // Fix 5: Poison-safe RwLock read — if a prior writer panicked, log and deny rather
+    // than crashing the entire proxy with an unwrap() panic. Wait for write locks normally.
     let identity_validator = {
-        let policy_guard = state.policy.read().unwrap();
-        policy_guard
-            .as_ref()
-            .and_then(|p| p.identity_validator.clone())
+        match state.policy.read() {
+            Ok(guard) => guard.as_ref().and_then(|p| p.identity_validator.clone()),
+            Err(_) => {
+                crate::logging::log_event(
+                    crate::logging::Level::Error,
+                    "policy_lock_poisoned",
+                    serde_json::json!({"remote_addr": client_ip, "action": "deny_applied"}),
+                );
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Policy state is temporarily unavailable".to_string(),
+                ));
+            }
+        }
     };
 
     if let Some(validator) = identity_validator {
@@ -142,6 +157,19 @@ async fn resolve_session(
         let t = match token {
             Some(t) if !t.is_empty() => t,
             _ => {
+                // Fix 1: Write auth_failed to HMAC audit chain (not just stderr)
+                let _ = state.audit_logger.write_entry(
+                    &state.session_id,
+                    "auth_failed",
+                    "",
+                    None,
+                    Some(format!("identity_token_missing remote_addr={}", client_ip)),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(client_ip.to_string()),
+                ).await;
                 crate::logging::log_event(
                     crate::logging::Level::Warn,
                     "auth_failed",
@@ -170,6 +198,19 @@ async fn resolve_session(
 
         // Fail-Closed: ensure keys are loaded
         if !validator.is_ready().await {
+            // Fix 1: Write keys-not-ready failure to HMAC audit chain
+            let _ = state.audit_logger.write_entry(
+                &state.session_id,
+                "auth_failed",
+                "",
+                None,
+                Some(format!("identity_keys_not_ready remote_addr={}", client_ip)),
+                None,
+                None,
+                None,
+                None,
+                Some(client_ip.to_string()),
+            ).await;
             crate::logging::log_event(
                 crate::logging::Level::Error,
                 "auth_failed",
@@ -188,7 +229,11 @@ async fn resolve_session(
         match validator.validate_token(t).await {
             Ok(sub) => {
                 // Token valid! Create new isolated session context
-                let current_policy = state.policy.read().unwrap().clone();
+                // Fix 5: Poison-safe policy read
+                let current_policy = match state.policy.read() {
+                    Ok(guard) => guard.clone(),
+                    Err(_) => None,
+                };
                 let email = if sub.contains('@') { Some(sub.clone()) } else { None };
                 let session = Arc::new(super::session::SessionContext::new(
                     Some(sub.clone()),
@@ -197,6 +242,8 @@ async fn resolve_session(
                     Some(client_ip.to_string()),
                 ));
 
+                // Fix 3: Evict expired sessions before inserting new one
+                evict_expired_sessions(state);
                 state.sessions.insert(token_hash, session.clone());
 
                 crate::logging::log_event(
@@ -212,6 +259,19 @@ async fn resolve_session(
                 Ok(session)
             }
             Err(e) => {
+                // Fix 1: Write invalid-token failure to HMAC audit chain
+                let _ = state.audit_logger.write_entry(
+                    &state.session_id,
+                    "auth_failed",
+                    "",
+                    None,
+                    Some(format!("invalid_token: {} remote_addr={}", e, client_ip)),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(client_ip.to_string()),
+                ).await;
                 crate::logging::log_event(
                     crate::logging::Level::Warn,
                     "auth_failed",
@@ -237,8 +297,22 @@ async fn resolve_session(
             return Ok(session.clone());
         }
 
-        // Create new isolated local session
-        let current_policy = state.policy.read().unwrap().clone();
+        // Fix 5: Poison-safe policy read
+        let current_policy = match state.policy.read() {
+            Ok(guard) => guard.clone(),
+            Err(_) => {
+                crate::logging::log_event(
+                    crate::logging::Level::Error,
+                    "policy_lock_poisoned",
+                    serde_json::json!({"remote_addr": client_ip, "action": "deny_applied"}),
+                );
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Policy state is temporarily unavailable".to_string(),
+                ));
+            }
+        };
+
         let session = Arc::new(super::session::SessionContext::new(
             None,
             None,
@@ -246,6 +320,8 @@ async fn resolve_session(
             Some(client_ip.to_string()),
         ));
 
+        // Fix 3: Evict expired sessions before inserting new one
+        evict_expired_sessions(state);
         state.sessions.insert(session_key, session.clone());
 
         crate::logging::log_event(
@@ -465,7 +541,7 @@ async fn handle_request(
                         tool_name,
                         &mut dlp_findings_json,
                         &mut injection_findings_json,
-                    );
+                    ).await;
                     (processed, false, StatusCode::OK)
                 },
                 Err(e) => (
@@ -599,7 +675,7 @@ fn prometheus_metrics_response(state: &ProxyState) -> Response<Full<Bytes>> {
 
 /// FR-303b: Scan a response for secrets and apply redaction/blocking.
 /// Fail-open: any scanner error passes the response through with audit log.
-fn scan_and_process_response(
+async fn scan_and_process_response(
     state: &ProxyState,
     session: &super::session::SessionContext,
     response: &serde_json::Value,
@@ -629,7 +705,7 @@ fn scan_and_process_response(
                 session.identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
             logging::log_event(
                 logging::Level::Warn,
                 "injection_blocked",
@@ -655,6 +731,56 @@ fn scan_and_process_response(
                 }
             });
         }
+        Ok(crate::policy::injection::ScanResult::Timeout) => {
+            if enforce_mode {
+                let _ = state.audit_logger.write_entry(
+                    session_id,
+                    "injection_blocked_timeout",
+                    tool_name,
+                    None,
+                    Some("Scanner timed out (potential ReDoS) — Blocked".to_string()),
+                    None,
+                    session.identity_sub.clone(),
+                    session.identity_email.clone(),
+                    None,
+                    session.request_ip.clone(),
+                ).await;
+                logging::log_event(
+                    logging::Level::Warn,
+                    "injection_blocked_timeout",
+                    serde_json::json!({"tool": tool_name, "session": session_id}),
+                );
+
+                let id = response.get("id").cloned().unwrap_or(serde_json::Value::Null);
+                return serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32002,
+                        "message": "Response blocked: injection scan timeout (potential ReDoS).",
+                        "data": { "session_id": session_id }
+                    }
+                });
+            } else {
+                let _ = state.audit_logger.write_entry(
+                    session_id,
+                    "injection_warning_timeout",
+                    tool_name,
+                    None,
+                    Some("Scanner timed out (potential ReDoS) — Warn (Shadow Mode)".to_string()),
+                    None,
+                    session.identity_sub.clone(),
+                    session.identity_email.clone(),
+                    None,
+                    session.request_ip.clone(),
+                ).await;
+                logging::log_event(
+                    logging::Level::Warn,
+                    "injection_warning_timeout",
+                    serde_json::json!({"tool": tool_name, "session": session_id}),
+                );
+            }
+        }
         Ok(crate::policy::injection::ScanResult::Warn { findings }) => {
             let f = &findings[0];
             let _ = state.audit_logger.write_entry(
@@ -668,7 +794,7 @@ fn scan_and_process_response(
                 session.identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
             logging::log_event(
                 logging::Level::Warn,
                 "injection_warning",
@@ -692,7 +818,7 @@ fn scan_and_process_response(
                 session.identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
             logging::log_event(
                 logging::Level::Error,
                 "INJECTION_SCANNER_FAILURE",
@@ -712,7 +838,7 @@ fn scan_and_process_response(
                 session.identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
             logging::log_event(
                 logging::Level::Error,
                 "INJECTION_SCANNER_FAILURE",
@@ -722,7 +848,10 @@ fn scan_and_process_response(
     }
 
     // 2. DLP/Secrets Scanning
-    let scan_config = state.response_scan_config.read().unwrap();
+    let scan_config = match state.response_scan_config.read() {
+        Ok(guard) => guard.clone(),
+        Err(_) => crate::policy::response_scanner::ResponseScanConfig::default(),
+    };
     // Catch panics — fail-open on any error
     let scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         state.response_scanner.scan_response(response, tool_name, &scan_config)
@@ -743,7 +872,7 @@ fn scan_and_process_response(
                 session.identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
             logging::log_event(
                 logging::Level::Error,
                 "SCANNER_FAILURE",
@@ -768,7 +897,7 @@ fn scan_and_process_response(
                 session.identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
             logging::log_event(
                 logging::Level::Warn,
                 "response_scan_skipped",
@@ -797,7 +926,7 @@ fn scan_and_process_response(
                         session.identity_email.clone(),
                         None,
                         session.request_ip.clone(),
-                    );
+                    ).await;
                 }
                 logging::log_event(
                     logging::Level::Warn,
@@ -826,7 +955,7 @@ fn scan_and_process_response(
                     session.identity_email.clone(),
                     None,
                     session.request_ip.clone(),
-                );
+                ).await;
             }
             logging::log_event(
                 logging::Level::Warn,
@@ -857,7 +986,7 @@ fn scan_and_process_response(
                         session.identity_email.clone(),
                         None,
                         session.request_ip.clone(),
-                    );
+                    ).await;
                 }
                 logging::log_event(
                     logging::Level::Warn,
@@ -885,7 +1014,7 @@ fn scan_and_process_response(
                 session.identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
             logging::log_event(
                 logging::Level::Warn,
                 "response_secret_blocked",
@@ -921,7 +1050,7 @@ fn scan_and_process_response(
                 session.identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
             logging::log_event(
                 logging::Level::Error,
                 "SCANNER_FAILURE",

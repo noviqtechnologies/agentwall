@@ -370,3 +370,79 @@ async fn test_hot_reload_policy_isolation() {
         _ => panic!("Expected Session B call to be denied under new policy"),
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_dynamic_tool_history_max() {
+    let policy = CompiledPolicy {
+        max_calls_per_second: 0,
+        tools: vec![],
+        identity_validator: None,
+        scannable_tools: vec![],
+        safe_tools: vec![],
+        firewall: Some(FirewallConfig {
+            enabled: true,
+            cycle_detection: CycleDetectionConfig {
+                max_attempts: 7, // > TOOL_HISTORY_MIN (5)
+                action: CycleAction::PivotError,
+            },
+        }),
+    };
+
+    let state = create_mock_proxy_state(Some(policy.clone()));
+    let session = Arc::new(SessionContext::new(
+        Some("agent-test".to_string()),
+        None,
+        Some(policy.clone()),
+        None,
+    ));
+
+    let req = json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "dangerous_tool",
+            "arguments": { "cmd": "rm -rf" }
+        },
+        "id": 1
+    });
+
+    // Make 6 consecutive identical calls
+    for _ in 0..6 {
+        let _ = evaluate_jsonrpc(&state, &session, &req).await;
+    }
+
+    // 7th call should trigger cycle block
+    let action = evaluate_jsonrpc(&state, &session, &req).await;
+
+    match action {
+        ProxyAction::Respond(val) => {
+            assert_eq!(val["error"]["code"], -32010, "Cycle detection must work for max_attempts > 5");
+        }
+        _ => panic!("Expected cycle detection block on 7th attempt"),
+    }
+}
+
+#[tokio::test]
+async fn test_session_ttl_expiry() {
+    let policy = CompiledPolicy {
+        max_calls_per_second: 0,
+        tools: vec![],
+        identity_validator: None,
+        scannable_tools: vec![],
+        safe_tools: vec![],
+        firewall: None,
+    };
+
+    let session = SessionContext::new(
+        Some("agent-test".to_string()),
+        None,
+        Some(policy),
+        None,
+    );
+
+    // Fresh session should not be expired
+    assert!(!session.is_expired(), "Fresh session should not be expired");
+
+    // We can't mock Instant easily without a crate like `mock_instant`, but we can verify the constant is 4 hours
+    assert_eq!(agentwall::proxy::session::SESSION_TTL_SECS, 4 * 60 * 60, "TTL must be 4 hours");
+}

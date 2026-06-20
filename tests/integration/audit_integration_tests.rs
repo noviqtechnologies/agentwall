@@ -4,11 +4,10 @@ use agentwall::report::generate_report;
 use serde_json::json;
 use std::fs;
 use std::sync::Arc;
-use std::thread;
 use tempfile::tempdir;
 
-#[test]
-fn test_integration_full_pipeline_and_report() {
+#[tokio::test]
+async fn test_integration_full_pipeline_and_report() {
     let dir = tempdir().unwrap();
     let config = AuditLoggerConfig {
         log_path: dir.path().join("audit.log"),
@@ -34,7 +33,7 @@ fn test_integration_full_pipeline_and_report() {
         Some("user-123@corp.com".to_string()),
         Some("policy-sha-abc".to_string()),
         None,
-    ).unwrap();
+    ).await.unwrap();
 
     logger.write_entry(
         "integration-session",
@@ -47,11 +46,11 @@ fn test_integration_full_pipeline_and_report() {
         Some("user-123@corp.com".to_string()),
         Some("policy-sha-abc".to_string()),
         None,
-    ).unwrap();
+    ).await.unwrap();
 
     // Drop logger to flush background writer
     drop(logger);
-    thread::sleep(std::time::Duration::from_millis(200));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     // 2. Verify chain with secret
     match verify_chain_with_secret(&log_path, &secret) {
@@ -79,8 +78,8 @@ fn test_integration_full_pipeline_and_report() {
     assert_eq!(report.policy_hash, Some("policy-sha-abc".to_string()));
 }
 
-#[test]
-fn test_integration_concurrent_sessions() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_integration_concurrent_sessions() {
     let dir = tempdir().unwrap();
     let config = AuditLoggerConfig {
         log_path: dir.path().join("audit.log"),
@@ -94,11 +93,11 @@ fn test_integration_concurrent_sessions() {
     let secret = config.session_secret.clone();
     let logger = Arc::new(AuditLogger::new(config).unwrap());
 
-    // Spawn 8 threads writing concurrently
+    // Spawn 8 tokio tasks writing concurrently
     let mut handles = vec![];
     for t_idx in 0..8 {
         let logger_clone = logger.clone();
-        let handle = thread::spawn(move || {
+        let handle = tokio::spawn(async move {
             for i in 0..10 {
                 logger_clone.write_entry(
                     "shared-session-id",
@@ -111,19 +110,19 @@ fn test_integration_concurrent_sessions() {
                     None,
                     None,
                     None,
-                ).unwrap();
+                ).await.unwrap();
             }
         });
         handles.push(handle);
     }
 
     for handle in handles {
-        handle.join().unwrap();
+        handle.await.unwrap();
     }
 
     // Drop logger to flush
     drop(logger);
-    thread::sleep(std::time::Duration::from_millis(200));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     // Verify all 80 entries are chained correctly
     match verify_chain_with_secret(&log_path, &secret) {
@@ -134,8 +133,8 @@ fn test_integration_concurrent_sessions() {
     }
 }
 
-#[test]
-fn test_integration_rotation_under_load() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_integration_rotation_under_load() {
     let dir = tempdir().unwrap();
     // Use very small max_bytes so that log rotates frequently under load
     let config = AuditLoggerConfig {
@@ -154,7 +153,7 @@ fn test_integration_rotation_under_load() {
     let mut handles = vec![];
     for t_idx in 0..5 {
         let logger_clone = logger.clone();
-        let handle = thread::spawn(move || {
+        let handle = tokio::spawn(async move {
             for i in 0..10 {
                 logger_clone.write_entry(
                     "rotation-session",
@@ -167,18 +166,18 @@ fn test_integration_rotation_under_load() {
                     None,
                     None,
                     None,
-                ).unwrap();
+                ).await.unwrap();
             }
         });
         handles.push(handle);
     }
 
     for handle in handles {
-        handle.join().unwrap();
+        handle.await.unwrap();
     }
 
     drop(logger);
-    thread::sleep(std::time::Duration::from_millis(200));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     // Check that multiple rotated files exist
     let files: Vec<_> = fs::read_dir(dir.path())
@@ -191,5 +190,154 @@ fn test_integration_rotation_under_load() {
     match verify_chain_with_secret(&log_path, &secret) {
         VerifyResult::Valid { .. } => {}
         other => panic!("Active log verification failed: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_integration_auth_failed_in_chain() {
+    let dir = tempdir().unwrap();
+    let config = AuditLoggerConfig {
+        log_path: dir.path().join("audit.log"),
+        session_id: "auth-test-session".to_string(),
+        session_secret: vec![0x11; 32],
+        max_bytes: 1024 * 1024,
+        siem_exporter: None,
+        include_params: true,
+    };
+    let log_path = config.log_path.clone();
+    let secret = config.session_secret.clone();
+    let logger = AuditLogger::new(config).unwrap();
+
+    // Fix 1: Write an auth_failed event
+    logger.write_entry(
+        "auth-test-session",
+        "auth_failed",
+        "",
+        None,
+        Some("identity_token_missing remote_addr=127.0.0.1".to_string()),
+        None,
+        None,
+        None,
+        None,
+        Some("127.0.0.1".to_string()),
+    ).await.unwrap();
+
+    drop(logger);
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    match verify_chain_with_secret(&log_path, &secret) {
+        VerifyResult::Valid { entry_count } => {
+            assert_eq!(entry_count, 1);
+        }
+        other => panic!("Chain verification failed for auth_failed: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_integration_tampered_log() {
+    let dir = tempdir().unwrap();
+    let config = AuditLoggerConfig {
+        log_path: dir.path().join("audit.log"),
+        session_id: "tamper-session".to_string(),
+        session_secret: vec![0x22; 32],
+        max_bytes: 1024 * 1024,
+        siem_exporter: None,
+        include_params: true,
+    };
+    let log_path = config.log_path.clone();
+    let secret = config.session_secret.clone();
+    let logger = AuditLogger::new(config).unwrap();
+
+    // Write a couple of entries
+    logger.write_entry(
+        "tamper-session",
+        "tool_allow",
+        "read_file",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ).await.unwrap();
+
+    logger.write_entry(
+        "tamper-session",
+        "tool_allow",
+        "write_file",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ).await.unwrap();
+
+    drop(logger);
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // Read the log file, find an entry and tamper with it
+    let mut contents = fs::read_to_string(&log_path).unwrap();
+    // Replace "read_file" with "root_shell"
+    contents = contents.replace("read_file", "root_shell");
+    fs::write(&log_path, contents).unwrap();
+
+    // Verify it fails
+    match verify_chain_with_secret(&log_path, &secret) {
+        VerifyResult::Invalid { entry_index, .. } => {
+            // Expected hash mismatch or chain break at index 0 because read_file was the first entry
+            assert_eq!(entry_index, 0);
+        }
+        VerifyResult::Error(_e) => {
+            // This could also happen if replace messes up json, but we just replaced tool name
+        }
+        other => panic!("Expected Invalid or Error, got: {:?}", other),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_siem_export_failure_fallback_logs_locally() {
+    let dir = tempdir().unwrap();
+    let config = AuditLoggerConfig {
+        log_path: dir.path().join("audit.log"),
+        session_id: "siem-fail-session".to_string(),
+        session_secret: vec![0x33; 32],
+        max_bytes: 1024 * 1024,
+        siem_exporter: Some(agentwall::audit::siem::SiemExporter::new(
+            agentwall::audit::siem::SiemBackend::Splunk,
+            "http://192.0.2.1:8088/services/collector/event".to_string(),
+            "dummy_token".to_string(),
+            1, // 1s timeout
+        )),
+        include_params: true,
+    };
+    let log_path = config.log_path.clone();
+    let secret = config.session_secret.clone();
+    let logger = AuditLogger::new(config).unwrap();
+
+    logger.write_entry(
+        "siem-fail-session",
+        "tool_allow",
+        "read_file",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ).await.unwrap();
+
+    drop(logger);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Verify it is written locally
+    match verify_chain_with_secret(&log_path, &secret) {
+        VerifyResult::Valid { entry_count } => {
+            assert_eq!(entry_count, 1);
+        }
+        other => panic!("Chain verification failed: {:?}", other),
     }
 }

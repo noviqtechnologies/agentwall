@@ -3,8 +3,12 @@ use agentwall::proxy::db::EgressEvent;
 use std::time::Instant;
 
 fn make_event(tool: &str, params: &str, timestamp: &str) -> EgressEvent {
+    let timestamp_ns = chrono::DateTime::parse_from_rfc3339(timestamp)
+        .map(|dt| dt.timestamp_nanos_opt().unwrap_or(0))
+        .unwrap_or(123456789);
+
     EgressEvent {
-        timestamp_ns: 123456789,
+        timestamp_ns,
         session_id: "test_session".to_string(),
         transport: "mcp".to_string(),
         method: Some("tools/call".to_string()),

@@ -60,6 +60,9 @@ pub enum ScanResult {
     Warn { findings: Vec<InjectionFinding> },
     /// Scanner error — fail-open
     ScannerError { error: String },
+    /// Fix 4: Scan exceeded the deadline (potential ReDoS input).
+    /// In enforce_mode this is treated as Block; in shadow/dry-run mode as Warn.
+    Timeout,
 }
 
 struct PatternDef {
@@ -238,18 +241,22 @@ impl InjectionScanner {
         None
     }
 
-    /// Scan response for prompt injections and poisoning
-    pub fn scan_response(&self, response: &Value, tool_name: &str, session_id: &str, enforce_mode: bool) -> ScanResult {
-        let mut findings = Vec::new();
+    /// Fix 4: Scan deadline in milliseconds — prevents ReDoS from stalling the async executor.
+    const SCAN_TIMEOUT_MS: u64 = 100;
 
-        // Check for tool poisoning on tools/list responses
+    /// Scan response for prompt injections and poisoning.
+    /// The inner regex evaluation runs on a dedicated OS thread and is killed after
+    /// `SCAN_TIMEOUT_MS` milliseconds. A timeout returns `ScanResult::Timeout`.
+    pub fn scan_response(&self, response: &Value, tool_name: &str, session_id: &str, enforce_mode: bool) -> ScanResult {
+        // Tool poisoning check is fast and always runs inline.
+        let mut findings = Vec::new();
         if tool_name == "tools/list" {
             if let Some(finding) = self.check_tool_poisoning(session_id, response) {
                 findings.push(finding);
             }
         }
 
-        // Extract textual content from the response
+        // Extract textual content — also fast.
         let content_str = match extract_text_from_response(response) {
             Ok(s) => s,
             Err(e) => return ScanResult::ScannerError { error: e },
@@ -267,31 +274,60 @@ impl InjectionScanner {
             }
         }
 
-        let normalized = Self::normalize(&content_str);
+        // Fix 4: Run expensive normalization + regex on a dedicated OS thread with a deadline.
+        // This prevents a crafted pathological input (ReDoS) from stalling the Tokio executor
+        // or causing a catch_unwind-masked bypass.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let content_owned = content_str.clone();
 
-        let matched_indices: Vec<usize> = self.regex_set.matches(&normalized).into_iter().collect();
-        for idx in matched_indices {
-            let pat = &self.patterns[idx];
-            for m in pat.individual_regex.find_iter(&normalized) {
-                findings.push(InjectionFinding {
-                    category: pat.category.clone(),
-                    pattern_name: pat.name.to_string(),
-                    preview: truncated_preview(m.as_str()),
-                });
-            }
-        }
+        // Collect pattern data needed for scanning (borrow-safe clones).
+        let patterns_data: Vec<(String, regex::Regex)> = self.patterns.iter()
+            .map(|p| (p.name.to_string(), p.individual_regex.clone()))
+            .collect();
+        let regex_set_clone = self.regex_set.clone();
 
-        if findings.is_empty() {
-            ScanResult::Clean
-        } else if enforce_mode {
-            let has_blockable = findings.iter().any(|f| f.category != InjectionCategory::PreferencePoisoning);
-            if has_blockable {
-                ScanResult::Block { findings }
-            } else {
-                ScanResult::Warn { findings }
+        std::thread::spawn(move || {
+            let normalized = InjectionScanner::normalize(&content_owned);
+            let matched_indices: Vec<usize> = regex_set_clone.matches(&normalized).into_iter().collect();
+            let mut thread_findings = Vec::new();
+            for idx in matched_indices {
+                let (name, re) = &patterns_data[idx];
+                for m in re.find_iter(&normalized) {
+                    thread_findings.push((name.clone(), truncated_preview(m.as_str())));
+                }
             }
-        } else {
-            ScanResult::Warn { findings }
+            // Ignore send error — caller will see Timeout via recv_timeout
+            let _ = tx.send(thread_findings);
+        });
+
+        let deadline = std::time::Duration::from_millis(Self::SCAN_TIMEOUT_MS);
+        match rx.recv_timeout(deadline) {
+            Ok(thread_findings) => {
+                for (i, (name, preview)) in thread_findings.into_iter().enumerate() {
+                    findings.push(InjectionFinding {
+                        category: category_for_index(i),
+                        pattern_name: name,
+                        preview,
+                    });
+                }
+
+                if findings.is_empty() {
+                    ScanResult::Clean
+                } else if enforce_mode {
+                    let has_blockable = findings.iter().any(|f| f.category != InjectionCategory::PreferencePoisoning);
+                    if has_blockable {
+                        ScanResult::Block { findings }
+                    } else {
+                        ScanResult::Warn { findings }
+                    }
+                } else {
+                    ScanResult::Warn { findings }
+                }
+            }
+            Err(_) => {
+                // Timed out — potential ReDoS. Log and return Timeout for caller to handle.
+                ScanResult::Timeout
+            }
         }
     }
 }

@@ -105,4 +105,21 @@ mod tests {
         assert!(result.is_none());
         assert_eq!(buf.len(), 6);
     }
+
+    #[test]
+    fn test_json_rpc_codec_non_utf8_recovery() {
+        let mut codec = JsonRpcCodec;
+        // Some binary non-UTF8 garbage (0xFF 0xFE), then a newline, then a valid JSON message
+        let mut data = Vec::new();
+        data.extend_from_slice(&[0xFF, 0xFE, 0x00, 0x01, b'\n']);
+        data.extend_from_slice(r#"{"id": 3}"#.as_bytes());
+        
+        let mut buf = BytesMut::from(&data[..]);
+        
+        // The first decode call might return None or advance past the newline
+        // If it advances past the newline and parses the next one recursively, it might return Some immediately.
+        let result = codec.decode(&mut buf).unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), json!({"id": 3}));
+    }
 }

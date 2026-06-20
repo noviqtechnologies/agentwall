@@ -159,8 +159,10 @@ const JSONRPC_POLICY_VIOLATION: i64 = -32001;
 /// FR-306: Custom error code for firewall cycle detection.
 const JSONRPC_FIREWALL_CYCLE: i64 = -32010;
 
-/// FR-306: Max entries in the tool call history sliding window.
-const TOOL_HISTORY_MAX: usize = 5;
+/// FR-306: Minimum entries in the tool call history sliding window.
+/// The effective cap is max(TOOL_HISTORY_MIN, max_attempts) — computed per evaluation
+/// so policies with max_attempts > 5 are never silently broken (Fix 2).
+const TOOL_HISTORY_MIN: usize = 5;
 
 pub enum ProxyAction {
     Forward,
@@ -207,7 +209,7 @@ pub async fn evaluate_jsonrpc(
             session.identity_email.clone(),
             None,
             session.request_ip.clone(),
-        );
+        ).await;
         logging::log_event(
             Level::Warn,
             "tool_deny",
@@ -235,7 +237,7 @@ pub async fn evaluate_jsonrpc(
             session.identity_email.clone(),
             None,
             session.request_ip.clone(),
-        );
+        ).await;
         logging::log_event(
             Level::Warn,
             "rate_limited",
@@ -299,15 +301,19 @@ pub async fn evaluate_jsonrpc(
         if effective_cfg.enabled {
             let fingerprint = ToolCallFingerprint::new(tool_name, &tool_params);
             let mut history = session.tool_history.lock().unwrap();
+            let max_attempts = effective_cfg.cycle_detection.max_attempts as usize;
+
+            // Fix 2: Dynamic window cap — always at least as large as max_attempts so that
+            // policies with max_attempts > TOOL_HISTORY_MIN are never silently broken.
+            let effective_window = max_attempts.max(TOOL_HISTORY_MIN);
 
             // Append and bound the window
             history.push(fingerprint.clone());
             let len = history.len();
-            if len > TOOL_HISTORY_MAX {
-                history.drain(..len - TOOL_HISTORY_MAX);
+            if len > effective_window {
+                history.drain(..len - effective_window);
             }
 
-            let max_attempts = effective_cfg.cycle_detection.max_attempts as usize;
             if max_attempts > 0 && history.len() >= max_attempts {
                 let tail = &history[history.len() - max_attempts..];
                 let all_identical = tail.iter().all(|f| *f == fingerprint);
@@ -344,7 +350,7 @@ pub async fn evaluate_jsonrpc(
             session.identity_email.clone(),
             None,
             session.request_ip.clone(),
-        );
+        ).await;
         logging::log_event(
             Level::Warn,
             "firewall_cycle_block",
@@ -400,7 +406,7 @@ pub async fn evaluate_jsonrpc(
                         session.identity_email.clone(),
                         None,
                         session.request_ip.clone(),
-                    );
+                    ).await;
                     logging::log_event(
                         Level::Warn,
                         "firewall_cycle_override",
@@ -507,7 +513,7 @@ pub async fn evaluate_jsonrpc(
                 identity_email.clone(),
                 None,
                 session.request_ip.clone(),
-            );
+            ).await;
 
             if let Err(e) = log_result {
                 // fsync failed — follow DENY path (NFR-204)
@@ -568,7 +574,7 @@ pub async fn evaluate_jsonrpc(
                     identity_email.clone(),
                     None,
                     session.request_ip.clone(),
-                );
+                ).await;
                 logging::log_event(
                     Level::Warn,
                     "tool_dry_run_deny",
@@ -621,7 +627,7 @@ async fn handle_deny(
         identity_email.clone(),
         None,
         request_ip.clone(),
-    );
+    ).await;
 
     if let Err(e) = log_result {
         logging::log_event(

@@ -176,7 +176,6 @@ async fn main() {
                 }
             }
         }
-// Duplicate Validate block removed
 
         Commands::Lint { policy } => {
             match agentwall::lint::execute(&policy) {
@@ -288,7 +287,7 @@ async fn run_stdio_proxy(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-        event_tx: tokio::sync::broadcast::channel(256).0,
+        event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
     });
 
     let mut parts = args.clone();
@@ -522,7 +521,7 @@ async fn run_start(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-        event_tx: tokio::sync::broadcast::channel(256).0,
+        event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
     });
 
     if shadow_mode {
@@ -652,9 +651,36 @@ async fn run_wrap(
     max_scan_bytes: usize,
 ) -> i32 {
     if auto_detect {
-        println!("{} Auto-detect is not fully implemented yet (FR-301).", "ℹ".blue());
-        println!("Please use --command explicitly for now.");
-        return 1;
+        println!("{} Auto-detecting known agent configurations...", "ℹ".blue());
+        
+        let targets = vec![
+            crate::cli::WrapTarget::Claude { dry_run, scan_responses, block_on_secrets },
+            crate::cli::WrapTarget::Cursor { dry_run },
+            crate::cli::WrapTarget::Vscode { dry_run },
+            crate::cli::WrapTarget::Jetbrains { dry_run },
+            crate::cli::WrapTarget::Zed { dry_run },
+            crate::cli::WrapTarget::Cline { dry_run },
+            crate::cli::WrapTarget::Opencode { dry_run },
+            crate::cli::WrapTarget::Antigravity { dry_run },
+        ];
+
+        let mut wrapped_any = false;
+        for target in targets {
+            // run_wrap_target will print errors to stderr if config isn't found.
+            // We temporarily suppress stderr? Or just let it print.
+            // Actually, we can just call it. If it succeeds (returns 0), we set wrapped_any = true.
+            if agentwall::wrap::run_wrap_target(&target) == 0 {
+                wrapped_any = true;
+            }
+        }
+
+        if wrapped_any {
+            println!("{} Auto-detect wrap completed successfully.", "✓".green());
+            return 0;
+        } else {
+            eprintln!("{} No supported agents found to wrap automatically.", "✖".red());
+            return 1;
+        }
     }
 
     let cmd_str = match command {
@@ -786,7 +812,7 @@ async fn run_wrap(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-        event_tx: tokio::sync::broadcast::channel(256).0,
+        event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
     });
 
     // Parse the command string
@@ -905,7 +931,7 @@ async fn run_dev(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-        event_tx: tokio::sync::broadcast::channel(256).0,
+        event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
     });
 
     // Parse listen address

@@ -22,8 +22,8 @@ fn test_rate_limiting_logic() {
     assert!(limiter.acquire(), "Should allow call after partial replenishment");
 }
 
-#[test]
-fn test_log_rotation_and_seed() {
+#[tokio::test]
+async fn test_log_rotation_and_seed() {
     let test_dir = std::path::Path::new("tests/tmp_p1_test");
     let _ = std::fs::create_dir_all(test_dir);
     let log_path = test_dir.join(format!("vexa_test_log_{}.log", uuid::Uuid::new_v4()));
@@ -45,7 +45,7 @@ fn test_log_rotation_and_seed() {
 
     // Write entries until it rotates
     for _ in 0..10 {
-        logger.write_entry(&session_id, "tool_allow", "read_file", None, None, None, None, None, None, None).unwrap();
+        logger.write_entry(&session_id, "tool_allow", "read_file", None, None, None, None, None, None, None).await.unwrap();
         std::thread::sleep(Duration::from_millis(10));
     }
 
@@ -66,8 +66,8 @@ fn test_log_rotation_and_seed() {
     assert!(content.contains("log_rotation_seed"), "New log should contain rotation seed");
 }
 
-#[test]
-fn test_session_report_generation() {
+#[tokio::test]
+async fn test_session_report_generation() {
     let log_path = std::env::temp_dir().join(format!("vexa_test_report_{}.log", uuid::Uuid::new_v4()));
     let session_id = "test-report-session".to_string();
     let secret = b"test-secret-123456789012345678901".to_vec();
@@ -85,9 +85,9 @@ fn test_session_report_generation() {
     }).unwrap();
 
     // Mock session events
-    logger.write_entry(&session_id, "tool_allow", "read_file", None, None, None, None, None, None, None).unwrap();
-    logger.write_entry(&session_id, "tool_deny", "exec_shell", None, Some("action is deny".to_string()), None, None, None, None, None).unwrap();
-    logger.write_entry(&session_id, "rate_limited", "read_file", None, None, None, None, None, None, None).unwrap();
+    logger.write_entry(&session_id, "tool_allow", "read_file", None, None, None, None, None, None, None).await.unwrap();
+    logger.write_entry(&session_id, "tool_deny", "exec_shell", None, Some("action is deny".to_string()), None, None, None, None, None).await.unwrap();
+    logger.write_entry(&session_id, "rate_limited", "read_file", None, None, None, None, None, None, None).await.unwrap();
 
     // Drop the logger to flush the background writer
     drop(logger);

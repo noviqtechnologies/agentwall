@@ -285,7 +285,20 @@ pub async fn handle_egress(
                         is_blocked = true;
                         
                         let _ = state.audit_logger.write_entry(&session_id, "injection_blocked", "http_fetch", None,
-                            Some(format!("pattern={} preview={}", f.pattern_name, f.preview)), None, None, None, None, None);
+                            Some(format!("pattern={} preview={}", f.pattern_name, f.preview)), None, None, None, None, None).await;
+                    }
+                    Ok(crate::policy::injection::ScanResult::Timeout) => {
+                        if enforce_mode {
+                            verdict = "deny".to_string();
+                            response_status = 403;
+                            is_blocked = true;
+                            
+                            let _ = state.audit_logger.write_entry(&session_id, "injection_blocked_timeout", "http_fetch", None,
+                                Some("Scanner timed out (potential ReDoS) — Blocked".to_string()), None, None, None, None, None).await;
+                        } else {
+                            let _ = state.audit_logger.write_entry(&session_id, "injection_warning_timeout", "http_fetch", None,
+                                Some("Scanner timed out (potential ReDoS) — Warn".to_string()), None, None, None, None, None).await;
+                        }
                     }
                     Ok(crate::policy::injection::ScanResult::Warn { findings }) => {
                         let findings_json = serde_json::json!({

@@ -2,7 +2,6 @@ use agentwall::audit::logger::{AuditLogger, AuditLoggerConfig, ZERO_HMAC};
 use agentwall::audit::verifier::{verify_chain, verify_chain_with_secret, VerifyResult};
 use serde_json::json;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::tempdir;
 
 fn create_temp_config(dir: &std::path::Path, max_bytes: u64) -> AuditLoggerConfig {
@@ -16,8 +15,8 @@ fn create_temp_config(dir: &std::path::Path, max_bytes: u64) -> AuditLoggerConfi
     }
 }
 
-#[test]
-fn test_audit_sync_write_and_chain() {
+#[tokio::test]
+async fn test_audit_sync_write_and_chain() {
     let dir = tempdir().unwrap();
     let config = create_temp_config(dir.path(), 1024 * 1024);
     let logger = AuditLogger::new(config).expect("failed to create logger");
@@ -36,6 +35,7 @@ fn test_audit_sync_write_and_chain() {
             Some("sha256:abc".to_string()),
             None,
         )
+        .await
         .expect("write failed");
 
     assert_eq!(e1.entry_index, 0);
@@ -60,6 +60,7 @@ fn test_audit_sync_write_and_chain() {
             Some("sha256:abc".to_string()),
             None,
         )
+        .await
         .expect("write failed");
 
     assert_eq!(e2.entry_index, 1);
@@ -75,8 +76,8 @@ fn test_audit_sync_write_and_chain() {
     }
 }
 
-#[test]
-fn test_audit_log_rotation() {
+#[tokio::test]
+async fn test_audit_log_rotation() {
     let dir = tempdir().unwrap();
     // Tiny max_bytes to force rapid rotation
     let config = create_temp_config(dir.path(), 500);
@@ -96,6 +97,7 @@ fn test_audit_log_rotation() {
                 None,
                 None,
             )
+            .await
             .unwrap();
     }
 
@@ -114,6 +116,7 @@ fn test_audit_log_rotation() {
             None,
             None,
         )
+        .await
         .unwrap();
 
     // Since max_bytes was tiny, it should have rotated a few times.
@@ -132,8 +135,8 @@ fn test_audit_log_rotation() {
     }
 }
 
-#[test]
-fn test_verify_chain_with_secret_tamper_detection() {
+#[tokio::test]
+async fn test_verify_chain_with_secret_tamper_detection() {
     let dir = tempdir().unwrap();
     let config = create_temp_config(dir.path(), 1024 * 1024);
     let session_secret = config.session_secret.clone();
@@ -143,10 +146,10 @@ fn test_verify_chain_with_secret_tamper_detection() {
 
     logger.write_entry(
         "sess-1", "test_event", "tool_1", None, None, None, None, None, None, None
-    ).unwrap();
+    ).await.unwrap();
     logger.write_entry(
         "sess-1", "test_event", "tool_2", None, None, None, None, None, None, None
-    ).unwrap();
+    ).await.unwrap();
 
     // Initial verify is clean
     match verify_chain_with_secret(&log_path, &session_secret) {

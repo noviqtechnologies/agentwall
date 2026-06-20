@@ -384,7 +384,7 @@ impl AuditLogger {
     ///
     /// On `Err` the caller **must** treat the event as a DENY (NFR-204).
     #[allow(clippy::too_many_arguments)]
-    pub fn write_entry(
+    pub async fn write_entry(
         &self,
         session_id:     &str,
         event:          &str,
@@ -413,7 +413,7 @@ impl AuditLogger {
             hex::encode(hasher.finalize())
         });
 
-        let (ack_tx, ack_rx) = oneshot::channel();
+        let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
 
         let req = EntryRequest {
             session_id:     session_id.to_string(),
@@ -435,12 +435,8 @@ impl AuditLogger {
             return Err(AuditError::WriterDead);
         }
 
-        // Block until fsync confirmed — this is the NFR-204 guarantee.
-        let result = if tokio::runtime::Handle::try_current().is_ok() {
-            tokio::task::block_in_place(|| ack_rx.blocking_recv())
-        } else {
-            ack_rx.blocking_recv()
-        };
+        // Block asynchronously until fsync confirmed — this is the NFR-204 guarantee.
+        let result = ack_rx.await;
 
         match result {
             Ok(Ok(entry)) => Ok(entry),

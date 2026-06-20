@@ -61,6 +61,19 @@ tools:
     let err = res.unwrap_err();
     assert!(err.contains("validator_failed"));
     assert!(err.contains("path_traversal"));
+
+    // Also test URL encoded variants
+    let payload_content_url = r#"{"path": "/safe/workspace/%2E%2E%2Fetc/passwd"}"#;
+    fs::write(payload_file.path(), payload_content_url).unwrap();
+
+    let res2 = validate::execute(
+        policy_file.path().to_str().unwrap(),
+        "read_file",
+        payload_file.path().to_str().unwrap(),
+    );
+    assert!(res2.is_err());
+    let err2 = res2.unwrap_err();
+    assert!(err2.contains("path_traversal"));
 }
 
 #[test]

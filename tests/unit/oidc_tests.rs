@@ -254,3 +254,47 @@ fn test_ac201_5_custom_cache_ttl_applied() {
     let v = IdentityValidator::new("https://example.com".to_string(), "aud".to_string(), Some(30));
     assert_eq!(v.cache_ttl.as_secs(), 30 * 60);
 }
+
+// ── OIDC Race Condition ────────────────────────────────────────────────────────
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ac201_2_jwk_refresh_race() {
+    let issuer = "http://198.51.100.1:80"; // Point to an inaccessible IP to delay refresh
+    let audience = "agentwall";
+    let v = IdentityValidator::new(issuer.to_string(), audience.to_string(), None);
+
+    let encoding_key = EncodingKey::from_rsa_pem(RSA_PRIVATE_PEM).unwrap();
+    let claims = Claims {
+        sub: "agent-alpha".to_string(),
+        aud: audience.to_string(),
+        iss: issuer.to_string(),
+        exp: now_secs() + 3600,
+    };
+    let header = Header {
+        alg: jsonwebtoken::Algorithm::RS256,
+        kid: Some("unknown-kid".to_string()),
+        ..Default::default()
+    };
+    let token = encode(&header, &claims, &encoding_key).unwrap();
+
+    // Spawn two concurrent requests for the same token with missing kid
+    // This will trigger concurrent refresh_keys calls.
+    let v1 = v.clone();
+    let token1 = token.clone();
+    let t1 = tokio::spawn(async move {
+        v1.validate_token(&token1).await
+    });
+
+    let v2 = v.clone();
+    let token2 = token.clone();
+    let t2 = tokio::spawn(async move {
+        v2.validate_token(&token2).await
+    });
+
+    let res1 = t1.await.unwrap();
+    let res2 = t2.await.unwrap();
+
+    // Both should fail gracefully (timeout or connection error to 198.51.100.1), no panics
+    assert!(res1.is_err());
+    assert!(res2.is_err());
+}

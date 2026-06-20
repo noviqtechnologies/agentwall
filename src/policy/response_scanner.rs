@@ -205,12 +205,6 @@ impl ResponseScanner {
                 for m in pat.individual_regex.find_iter(content) {
                     let matched_text = m.as_str();
 
-                    // For Anthropic keys, skip if the OpenAI pattern also matched
-                    // (OpenAI pattern is broader — sk-ant-* should be categorized as Anthropic)
-                    if idx == 5 && matched_text.starts_with("sk-ant-") {
-                        continue; // Let the Anthropic pattern (idx 6) handle it
-                    }
-
                     let finding = SecretFinding {
                         category: pat.category.clone(),
                         pattern_name: pat.name.to_string(),
@@ -220,14 +214,24 @@ impl ResponseScanner {
                         preview: truncated_preview(matched_text),
                     };
 
-                    if config.block_mode {
-                        // Fail-fast: block on first match
-                        return ScanResult::Block { findings: vec![finding] };
-                    }
-
                     findings.push(finding);
                 }
             }
+        }
+
+        // Fix 6: Deduplicate findings by field_path and position to prevent pattern overlap
+        findings.sort_by(|a, b| {
+            a.field_path.cmp(&b.field_path)
+                .then(a.position.cmp(&b.position))
+                .then(b.length.cmp(&a.length)) // Descending length
+                .then(a.pattern_name.cmp(&b.pattern_name)) // Anthropic before OpenAI
+        });
+        findings.dedup_by(|a, b| a.field_path == b.field_path && a.position == b.position);
+
+        if config.block_mode && !findings.is_empty() {
+            // Fail-fast: block on first deduplicated match
+            let first = findings.remove(0);
+            return ScanResult::Block { findings: vec![first] };
         }
 
         if findings.is_empty() {

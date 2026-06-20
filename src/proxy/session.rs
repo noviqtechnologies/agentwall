@@ -1,11 +1,16 @@
 //! Multi-tenant agent session context and isolation manager (FR-101)
 
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::policy::engine::CompiledPolicy;
 use crate::proxy::handler::{RateLimiter, ToolCallFingerprint};
+
+/// Fix 3: Maximum lifetime of an idle session in the DashMap.
+/// Sessions older than this are evicted lazily on the next new session creation.
+/// 4 hours is generous for most agent workflows while preventing unbounded growth.
+pub const SESSION_TTL_SECS: u64 = 4 * 60 * 60; // 4 hours
 
 /// A completely isolated context for a single active AI agent session.
 /// Enforces absolute isolation of rate limiting, cycle detection, policy contexts, and logs (FR-101).
@@ -64,5 +69,11 @@ impl SessionContext {
             start_time,
             request_ip,
         }
+    }
+
+    /// Fix 3: Returns true if the session has exceeded SESSION_TTL_SECS since creation.
+    /// Used by the lazy eviction logic in `server.rs:evict_expired_sessions()`.
+    pub fn is_expired(&self) -> bool {
+        self.start_time.elapsed() > Duration::from_secs(SESSION_TTL_SECS)
     }
 }
