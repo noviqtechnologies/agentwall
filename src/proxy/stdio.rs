@@ -493,3 +493,92 @@ async fn stdio_scan_response(
         }
     }
 }
+
+pub async fn run_stdio_to_http_bridge(
+    state: Arc<ProxyState>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use futures::{SinkExt, StreamExt};
+    use tokio_util::codec::{FramedRead, FramedWrite};
+
+    let agent_stdin = tokio::io::stdin();
+    let agent_stdout = tokio::io::stdout();
+
+    let mut agent_reader = FramedRead::new(agent_stdin, JsonRpcCodec);
+    let mut agent_writer = FramedWrite::new(agent_stdout, JsonRpcCodec);
+
+    let local_policy = match state.policy.read() {
+        Ok(guard) => guard.clone(),
+        Err(_) => None,
+    };
+    let local_session = Arc::new(crate::proxy::session::SessionContext::new(
+        None,
+        None,
+        local_policy,
+        None,
+    ));
+
+    while let Some(msg) = agent_reader.next().await {
+        match msg {
+            Ok(json) => {
+                let action = evaluate_jsonrpc(&state, &local_session, &json).await;
+                match action {
+                    ProxyAction::Forward => {
+                        let response = crate::proxy::forward::forward_request(
+                            &state.http_client,
+                            &state.upstream_url,
+                            &json,
+                        )
+                        .await;
+
+                        match response {
+                            Ok(resp) => {
+                                let tool_name = json.get("params")
+                                    .and_then(|p| p.get("name"))
+                                    .and_then(|n| n.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let processed = stdio_scan_response(&state, &local_session.session_id, &resp, &tool_name).await;
+                                if let Err(e) = agent_writer.send(processed).await {
+                                    eprintln!("Error sending to agent: {}", e);
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                let id = json.get("id").cloned().unwrap_or(serde_json::Value::Null);
+                                let err_resp = serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "error": {
+                                        "code": -32001,
+                                        "message": format!("Forwarding error: {}", e)
+                                    }
+                                });
+                                if let Err(e) = agent_writer.send(err_resp).await {
+                                    eprintln!("Error sending to agent: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    ProxyAction::Respond(resp) | ProxyAction::RespondWithStatus(_, resp) => {
+                        if let Err(e) = agent_writer.send(resp).await {
+                            eprintln!("Error sending to agent: {}", e);
+                            break;
+                        }
+                    }
+                    ProxyAction::KillAndRespond(resp) | ProxyAction::KillAndRespondWithStatus(_, resp) => {
+                        let _ = agent_writer.send(resp).await;
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Error reading from agent: {}", e);
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+

@@ -848,10 +848,10 @@ async fn run_wrap(
 async fn run_dev(
     listen: String,
     mcp_url: String,
-    _stdio: bool,
+    stdio: bool,
     no_browser: bool,
     enforce: bool,
-    _args: Vec<String>,
+    args: Vec<String>,
 ) -> i32 {
     // Generate session secret and ID
     let session_secret: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
@@ -932,6 +932,31 @@ async fn run_dev(
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
     });
+
+    if stdio {
+        if !args.is_empty() {
+            let mut parts = args.clone();
+            let program = parts.remove(0);
+            let (resolved_program, prefix_args) = proxy::stdio::resolve_command(&program);
+
+            let mut final_args = prefix_args;
+            final_args.extend(parts);
+
+            let mut cmd = tokio::process::Command::new(resolved_program);
+            cmd.args(final_args);
+
+            if let Err(e) = proxy::stdio::run_stdio_bridge(state, cmd).await {
+                eprintln!("{} Stdio proxy error: {}", "✖".red(), e);
+                return 1;
+            }
+        } else {
+            if let Err(e) = proxy::stdio::run_stdio_to_http_bridge(state).await {
+                eprintln!("{} Stdio bridge error: {}", "✖".red(), e);
+                return 1;
+            }
+        }
+        return 0;
+    }
 
     // Parse listen address
     let listen_addr: SocketAddr = match listen.parse() {

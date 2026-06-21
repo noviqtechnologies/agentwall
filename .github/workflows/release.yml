@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -40,6 +42,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Extract version
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(grep -m 1 "^version = " Cargo.toml | cut -d '"' -f 2)
+          echo "VERSION=v$VERSION" >> $GITHUB_ENV
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -74,19 +83,19 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           cd release
-          zip -r ../agentwall-${{ github.ref_name }}-${{ matrix.arch_name }}.zip .
+          zip -r ../agentwall-${{ env.VERSION }}-${{ matrix.arch_name }}.zip .
 
       - name: Create Zip (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Compress-Archive -Path release\* -DestinationPath agentwall-${{ github.ref_name }}-${{ matrix.arch_name }}.zip
+          Compress-Archive -Path release\* -DestinationPath agentwall-${{ env.VERSION }}-${{ matrix.arch_name }}.zip
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: agentwall-${{ matrix.arch_name }}
-          path: agentwall-${{ github.ref_name }}-${{ matrix.arch_name }}.zip
+          path: agentwall-${{ env.VERSION }}-${{ matrix.arch_name }}.zip
 
   release:
     name: Create GitHub Release
@@ -96,6 +105,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Extract version
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(grep -m 1 "^version = " Cargo.toml | cut -d '"' -f 2)
+          echo "VERSION=v$VERSION" >> $GITHUB_ENV
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -104,6 +120,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ env.VERSION }}
           files: artifacts/**/*
           generate_release_notes: true
         env:

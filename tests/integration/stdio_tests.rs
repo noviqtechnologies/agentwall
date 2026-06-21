@@ -1,6 +1,6 @@
 use std::process::Stdio;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::sleep;
 
@@ -26,7 +26,7 @@ async fn test_stdio_bridge() {
     sleep(Duration::from_millis(500)).await;
 
     let mut stdin = child.stdin.take().expect("Failed to open stdin");
-    let mut stdout = child.stdout.take().expect("Failed to open stdout");
+    let stdout = child.stdout.take().expect("Failed to open stdout");
 
     // Send a JSON-RPC 'ping' request
     let req = serde_json::json!({
@@ -40,7 +40,6 @@ async fn test_stdio_bridge() {
     stdin.flush().await.expect("Failed to flush stdin");
 
     // Read the response from stdout
-    let mut buf = vec![0; 4096];
     
     // We use a small timeout to read the response to avoid hanging if the bridge is broken
     let mut res_str = String::new();
