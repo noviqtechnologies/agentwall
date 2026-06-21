@@ -10,7 +10,6 @@ use agentwall::policy;
 use agentwall::promote;
 use agentwall::proxy;
 use agentwall::report;
-use agentwall::wrap;
 use agentwall::{log_error, log_warn};
 
 use colored::*;

@@ -6,4 +6,5 @@ mod integration {
     mod audit_integration_tests;
     mod dashboard_test;
     mod egress_proxy_tests;
+    mod stdio_tests;
 }

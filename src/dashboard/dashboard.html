@@ -893,14 +893,17 @@
       <div class="nav-item" data-panel="panel-risks">
         <span class="nav-icon">04</span> Risk Flags
       </div>
+      <div class="nav-item" data-panel="panel-dlp">
+        <span class="nav-icon">05</span> Data Loss Prevention
+      </div>
       <div class="nav-item" data-panel="panel-injection">
-        <span class="nav-icon">05</span> Injection & Poisoning
+        <span class="nav-icon">06</span> Injection & Poisoning
       </div>
       <div class="nav-item" data-panel="panel-policy">
-        <span class="nav-icon">06</span> Generate Policy
+        <span class="nav-icon">07</span> Generate Policy
       </div>
       <div class="nav-item" data-panel="panel-integrations">
-        <span class="nav-icon">07</span> Integrations (FR-20)
+        <span class="nav-icon">08</span> Integrations (FR-20)
       </div>
     </div>
 
@@ -941,6 +944,10 @@
           <div class="stat-card">
             <div class="stat-label">Injections Blocked</div>
             <div class="stat-value red" id="stat-injections">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Secrets Blocked</div>
+            <div class="stat-value red" id="stat-dlp">—</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Session Time</div>
@@ -1068,7 +1075,40 @@
         </div>
       </div>
 
-      <!-- Panel 5: Injection & Poisoning -->
+      <!-- Panel 5: Data Loss Prevention -->
+      <div id="panel-dlp" class="panel">
+        <div class="panel-header">
+          <h2>🛡️ Data Loss Prevention</h2>
+          <span id="dlp-count-badge" class="badge muted">0 detections</span>
+        </div>
+
+        <div class="card" style="padding: 0; overflow: hidden;" id="dlp-card">
+          <div class="table-wrap">
+            <table id="tbl-dlp">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Tool/Context</th>
+                  <th>Category</th>
+                  <th>Rule/Pattern Name</th>
+                  <th>Payload Preview</th>
+                </tr>
+              </thead>
+              <tbody id="dlp-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="dlp-empty" class="card" style="display:none;">
+          <div class="risk-empty">
+            <span class="big-check">🛡️</span>
+            <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No DLP Violations Detected</h3>
+            <p style="font-size: 0.85rem;">All observed responses from tools, models, and external APIs are free of sensitive secrets/DLP violations.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 6: Injection & Poisoning -->
       <div id="panel-injection" class="panel">
         <div class="panel-header">
           <h2>🛡️ Injection & Poisoning</h2>
@@ -1394,6 +1434,7 @@
       document.getElementById('stat-risks').textContent = allRisks.length;
 
       let injectionCount = 0;
+      let dlpCount = 0;
       for (const e of events) {
         if (e.injection_findings) {
           try {
@@ -1405,8 +1446,15 @@
             injectionCount++;
           }
         }
+        if (e.dlp_findings) {
+          try {
+            const parsed = JSON.parse(e.dlp_findings);
+            if (parsed && parsed.findings) dlpCount += parsed.findings.length;
+          } catch { dlpCount++; }
+        }
       }
       document.getElementById('stat-injections').textContent = injectionCount;
+      document.getElementById('stat-dlp').textContent = dlpCount;
 
       const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
       const h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
@@ -1690,6 +1738,64 @@
       }).join('');
     }
 
+    // ── Data Loss Prevention Panel ─────────────────────────────────────────────
+    function renderDlp(events) {
+      const body = document.getElementById('dlp-body');
+      const card = document.getElementById('dlp-card');
+      const emptyEl = document.getElementById('dlp-empty');
+      const badge = document.getElementById('dlp-count-badge');
+
+      const dlpFindings = [];
+      for (const e of events) {
+        if (e.dlp_findings) {
+          try {
+            const parsed = JSON.parse(e.dlp_findings);
+            if (parsed && parsed.findings) {
+              parsed.findings.forEach(f => {
+                const parts = f.split(': ');
+                const category = parts[0] || 'DLP Violation';
+                const preview = parts.slice(1).join(': ') || f;
+                dlpFindings.push({
+                  ts: e.timestamp_ns,
+                  tool: e.url_path || 'unknown',
+                  category: category,
+                  preview: preview
+                });
+              });
+            }
+          } catch {
+            dlpFindings.push({
+              ts: e.timestamp_ns,
+              tool: e.url_path || 'unknown',
+              category: 'Detection Error',
+              preview: e.dlp_findings
+            });
+          }
+        }
+      }
+
+      badge.textContent = dlpFindings.length + ' detections';
+
+      if (dlpFindings.length === 0) {
+        card.style.display = 'none';
+        emptyEl.style.display = '';
+        return;
+      }
+
+      card.style.display = '';
+      emptyEl.style.display = 'none';
+
+      body.innerHTML = dlpFindings.map(r => {
+        return `<tr>
+      <td class="ts">${fmtTime(r.ts)}</td>
+      <td class="tool-name">${escHtml(r.tool)}</td>
+      <td><span class="badge red">${escHtml(r.category)}</span></td>
+      <td><code style="font-family:var(--font-mono);font-size:0.72rem;color:var(--accent)">DLP Scan Rule</code></td>
+      <td><code style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-bright)">${escHtml(r.preview)}</code></td>
+    </tr>`;
+      }).join('');
+    }
+
     // ── Injection & Poisoning Panel ─────────────────────────────────────────────
     function renderInjections(events) {
       const body = document.getElementById('inj-body');
@@ -1767,6 +1873,7 @@
 
       renderInventory(allEvents, stats);
       renderRisks(allEvents);
+      renderDlp(allEvents);
       renderInjections(allEvents);
       renderParamExplorer(allEvents);
 
@@ -1794,6 +1901,7 @@
           allEvents.push(event);
           renderInventory(allEvents, null);
           renderRisks(allEvents);
+          renderDlp(allEvents);
           renderInjections(allEvents);
         } catch { }
       };

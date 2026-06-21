@@ -67,7 +67,7 @@ pub enum ScanResult {
 
 struct PatternDef {
     name: &'static str,
-    category: InjectionCategory,
+    _category: InjectionCategory,
     individual_regex: Regex,
 }
 
@@ -125,7 +125,7 @@ impl InjectionScanner {
         for (i, (name, pat)) in PATTERN_DEFS.iter().enumerate() {
             patterns.push(PatternDef {
                 name,
-                category: category_for_index(i),
+                _category: category_for_index(i),
                 individual_regex: Regex::new(pat)?,
             });
         }

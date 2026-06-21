@@ -136,8 +136,8 @@ impl RateLimiter {
         }
 
         let now = Instant::now();
-        let mut last_updated = self.last_updated.lock().unwrap();
-        let mut tokens = self.tokens.lock().unwrap();
+        let mut last_updated = self.last_updated.lock().unwrap_or_else(|e| e.into_inner());
+        let mut tokens = self.tokens.lock().unwrap_or_else(|e| e.into_inner());
 
         let elapsed_sec = now.duration_since(*last_updated).as_secs_f64();
         *tokens =
@@ -300,7 +300,7 @@ pub async fn evaluate_jsonrpc(
 
         if effective_cfg.enabled {
             let fingerprint = ToolCallFingerprint::new(tool_name, &tool_params);
-            let mut history = session.tool_history.lock().unwrap();
+            let mut history = session.tool_history.lock().unwrap_or_else(|e| e.into_inner());
             let max_attempts = effective_cfg.cycle_detection.max_attempts as usize;
 
             // Fix 2: Dynamic window cap — always at least as large as max_attempts so that

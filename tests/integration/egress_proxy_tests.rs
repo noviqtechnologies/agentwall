@@ -14,6 +14,31 @@ use tokio::time::sleep;
 /// Port used by these tests (offset from dashboard test to avoid conflicts)
 const PROXY_PORT: u16 = 8088;
 
+/// Helper to start a local dummy HTTP server
+fn start_dummy_http_server() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            if let Ok(mut stream) = stream {
+                use std::io::{Read, Write};
+                let mut buf = [0; 1024];
+                if let Ok(n) = stream.read(&mut buf) {
+                    if n > 0 {
+                        let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+                        let _ = stream.write_all(response.as_bytes());
+                        let _ = stream.flush();
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                }
+            }
+        }
+    });
+    
+    port
+}
+
 /// Shared helper: start the agentwall proxy, wait for readiness, return child handle.
 async fn start_proxy() -> tokio::process::Child {
     let bin = env!("CARGO_BIN_EXE_agentwall");
@@ -136,22 +161,17 @@ async fn test_egress_events_api_returns_new_schema() {
 #[tokio::test]
 async fn test_http_absolute_uri_proxying() {
     let mut child = start_proxy().await;
-
+    let mock_port = start_dummy_http_server();
     let client = proxied_client();
 
-    // Use httpbin.org — a public echo service
     let res = client
-        .get("http://httpbin.org/get")
+        .get(format!("http://127.0.0.1:{}/get", mock_port))
         .send()
         .await
         .expect("proxied HTTP GET failed");
 
-    // Should successfully proxy the request (200) or at least not crash (<= 503)
-    assert!(
-        res.status().as_u16() < 504,
-        "Unexpected status from proxied fetch: {}",
-        res.status()
-    );
+    // Should successfully proxy the request (200)
+    assert_eq!(res.status().as_u16(), 200);
 
     child.kill().await.ok();
 }
@@ -161,20 +181,24 @@ async fn test_http_absolute_uri_proxying() {
 #[tokio::test]
 async fn test_https_connect_tunnel() {
     let mut child = start_proxy().await;
+    let mock_port = start_dummy_http_server();
 
-    // reqwest automatically uses CONNECT for HTTPS targets through an HTTP proxy
-    let client = proxied_client();
+    use tokio::net::TcpStream;
+    use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
-    let res = client
-        .get("https://httpbin.org/get")
-        .send()
-        .await
-        .expect("proxied HTTPS GET (CONNECT) failed");
-
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", PROXY_PORT)).await.unwrap();
+    
+    let connect_req = format!("CONNECT 127.0.0.1:{} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n\r\n", mock_port, mock_port);
+    stream.write_all(connect_req.as_bytes()).await.unwrap();
+    
+    let mut buf = [0; 1024];
+    let n = stream.read(&mut buf).await.unwrap();
+    let response = String::from_utf8_lossy(&buf[..n]);
+    
     assert!(
-        res.status().as_u16() < 504,
-        "Unexpected status from CONNECT tunnel: {}",
-        res.status()
+        response.starts_with("HTTP/1.1 200 OK"), 
+        "Expected 200 OK for CONNECT, got: {}", 
+        response
     );
 
     child.kill().await.ok();
