@@ -1,13 +1,11 @@
 # Vexa AgentWall
 
-<p align="center">
-  <b>Full egress proxy and security gateway for AI agents — MCP, HTTP, HTTPS, and WebSocket.</b>
-</p>
+Vexa AgentWall is a full egress proxy and security gateway for AI agents operating over MCP, HTTP, HTTPS, and WebSocket connections. It provides organizations with a default-deny control plane to intercept, sandbox, audit, and actively block unauthorized agent tool calls and data exfiltration attempts.
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-1.0.10-green.svg" alt="Version"></a>
-  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.75%2B-orange.svg" alt="Rust"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-1.0.11-green.svg" alt="Version"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.89%2B-orange.svg" alt="Rust"></a>
 </p>
 
 <p align="center">
@@ -70,7 +68,7 @@ curl -fsSL https://vexasec.io/install.sh | sh
 Downloads a statically-linked binary to `~/.local/bin/agentwall`. No Docker, no Kubernetes, no runtime dependencies.
 
 ### Build from Source
-Requires Rust 1.75+.
+Requires Rust 1.89+ (tested on Rust 1.89).
 ```bash
 git clone https://github.com/noviqtechnologies/agentwall.git
 cd agentwall
@@ -109,8 +107,9 @@ agentwall generate-policy
 ```
 
 ### 4. Validate & Submit
+Validate the policy using a deployed gateway instance (file-only local validation is deprecated):
 ```bash
-agentwall lint agentwall-policy.yaml
+agentwall test --policy agentwall-policy.yaml --gateway http://localhost:8080 --oidc-token "$TOKEN" ./fixtures.json
 ```
 Commit `agentwall-policy.yaml` and submit it to your security team for deployment.
 
@@ -158,6 +157,10 @@ AgentWall can automatically discover and patch your local IDE to route traffic s
 | **Antigravity** | `agentwall wrap antigravity` | `agentwall unwrap antigravity` |
 
 ### Cloud & Kubernetes (Sidecar)
+
+> [!WARNING]
+> **Deprecated:** The `agentwall init` command is deprecated in v6.1 in favor of a GitOps-driven deployment workflow.
+
 ```bash
 agentwall init sidecar --mcp-upstream http://my-upstream-mcp:3000 > sidecar.yaml
 kubectl apply -f sidecar.yaml
@@ -227,16 +230,16 @@ tools:
 |---------|-------------|
 | `agentwall dev` | Start full egress proxy in shadow mode. |
 | `agentwall start` | Run the enforcement gateway (requires `--policy`). |
-| `agentwall sandbox` | Execute agent in an OS-level sandbox (`--best-effort`). |
 | `agentwall generate-policy` | Generate a YAML policy draft from observed traffic. |
 | `agentwall lint <policy>` | Validate policy YAML (schema + security warnings). |
-| `agentwall test` | Validate policy against a deployed gateway (CI/CD). |
+| `agentwall test` | Validate policy against a deployed gateway in CI/CD (local file-only mode is deprecated). |
 | `agentwall verify-log <log>` | Verify HMAC chain integrity of an audit log. |
 | `agentwall report <log>` | Generate a session report from an audit log. |
 | `agentwall validate` | Single-payload policy check for authors. |
 | `agentwall promote` | Production readiness checks and Ed25519 signing. |
-| `agentwall init sidecar` | Generate K8s sidecar proxy manifests. |
+| `agentwall init sidecar` | (Deprecated in v6.1) Generate K8s sidecar proxy manifests. |
 | `agentwall wrap <target>` | Patch IDE configs to route via AgentWall. |
+| `agentwall unwrap <target>` | Restore IDE configurations to their original state. |
 
 ---
 
@@ -251,8 +254,16 @@ tools:
 | `AGENTWALL_LOG_PATH` | `start` | Audit log file path |
 | `AGENTWALL_OIDC_ISSUER` | `start` | OIDC issuer URL |
 | `AGENTWALL_SIEM_BACKEND` | `start` | `splunk`, `datadog`, `opensearch`, or `local` |
+| `AGENTWALL_SIEM_ENDPOINT` | `start` | SIEM ingestion endpoint URL |
+| `AGENTWALL_SIEM_TOKEN` | `start` | SIEM authentication token |
+| `AGENTWALL_SIEM_TIMEOUT` | `start` | SIEM export timeout in seconds (default: 2) |
+| `AGENTWALL_INCLUDE_PARAMS` | `start` | `true` to include raw parameters in audit logs |
 | `AGENTWALL_SHADOW_MODE` | `start` | `true` to enable shadow mode on `start` |
 | `AGENTWALL_DRY_RUN` | `start` | Log violations but forward all calls |
+| `AGENTWALL_REPORT_PATH` | `start` | File path to write a session report on shutdown |
+| `ALLOW_WILDCARD_IDENTITY` | `start`, `loader` | `true` to allow wildcard identity (`*`) in tool policies |
+| `VEXA_GATEWAY_URL` | `test` | Gateway endpoint URL for test command validation |
+| `AGENTWALL_OIDC_TOKEN` | `test` | OIDC Bearer token for gateway authentication during test |
 
 *(Run `agentwall start --help` for the full list of flags).*
 
