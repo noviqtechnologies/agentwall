@@ -43,12 +43,17 @@ async fn test_stdio_bridge() {
     let mut buf = vec![0; 4096];
     
     // We use a small timeout to read the response to avoid hanging if the bridge is broken
-    let n = tokio::time::timeout(Duration::from_secs(5), stdout.read(&mut buf))
-        .await
-        .expect("Timeout waiting for stdout read")
-        .expect("Failed to read from stdout");
-
-    let res_str = String::from_utf8_lossy(&buf[..n]);
+    let mut res_str = String::new();
+    let _ = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut reader = tokio::io::BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            use tokio::io::AsyncBufReadExt;
+            if reader.read_line(&mut line).await.unwrap() == 0 { break; }
+            res_str.push_str(&line);
+            if line.contains("jsonrpc") { break; }
+        }
+    }).await;
 
     // The proxy should respond to ping automatically or forward it. 
     // Either way, we expect a valid JSON-RPC message containing jsonrpc: 2.0
