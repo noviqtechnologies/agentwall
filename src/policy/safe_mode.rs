@@ -191,7 +191,7 @@ impl SafeModeScanner {
             command_set: RegexSet::new(&cmd_patterns)?,
             command_rules: cmd_rules,
             url_set: RegexSet::new(&url_patterns)?,
-            url_rules: url_rules,
+            url_rules,
             rule_count,
         })
     }
@@ -199,10 +199,7 @@ impl SafeModeScanner {
     /// Tool-aware scan: inspects only the relevant parameter for the given tool.
     /// Returns `None` if the tool is not in the scan list or no threat is found.
     pub fn scan_tool(&self, tool_name: &str, params: &Value) -> Option<ThreatMatch> {
-        let (target, param_name) = match tool_scan_target(tool_name) {
-            Some(t) => t,
-            None => return None, // Tool not scanned in v1
-        };
+        let (target, param_name) = tool_scan_target(tool_name)?;
 
         // Extract the parameter value to scan
         let scan_value = extract_param(params, param_name);

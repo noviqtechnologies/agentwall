@@ -25,9 +25,9 @@ pub fn execute(policy_path: &str) -> Result<i32, String> {
     for tool in &policy.tools {
         // Warning (a): Wildcard tool names
         if tool.name == "*" {
-            warnings.push(format!(
-                "Permissive Pattern: Tool rule uses wildcard name '*' which allows execution of any tool."
-            ));
+            warnings.push(
+                "Permissive Pattern: Tool rule uses wildcard name '*' which allows execution of any tool.".to_string()
+            );
         }
 
         // Warning (b): Missing parameter validators on mutation tools

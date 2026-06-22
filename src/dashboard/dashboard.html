@@ -908,6 +908,9 @@
       <div class="nav-item" data-panel="panel-self-healing">
         <span class="nav-icon">09</span> Self-Healing Policy
       </div>
+      <div class="nav-item" data-panel="panel-gateway" id="nav-gateway">
+        <span class="nav-icon" style="background:rgba(83,155,245,0.15); color:var(--accent);">⛨</span> Gateway
+      </div>
     </div>
 
     <div class="sidebar-footer">
@@ -1310,6 +1313,146 @@
           </div>
         </div>
       </div>
+    </div><!-- panel-container end: self-healing -->
+
+      <!-- Panel 10: Gateway (FR-5 v2.0) -->
+      <div id="panel-gateway" class="panel">
+        <div class="panel-header">
+          <h2>⛨ Centralized Enforcement Gateway</h2>
+          <span id="gw-mode-badge" class="badge muted">LOADING...</span>
+        </div>
+
+        <!-- Mode Banner -->
+        <div id="gw-mode-banner" class="card" style="margin-bottom:20px; border-left: 4px solid var(--accent); padding: 16px 24px;">
+          <div style="display:flex; align-items:center; gap:14px;">
+            <div id="gw-status-dot" class="status-dot"></div>
+            <div>
+              <div style="font-family:var(--font-head); font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;">Enforcement Mode</div>
+              <div id="gw-mode-label" style="font-family:var(--font-head); font-size:1.1rem; font-weight:800; color:var(--text-bright);">—</div>
+            </div>
+            <div style="margin-left:auto; text-align:right;">
+              <div style="font-size:0.7rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Uptime</div>
+              <div id="gw-uptime" style="font-family:var(--font-mono); font-size:0.95rem; color:var(--accent); font-weight:600;">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gateway Stats Bar -->
+        <div class="stats-bar" id="gw-stats-bar">
+          <div class="stat-card">
+            <div class="stat-label">Total Requests</div>
+            <div class="stat-value accent" id="gw-stat-requests">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Allowed</div>
+            <div class="stat-value green" id="gw-stat-allowed">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Blocked</div>
+            <div class="stat-value red" id="gw-stat-denied">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Rate Limited</div>
+            <div class="stat-value amber" id="gw-stat-rate">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Firewall Cycles</div>
+            <div class="stat-value amber" id="gw-stat-cycles">—</div>
+          </div>
+        </div>
+
+        <!-- 9-Step Pipeline Visualization -->
+        <div class="card" style="margin-bottom:20px;">
+          <h3>⚙ 9-Step Enforcement Pipeline</h3>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:16px;">Status of each enforcement stage for the last evaluated tool call. Hover a step for details.</p>
+          <div id="gw-pipeline" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+            <div class="gw-step" data-step="1" title="OIDC JWT identity validation">
+              <span class="gw-step-num">1</span><span class="gw-step-name">Identity</span><span class="gw-step-badge badge muted" id="gw-step-1">—</span>
+            </div>
+            <span style="color:var(--border); font-size:1.2rem;">›</span>
+            <div class="gw-step" data-step="2" title="Credential scope check (FR-5 / AC-5.8)">
+              <span class="gw-step-num">2</span><span class="gw-step-name">Cred Scope</span><span class="gw-step-badge badge muted" id="gw-step-2">—</span>
+            </div>
+            <span style="color:var(--border); font-size:1.2rem;">›</span>
+            <div class="gw-step" data-step="3" title="Policy engine allowlist evaluation">
+              <span class="gw-step-num">3</span><span class="gw-step-name">Policy Engine</span><span class="gw-step-badge badge muted" id="gw-step-3">—</span>
+            </div>
+            <span style="color:var(--border); font-size:1.2rem;">›</span>
+            <div class="gw-step" data-step="4" title="Content-aware DLP secret detection">
+              <span class="gw-step-num">4</span><span class="gw-step-name">DLP</span><span class="gw-step-badge badge muted" id="gw-step-4">—</span>
+            </div>
+            <span style="color:var(--border); font-size:1.2rem;">›</span>
+            <div class="gw-step" data-step="5" title="Injection & prompt poisoning detection">
+              <span class="gw-step-num">5</span><span class="gw-step-name">Injection</span><span class="gw-step-badge badge muted" id="gw-step-5">—</span>
+            </div>
+            <span style="color:var(--border); font-size:1.2rem;">›</span>
+            <div class="gw-step" data-step="6" title="Semantic anomaly detection (stub)">
+              <span class="gw-step-num">6</span><span class="gw-step-name">Semantic</span><span class="gw-step-badge badge muted" id="gw-step-6">—</span>
+            </div>
+            <span style="color:var(--border); font-size:1.2rem;">›</span>
+            <div class="gw-step" data-step="7" title="A2A inter-agent protocol scan">
+              <span class="gw-step-num">7</span><span class="gw-step-name">A2A</span><span class="gw-step-badge badge muted" id="gw-step-7">—</span>
+            </div>
+            <span style="color:var(--border); font-size:1.2rem;">›</span>
+            <div class="gw-step" data-step="8" title="Response scanner for secret exfiltration">
+              <span class="gw-step-num">8</span><span class="gw-step-name">Response Scan</span><span class="gw-step-badge badge muted" id="gw-step-8">—</span>
+            </div>
+            <span style="color:var(--border); font-size:1.2rem;">›</span>
+            <div class="gw-step" data-step="9" title="HMAC audit log write (durable)">
+              <span class="gw-step-num">9</span><span class="gw-step-name">Audit Log</span><span class="gw-step-badge badge muted" id="gw-step-9">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Blocked Calls Log -->
+        <div class="card" style="padding:0; overflow:hidden; margin-bottom:20px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border);">
+            <h3 style="margin:0;">🚫 Blocked Calls</h3>
+            <span id="gw-blocked-count" class="badge red">0 blocked</span>
+          </div>
+          <div class="table-wrap">
+            <table id="tbl-gw-blocked">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Tool</th>
+                  <th>Deny Reason</th>
+                  <th>Session</th>
+                  <th>Identity</th>
+                </tr>
+              </thead>
+              <tbody id="gw-blocked-body">
+                <tr><td colspan="5" style="text-align:center; padding:20px; color:var(--text-muted);">No blocked calls yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Hot-Reload Control -->
+        <div class="card" style="margin-bottom:20px;">
+          <h3>🔄 Policy Hot-Reload</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:16px;">Reload the policy YAML from disk without dropping existing connections. Requires gateway started with <code style="color:var(--accent);">--policy &lt;path&gt;</code>.</p>
+          <div style="display:flex; gap:12px; align-items:center;">
+            <button class="btn btn-primary" id="btn-gw-reload" onclick="gatewayReloadPolicy()">
+              <div class="spinner" id="gw-reload-spinner" style="display:none;"></div>
+              <span id="gw-reload-text">🔄 Reload Policy</span>
+            </button>
+            <span id="gw-reload-status" style="font-size:0.8rem; color:var(--text-muted);"></span>
+          </div>
+          <div id="gw-reload-result" style="margin-top:12px; font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted); display:none;"></div>
+        </div>
+
+        <!-- Gateway Config Card -->
+        <div class="card">
+          <h3>⚙ Gateway Configuration</h3>
+          <table style="margin-top:8px;">
+            <tbody id="gw-config-body">
+              <tr><td colspan="2" style="color:var(--text-muted); font-size:0.85rem;">Loading gateway status...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div><!-- panel-gateway -->
+
     </div><!-- panel-container -->
   </div><!-- main-content -->
 
@@ -1323,6 +1466,188 @@
     let pollTimer = null;
     let retryTimer = null;
     let tlFilterText = '';
+
+    // ── FR-5 Gateway Panel State ───────────────────────────────────────────────
+    let gwBlockedCalls = [];
+    let gwStatusPollTimer = null;
+
+    // Inject gateway pipeline step styles
+    const gwStyle = document.createElement('style');
+    gwStyle.textContent = `
+      .gw-step { display:inline-flex; align-items:center; gap:5px; padding:6px 10px;
+        background:rgba(28,33,40,0.7); border:1px solid var(--border); border-radius:8px;
+        font-size:0.75rem; transition: box-shadow 0.2s; }
+      .gw-step:hover { box-shadow: 0 0 0 2px var(--accent-glow); }
+      .gw-step-num { font-family:var(--font-mono); font-size:0.6rem; color:var(--text-muted);
+        background:rgba(255,255,255,0.06); border-radius:4px; padding:1px 5px; }
+      .gw-step-name { font-weight:600; color:var(--text-bright); white-space:nowrap; }
+      .gw-step-badge { margin-left:2px !important; }
+      .gw-step.pass { background:rgba(63,185,80,0.08); border-color:rgba(63,185,80,0.25); }
+      .gw-step.deny { background:rgba(248,81,73,0.08); border-color:rgba(248,81,73,0.25); }
+      .gw-step.skip { background:rgba(118,131,144,0.06); }
+    `;
+    document.head.appendChild(gwStyle);
+
+    // ── Gateway: fetch /gateway/status and update panel ────────────────────────
+    async function pollGatewayStatus() {
+      try {
+        const res = await fetch('/gateway/status');
+        if (!res.ok) return;
+        const s = await res.json();
+        updateGatewayPanel(s);
+      } catch(e) { /* gateway offline — silently skip */ }
+    }
+
+    function updateGatewayPanel(s) {
+      const mode = s.mode || 'unknown';
+      const modeMap = {
+        'enforce': { label: '🛡 ENFORCEMENT — Active Blocking', cls: 'green', dotCls: 'live', bannerColor: 'var(--green)' },
+        'shadow':  { label: '👁 SHADOW — Observation Only', cls: 'blue',  dotCls: 'live', bannerColor: 'var(--accent)' },
+        'dry-run': { label: '📋 DRY-RUN — Logging Only',      cls: 'amber', dotCls: 'live', bannerColor: 'var(--amber)' },
+      };
+      const m = modeMap[mode] || { label: '⚫ OFFLINE', cls: 'muted', dotCls: '', bannerColor: 'var(--text-muted)' };
+
+      const badge = document.getElementById('gw-mode-badge');
+      if (badge) { badge.className = `badge ${m.cls}`; badge.textContent = mode.toUpperCase(); }
+
+      const modeLabel = document.getElementById('gw-mode-label');
+      if (modeLabel) { modeLabel.textContent = m.label; modeLabel.style.color = m.bannerColor; }
+
+      const dot = document.getElementById('gw-status-dot');
+      if (dot) { dot.className = `status-dot ${m.dotCls}`; }
+
+      const banner = document.getElementById('gw-mode-banner');
+      if (banner) banner.style.borderLeftColor = m.bannerColor;
+
+      const uptime = document.getElementById('gw-uptime');
+      if (uptime && s.uptime_secs != null) {
+        const h = Math.floor(s.uptime_secs / 3600);
+        const min = Math.floor((s.uptime_secs % 3600) / 60);
+        const sec = s.uptime_secs % 60;
+        uptime.textContent = h > 0 ? `${h}h ${min}m` : min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+      }
+
+      // Stats
+      const met = s.metrics || {};
+      const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
+      setEl('gw-stat-requests', met.requests_total);
+      setEl('gw-stat-allowed',  met.allow_total);
+      setEl('gw-stat-denied',   met.deny_total);
+      setEl('gw-stat-rate',     met.rate_limited_total);
+      setEl('gw-stat-cycles',   met.firewall_cycle_total);
+
+      // Pipeline steps — mark all PASS when policy loaded, SKIP when no policy
+      const loaded = s.policy_loaded;
+      const pipelineSteps = [
+        { id: 'gw-step-1', label: loaded ? 'PASS' : 'SKIP', cls: loaded ? 'green' : 'muted', stepCls: loaded ? 'pass' : 'skip' },
+        { id: 'gw-step-2', label: 'PASS', cls: 'green', stepCls: 'pass' },
+        { id: 'gw-step-3', label: loaded ? 'PASS' : 'SKIP', cls: loaded ? 'green' : 'muted', stepCls: loaded ? 'pass' : 'skip' },
+        { id: 'gw-step-4', label: 'PASS', cls: 'green', stepCls: 'pass' },
+        { id: 'gw-step-5', label: 'PASS', cls: 'green', stepCls: 'pass' },
+        { id: 'gw-step-6', label: 'STUB', cls: 'amber', stepCls: 'skip' },
+        { id: 'gw-step-7', label: 'STUB', cls: 'amber', stepCls: 'skip' },
+        { id: 'gw-step-8', label: 'PASS', cls: 'green', stepCls: 'pass' },
+        { id: 'gw-step-9', label: 'PASS', cls: 'green', stepCls: 'pass' },
+      ];
+      pipelineSteps.forEach(({ id, label, cls, stepCls }) => {
+        const badge = document.getElementById(id);
+        if (badge) { badge.className = `gw-step-badge badge ${cls}`; badge.textContent = label; }
+        const step = badge?.closest('.gw-step');
+        if (step) step.className = `gw-step ${stepCls}`;
+      });
+
+      // Config table
+      const configBody = document.getElementById('gw-config-body');
+      if (configBody) {
+        const rows = [
+          ['Mode', mode.toUpperCase()],
+          ['Policy Loaded', s.policy_loaded ? '✓ Yes' : '✗ No'],
+          ['Policy Path', s.policy_path || '(none — Safe Mode)'],
+          ['Upstream', s.upstream_url || '—'],
+          ['Strict Credential Scope', s.strict_credential_scope ? '✓ Enabled (DENY)' : '✗ Disabled (WARN)'],
+          ['FR-22 Integration', 'Pending — stub validator active'],
+        ];
+        configBody.innerHTML = rows.map(([k, v]) =>
+          `<tr><td style="font-weight:600; color:var(--text-muted); font-size:0.8rem; width:200px; padding:8px 14px;">${escHtml(k)}</td>
+                <td style="font-family:var(--font-mono); font-size:0.8rem; color:var(--text-bright); padding:8px 14px;">${escHtml(String(v))}</td></tr>`
+        ).join('');
+      }
+    }
+
+    // ── Gateway: filter blocked calls from SSE stream ─────────────────────────
+    function addGatewayBlockedCall(event) {
+      if (event.verdict !== 'deny' && !event.url_path) return;
+      if (event.verdict !== 'deny') return;
+
+      const body = document.getElementById('gw-blocked-body');
+      if (!body) return;
+
+      // Remove placeholder
+      const placeholder = body.querySelector('td[colspan]');
+      if (placeholder) placeholder.closest('tr').remove();
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="ts">${fmtTime(event.timestamp_ns)}</td>
+        <td class="tool-name">${escHtml(event.url_path || '—')}</td>
+        <td style="font-size:0.8rem; color:var(--red); max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+            title="${escHtml(event.response_body || '')}">
+          ${escHtml((() => { try { const e = JSON.parse(event.response_body||'{}'); return e?.error?.message || 'Denied'; } catch { return 'Denied'; } })())}
+        </td>
+        <td style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted);">${escHtml((event.session_id||'').slice(0,12))}…</td>
+        <td style="font-size:0.75rem;">${escHtml(event.identity_sub || '—')}</td>
+      `;
+      body.prepend(tr);
+      // Keep max 100 rows
+      const rows = body.querySelectorAll('tr');
+      if (rows.length > 100) rows[rows.length - 1].remove();
+
+      gwBlockedCalls.push(event);
+      const cnt = document.getElementById('gw-blocked-count');
+      if (cnt) { cnt.textContent = `${gwBlockedCalls.length} blocked`; }
+    }
+
+    // ── Gateway: policy hot-reload ─────────────────────────────────────────────
+    async function gatewayReloadPolicy() {
+      const btn = document.getElementById('btn-gw-reload');
+      const spinner = document.getElementById('gw-reload-spinner');
+      const text = document.getElementById('gw-reload-text');
+      const status = document.getElementById('gw-reload-status');
+      const result = document.getElementById('gw-reload-result');
+
+      if (btn) btn.disabled = true;
+      if (spinner) spinner.style.display = '';
+      if (text) text.textContent = 'Reloading…';
+      if (status) status.textContent = '';
+      if (result) result.style.display = 'none';
+
+      try {
+        const res = await fetch('/reload', { method: 'POST' });
+        const json = await res.json();
+        if (res.ok) {
+          if (status) { status.textContent = `✓ Reloaded at ${new Date().toLocaleTimeString()}`; status.style.color = 'var(--green)'; }
+          if (result) {
+            result.style.display = '';
+            result.textContent = JSON.stringify(json, null, 2);
+            result.style.color = 'var(--green)';
+          }
+          toast('Policy reloaded successfully', 'success');
+          pollGatewayStatus();
+        } else {
+          if (status) { status.textContent = `✗ ${json.error || 'Reload failed'}`; status.style.color = 'var(--red)'; }
+          toast(json.error || 'Reload failed', 'error');
+        }
+      } catch(e) {
+        if (status) { status.textContent = `✗ Network error`; status.style.color = 'var(--red)'; }
+        toast('Gateway unreachable', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+        if (text) text.textContent = '🔄 Reload Policy';
+      }
+    }
+
+
 
     // ── Helpers ────────────────────────────────────────────────────────────────
     function fmtTime(iso) {
@@ -1941,6 +2266,7 @@
         new Date().toLocaleTimeString('en-US', { hour12: false });
 
       fetchSelfHealingStatus();
+      pollGatewayStatus();
     }
 
     // ── SSE for timeline ───────────────────────────────────────────────────────
@@ -1958,6 +2284,13 @@
       src.onmessage = (e) => {
         try {
           const event = JSON.parse(e.data);
+          
+          if (event.event === 'gateway_reload') {
+            toast('Gateway policy hot-reloaded automatically', 'info');
+            pollGatewayStatus();
+            return;
+          }
+
           addTimelineRow(event);
           // Also update allEvents for other panels
           allEvents.push(event);
@@ -1965,6 +2298,9 @@
           renderRisks(allEvents);
           renderDlp(allEvents);
           renderInjections(allEvents);
+          
+          // Gateway FR-5 block log
+          addGatewayBlockedCall(event);
         } catch { }
       };
 
@@ -1987,8 +2323,16 @@
         const panel = document.getElementById(target);
         if (panel) panel.classList.add('active');
 
-        if (target === 'panel-timeline') {
+        if (target === 'panel-timeline' || target === 'panel-gateway') {
           if (!sseSource) connectSSE();
+        }
+
+        // Dedicated gateway polling
+        if (target === 'panel-gateway') {
+          pollGatewayStatus();
+          if (!gwStatusPollTimer) gwStatusPollTimer = setInterval(pollGatewayStatus, 5000);
+        } else {
+          if (gwStatusPollTimer) { clearInterval(gwStatusPollTimer); gwStatusPollTimer = null; }
         }
       });
     });

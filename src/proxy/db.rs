@@ -35,7 +35,8 @@ pub struct DbStats {
 }
 
 // Commands sent to the DB manager thread
-enum DbCmd {
+#[allow(clippy::large_enum_variant)]
+pub enum DbCmd {
     Insert(EgressEvent),
     Fetch {
         limit: usize,
@@ -111,10 +112,9 @@ impl DbManager {
             // The thread owns the connection and a possible transaction.
             let conn = conn;
             let mut tx: Option<Transaction> = None;
-            loop {
-                match cmd_rx.blocking_recv() {
-                    Some(cmd) => match cmd {
-                        DbCmd::Insert(event) => {
+            while let Some(cmd) = cmd_rx.blocking_recv() {
+                match cmd {
+                    DbCmd::Insert(event) => {
                             let sql = "INSERT INTO egress_events (
                                 timestamp_ns, session_id, transport, method, target_host, target_port, url_path,
                                 request_headers, request_body, request_body_hash, response_status, response_body, response_body_hash,
@@ -161,10 +161,8 @@ impl DbManager {
                                 })
                                 .expect("Failed to query events");
                             let mut events = Vec::new();
-                            for ev in rows {
-                                if let Ok(e) = ev {
-                                    events.push(e);
-                                }
+                            for e in rows.flatten() {
+                                events.push(e);
                             }
                             let _ = responder.send(Ok(events));
                         }
@@ -198,10 +196,8 @@ impl DbManager {
                                 })
                                 .expect("Failed to query all events");
                             let mut events = Vec::new();
-                            for ev in rows {
-                                if let Ok(e) = ev {
-                                    events.push(e);
-                                }
+                            for e in rows.flatten() {
+                                events.push(e);
                             }
                             let _ = responder.send(Ok(events));
                         }
@@ -237,9 +233,7 @@ impl DbManager {
                                 }
                             }
                         }
-                    },
-                    None => break, // channel closed
-                }
+                    }
             }
         });
 

@@ -180,7 +180,7 @@ impl DlpScanner {
 // Helpers
 fn is_base64_like(s: &str) -> bool {
     let s = s.trim();
-    if s.len() < 16 || s.len() % 4 != 0 { return false; }
+    if s.len() < 16 || !s.len().is_multiple_of(4) { return false; }
     s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
 }
 

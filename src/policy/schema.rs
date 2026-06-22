@@ -42,21 +42,16 @@ pub struct PolicyFile {
 }
 
 /// FR-306: Action to take when a cycle is detected.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CycleAction {
     /// Return a custom JSON-RPC error (-32010) telling the agent to try a different approach.
+    #[default]
     PivotError,
     /// Return a standard policy violation error (-32001) and trigger kill mode.
     Block,
     /// Pause and ask the developer interactively (falls back to block in non-TTY).
     PauseInteractive,
-}
-
-impl Default for CycleAction {
-    fn default() -> Self {
-        CycleAction::PivotError
-    }
 }
 
 /// FR-306: Cycle detection configuration.
@@ -186,6 +181,23 @@ pub struct ToolRule {
 
     /// FR-201: Bound to specific agent sub claim
     pub identity: Option<String>,
+
+    /// FR-5 v2.0: Required credential scopes for this tool.
+    /// Agents must present one of these scopes via X-AgentWall-Credential-Scope header.
+    /// Empty or absent = no scope restriction.
+    /// Full enforcement requires FR-22 (Agent Identity Platform).
+    #[serde(default)]
+    pub credential_scope: Vec<String>,
+
+    /// FR-5 v2.0: Per-tool semantic anomaly threshold override (0.0–1.0).
+    /// Overrides gateway-level `semantic_anomaly_threshold` for this specific tool.
+    /// None = use gateway default (0.9).
+    pub semantic_anomaly_threshold: Option<f32>,
+
+    /// FR-5 v2.0 / FR-21: A2A inter-agent trust level for this tool.
+    /// Values: "none" | "same-org" | "verified" | "any".
+    /// Absent = A2A scanning not applied to this tool.
+    pub a2a_trust_level: Option<String>,
 }
 
 /// Parameter type enumeration.

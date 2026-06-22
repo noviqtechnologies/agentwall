@@ -293,11 +293,10 @@ pub fn generate_from_events(events: &[EgressEvent], decay_window_days: u32) -> S
                         }
                         scorer.observe(&tool_name, &key, s);
                     }
-                    serde_json::Value::Array(arr) => {
-                        if arr.len() > stats.max_raw_items {
-                            stats.max_raw_items = arr.len();
-                        }
+                    serde_json::Value::Array(arr) if arr.len() > stats.max_raw_items => {
+                        stats.max_raw_items = arr.len();
                     }
+                    serde_json::Value::Array(_) => {}
                     _ => {}
                 }
             }
@@ -398,8 +397,6 @@ pub fn generate_from_events(events: &[EgressEvent], decay_window_days: u32) -> S
                 // Determine primary type (prefer the one seen most; fall back to "string")
                 let inferred_type = if stats.types.len() == 1 {
                     stats.types.iter().next().unwrap().as_str().to_string()
-                } else if stats.types.contains("string") {
-                    "string".to_string()
                 } else {
                     "string".to_string()
                 };
@@ -469,7 +466,7 @@ pub fn generate_from_events(events: &[EgressEvent], decay_window_days: u32) -> S
                     for v in &stats.string_values {
                         *value_freq.entry(v).or_insert(0) += 1;
                     }
-                    for (val, _freq) in &value_freq {
+                    for val in value_freq.keys() {
                         let score = scorer.score(tool_name, param_name, val);
                         if score > 0.9 {
                             anomaly_lines.push(format!(

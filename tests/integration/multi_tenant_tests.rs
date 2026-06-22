@@ -1,9 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
-use std::time::Duration;
 use serde_json::json;
-use tokio::sync::Mutex;
-
 use agentwall::proxy::handler::{evaluate_jsonrpc, ProxyAction, ProxyState, RateLimiter};
 use agentwall::policy::engine::CompiledPolicy;
 use agentwall::policy::schema::{FirewallConfig, CycleDetectionConfig, CycleAction};
@@ -29,6 +26,9 @@ fn create_mock_proxy_state(policy: Option<CompiledPolicy>) -> Arc<ProxyState> {
 
     Arc::new(ProxyState {
         policy: std::sync::RwLock::new(policy),
+        policy_path: None,
+        gateway_start_time: std::time::Instant::now(),
+        credential_scope_validator: Arc::new(agentwall::policy::credential_scope::CredentialScopeValidator::new(false)),
         audit_logger,
         session_id: "multi-tenant-test-session".to_string(),
         kill_mode: KillMode::Connection,
@@ -298,6 +298,9 @@ async fn test_hot_reload_policy_isolation() {
                 risk: None,
                 parameters: vec![],
                 identity: None,
+                credential_scope: vec![],
+                semantic_anomaly_threshold: None,
+                a2a_trust_level: None,
             }
         ],
         identity_validator: None,

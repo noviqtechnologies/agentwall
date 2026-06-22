@@ -113,6 +113,15 @@ pub struct ProxyState {
     pub metrics_siem_export_total: Arc<AtomicU64>,
     /// Total audit entries that failed SIEM export (fell back to local disk).
     pub metrics_siem_export_failed_total: Arc<AtomicU64>,
+
+    // ── FR-5 v2.0: Centralized Enforcement Gateway fields ────────────────
+    /// Credential scope stub validator (FR-5.5.5 / AC-5.8).
+    /// Strict mode (--strict-credential-scope) upgrades mismatches from WARN → DENY.
+    pub credential_scope_validator: Arc<crate::policy::credential_scope::CredentialScopeValidator>,
+    /// Policy file path for hot-reload via POST /reload (FR-5 v2.0).
+    pub policy_path: Option<String>,
+    /// Gateway process start time for uptime reporting via GET /gateway/status.
+    pub gateway_start_time: std::time::Instant,
 }
 
 pub struct RateLimiter {
@@ -293,6 +302,73 @@ pub async fn evaluate_jsonrpc(
         }
     }
 
+    // ── Step 2: Credential Scope Validation (FR-5 / AC-5.8) ─────────────
+    // Read credential scope requirements from the per-tool policy rule.
+    // Scope header comes from the MCP agent via X-AgentWall-Credential-Scope.
+    // In WARN mode (default): mismatches are logged and the call continues.
+    // In STRICT mode (--strict-credential-scope): mismatches cause hard DENY.
+    if !state.shadow_mode {
+        let required_scopes: Vec<String> = {
+            let policy_guard = state.policy.read().unwrap_or_else(|e| e.into_inner());
+            policy_guard
+                .as_ref()
+                .and_then(|p| p.tools.iter().find(|t| t.name == tool_name))
+                .map(|t| t.credential_scope.clone())
+                .unwrap_or_default()
+        };
+
+        if !required_scopes.is_empty() {
+            // The credential scope header is conventionally forwarded by identity-aware agents.
+            // In this stub, we read it from the session's extra headers stored in params metadata.
+            // When FR-22 is available, this will come from the validated OIDC token claims.
+            let agent_scope = session.identity_sub.as_deref(); // stub: use identity_sub as proxy scope
+            let scope_result = state.credential_scope_validator.validate(
+                tool_name,
+                &required_scopes,
+                agent_scope,
+                &session.session_id,
+            );
+
+            if let crate::policy::credential_scope::CredentialScopeResult::Insufficient { reason } = scope_result {
+                state.metrics_deny_total.fetch_add(1, Ordering::Relaxed);
+                let _ = state.audit_logger.write_entry(
+                    &session.session_id,
+                    "credential_scope_deny",
+                    tool_name,
+                    None,
+                    Some(reason.clone()),
+                    None,
+                    session.identity_sub.clone(),
+                    session.identity_email.clone(),
+                    None,
+                    session.request_ip.clone(),
+                ).await;
+                logging::log_event(
+                    Level::Warn,
+                    "credential_scope_deny",
+                    json!({
+                        "tool": tool_name,
+                        "session": &session.session_id,
+                        "reason": &reason,
+                    }),
+                );
+                return ProxyAction::Respond(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32403,
+                        "message": format!("Credential Scope Insufficient: {}", reason),
+                        "data": {
+                            "session_id": &session.session_id,
+                            "tool": tool_name,
+                            "required_scopes": required_scopes,
+                        }
+                    }
+                }));
+            }
+        }
+    }
+
     // FR-306: Cycle Detection (Agent Firewall) — strictly isolated per session
     let cycle_action_to_take = {
         let firewall_cfg = session.policy.as_ref().and_then(|p| p.firewall.as_ref());
@@ -434,12 +510,9 @@ pub async fn evaluate_jsonrpc(
 
     // Policy evaluation against frozen session-specific policy context
     let start = Instant::now();
-    let eval_result = match &session.policy {
-        Some(policy) => {
-            Some(policy.evaluate(tool_name, &tool_params, session.identity_sub.as_deref()))
-        }
-        None => None,
-    };
+    let eval_result = session.policy.as_ref().map(|policy| {
+        policy.evaluate(tool_name, &tool_params, session.identity_sub.as_deref())
+    });
     let eval_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     let final_eval = match (eval_result, safe_mode_threat) {
@@ -603,6 +676,7 @@ pub async fn evaluate_jsonrpc(
 ///
 /// The audit entry is written and fsync-confirmed before the error response is
 /// constructed — satisfying NFR-204 (no forward without a durable log entry).
+#[allow(clippy::too_many_arguments)]
 async fn handle_deny(
     state:             &ProxyState,
     session_id:        &str,

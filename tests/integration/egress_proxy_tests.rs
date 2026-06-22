@@ -11,8 +11,6 @@ use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
 
-/// Port used by these tests (offset from dashboard test to avoid conflicts)
-const PROXY_PORT: u16 = 8088;
 
 /// Helper to start a local dummy HTTP server
 fn start_dummy_http_server() -> u16 {
@@ -40,13 +38,13 @@ fn start_dummy_http_server() -> u16 {
 }
 
 /// Shared helper: start the agentwall proxy, wait for readiness, return child handle.
-async fn start_proxy() -> tokio::process::Child {
+async fn start_proxy(port: u16) -> tokio::process::Child {
     let bin = env!("CARGO_BIN_EXE_agentwall");
     let child = tokio::process::Command::new(bin)
         .args([
             "dev",
             "--listen",
-            &format!("127.0.0.1:{}", PROXY_PORT),
+            &format!("127.0.0.1:{}", port),
             "--mcp-url",
             "http://127.0.0.1:3000",
             "--no-browser",
@@ -62,8 +60,8 @@ async fn start_proxy() -> tokio::process::Child {
 }
 
 /// Build a reqwest Client routed through the local proxy.
-fn proxied_client() -> Client {
-    let proxy_url = format!("http://127.0.0.1:{}", PROXY_PORT);
+fn proxied_client(port: u16) -> Client {
+    let proxy_url = format!("http://127.0.0.1:{}", port);
     Client::builder()
         .proxy(reqwest::Proxy::all(&proxy_url).expect("valid proxy URL"))
         .timeout(Duration::from_secs(15))
@@ -75,11 +73,12 @@ fn proxied_client() -> Client {
 
 #[tokio::test]
 async fn test_egress_proxy_health_endpoint() {
-    let mut child = start_proxy().await;
+    let port = 8089;
+    let mut child = start_proxy(port).await;
 
     let client = Client::new();
     let res = client
-        .get(format!("http://127.0.0.1:{}/healthz", PROXY_PORT))
+        .get(format!("http://127.0.0.1:{}/healthz", port))
         .send()
         .await
         .expect("healthz request failed");
@@ -95,13 +94,14 @@ async fn test_egress_proxy_health_endpoint() {
 
 #[tokio::test]
 async fn test_egress_events_api_returns_new_schema() {
-    let mut child = start_proxy().await;
+    let port = 8090;
+    let mut child = start_proxy(port).await;
 
     let client = Client::new();
 
     // Send a JSON-RPC tools/call through the proxy to generate an event
     let _ = client
-        .post(format!("http://127.0.0.1:{}", PROXY_PORT))
+        .post(format!("http://127.0.0.1:{}", port))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -114,7 +114,7 @@ async fn test_egress_events_api_returns_new_schema() {
     sleep(Duration::from_millis(200)).await;
 
     let res = client
-        .get(format!("http://127.0.0.1:{}/api/events?limit=10", PROXY_PORT))
+        .get(format!("http://127.0.0.1:{}/api/events?limit=10", port))
         .send()
         .await
         .expect("events API request failed");
@@ -160,9 +160,10 @@ async fn test_egress_events_api_returns_new_schema() {
 
 #[tokio::test]
 async fn test_http_absolute_uri_proxying() {
-    let mut child = start_proxy().await;
+    let port = 8091;
+    let mut child = start_proxy(port).await;
     let mock_port = start_dummy_http_server();
-    let client = proxied_client();
+    let client = proxied_client(port);
 
     let res = client
         .get(format!("http://127.0.0.1:{}/get", mock_port))
@@ -180,13 +181,14 @@ async fn test_http_absolute_uri_proxying() {
 
 #[tokio::test]
 async fn test_https_connect_tunnel() {
-    let mut child = start_proxy().await;
+    let port = 8092;
+    let mut child = start_proxy(port).await;
     let mock_port = start_dummy_http_server();
 
     use tokio::net::TcpStream;
     use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
-    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", PROXY_PORT)).await.unwrap();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", port)).await.unwrap();
     
     let connect_req = format!("CONNECT 127.0.0.1:{} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n\r\n", mock_port, mock_port);
     stream.write_all(connect_req.as_bytes()).await.unwrap();
@@ -208,11 +210,12 @@ async fn test_https_connect_tunnel() {
 
 #[tokio::test]
 async fn test_stats_endpoint_present() {
-    let mut child = start_proxy().await;
+    let port = 8093;
+    let mut child = start_proxy(port).await;
 
     let client = Client::new();
     let res = client
-        .get(format!("http://127.0.0.1:{}/api/stats", PROXY_PORT))
+        .get(format!("http://127.0.0.1:{}/api/stats", port))
         .send()
         .await
         .expect("stats request failed");

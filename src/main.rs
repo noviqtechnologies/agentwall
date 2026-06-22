@@ -99,6 +99,7 @@ async fn main() {
             siem_timeout_secs,
             include_params,
             shadow_mode,
+            strict_credential_scope,
         } => {
             run_start(
                 policy,
@@ -122,6 +123,7 @@ async fn main() {
                 siem_timeout_secs,
                 include_params,
                 shadow_mode,
+                strict_credential_scope,
             )
             .await
         }
@@ -287,6 +289,9 @@ async fn run_stdio_proxy(
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
+        credential_scope_validator: Arc::new(policy::credential_scope::CredentialScopeValidator::new(false)),
+        policy_path: None,
+        gateway_start_time: std::time::Instant::now(),
     });
 
     let mut parts = args.clone();
@@ -307,7 +312,7 @@ async fn run_stdio_proxy(
     0
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, clippy::too_many_arguments)]
 async fn run_start(
     policy_path: Option<String>,
     listen: String,
@@ -330,6 +335,7 @@ async fn run_start(
     siem_timeout_secs: u64,
     include_params: bool,
     shadow_mode: bool,
+    strict_credential_scope: bool,
 ) -> i32 {
     println!("{} Loading configuration...", "ℹ".blue());
 
@@ -492,6 +498,20 @@ async fn run_start(
 
     let db_manager = Arc::new(agentwall::proxy::db::DbManager::init());
 
+    let credential_scope_validator = Arc::new(
+        policy::credential_scope::CredentialScopeValidator::new(strict_credential_scope)
+    );
+
+    // Log credential scope mode at startup
+    agentwall::logging::log_event(
+        agentwall::logging::Level::Info,
+        "credential_scope_mode",
+        serde_json::json!({
+            "strict": strict_credential_scope,
+            "note": "FR-22 Identity Platform integration pending — stub validator active"
+        }),
+    );
+
     let state = Arc::new(ProxyState {
         policy: std::sync::RwLock::new(compiled_policy),
         audit_logger: audit_logger.clone(),
@@ -520,7 +540,11 @@ async fn run_start(
         metrics_firewall_cycle_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-        event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
+        event_tx: tokio::sync::broadcast::channel(1024).0,
+        // FR-5 v2.0: Credential scope validator
+        credential_scope_validator,
+        policy_path: policy_path.clone(),
+        gateway_start_time: std::time::Instant::now(),
     });
 
     if shadow_mode {
@@ -638,6 +662,7 @@ fn run_report(log_path: &str, output: Option<&str>, format: &str, include_params
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_wrap(
     command: Option<String>,
     auto_detect: bool,
@@ -812,6 +837,9 @@ async fn run_wrap(
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
+        credential_scope_validator: Arc::new(policy::credential_scope::CredentialScopeValidator::new(false)),
+        policy_path: None,
+        gateway_start_time: std::time::Instant::now(),
     });
 
     // Parse the command string
@@ -931,6 +959,9 @@ async fn run_dev(
         metrics_siem_export_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         event_tx: tokio::sync::broadcast::channel(1024).0, // Fix 6: enlarged buffer to reduce event drops
+        credential_scope_validator: Arc::new(policy::credential_scope::CredentialScopeValidator::new(false)),
+        policy_path: None,
+        gateway_start_time: std::time::Instant::now(),
     });
 
     if stdio {

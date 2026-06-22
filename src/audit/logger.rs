@@ -398,8 +398,7 @@ impl AuditLogger {
         request_ip:     Option<String>,
     ) -> Result<AuditEntry, AuditError> {
         if self.is_broken.load(Ordering::Relaxed) {
-            return Err(AuditError::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            return Err(AuditError::IoError(std::io::Error::other(
                 "Audit log is in a broken state (prior disk / fsync failure)",
             )));
         }

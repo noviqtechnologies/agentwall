@@ -4,7 +4,7 @@ Vexa AgentWall is a full egress proxy and security gateway for AI agents operati
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-1.0.11-green.svg" alt="Version"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-2.0.0--beta-green.svg" alt="Version"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.89%2B-orange.svg" alt="Rust"></a>
 </p>
 
@@ -35,7 +35,8 @@ AgentWall is built to provide deterministic, tamper-proof control over what agen
 * **Local Web Dashboard:** Real-time visibility into tool inventories, session timelines, parameter exploration, and risk flags—all stored locally via SQLite.
 * **Auto-Policy Generation:** Automatically drafts robust YAML security policies (`agentwall-policy.yaml`) from observed traffic patterns.
 
-### 🛡️ Enterprise-Grade Enforcement
+### 🛡️ Enterprise-Grade Enforcement (v2.0)
+* **9-Step Enforcement Pipeline:** Rigorous sequential validation including Identity, Credential Scope, Policy Engine, DLP, Injection, Semantic (Stub), A2A, Response Scan, and Audit Logging.
 * **Default-Deny Policy Engine:** Strict tool allowlisting with deep schema validation, bounds checking, and parameter enum enforcement.
 * **Process Sandbox:** OS-level containment using Landlock LSM + seccomp + netns on Linux and `sandbox-exec` on macOS to force all agent traffic through the proxy.
 * **Tool Call Chain Detector:** Analyzes call trajectories to detect and block recursive runaway loops and anomalous behavioral sequences.
@@ -171,11 +172,26 @@ kubectl apply -f sidecar.yaml
 
 ---
 
-## Centralized Enforcement Gateway
+## Centralized Enforcement Gateway (v2.0)
 
-The centralized gateway evaluates policies, enforces DLP, logs audits, and protects your production environment. 
+The centralized gateway evaluates policies, enforces DLP, logs audits, and protects your production environment using a robust 9-step enforcement pipeline.
 
-### Run as a Standalone Binary
+### 9-Step Enforcement Pipeline
+| Phase | Action | Description |
+|-------|--------|-------------|
+| 1 | **Identity Validation** | Validates OIDC JWTs and extracts claims. |
+| 2 | **Credential Scope** | Validates identity scopes against policy requirements (FR-5). |
+| 3 | **Policy Engine** | Checks tool against default-deny allowlist and JSON schema. |
+| 4 | **DLP Scan** | Content-aware scan for secrets and PII. |
+| 5 | **Injection Scan** | Checks payloads against 29 prompt injection signatures. |
+| 6 | **Semantic Anomaly** | (Stub) LLM-based intent evaluation. |
+| 7 | **A2A Scan** | Validates inter-agent protocol messages. |
+| 8 | **Response Scan** | Analyzes tool output to prevent data exfiltration. |
+| 9 | **Audit Log** | Writes a durable, tamper-evident HMAC audit record. |
+
+### Deployment Options
+
+**1. Standalone Binary**
 ```bash
 ./agentwall start \
   --policy policy.yaml \
@@ -186,6 +202,59 @@ The centralized gateway evaluates policies, enforces DLP, logs audits, and prote
   --siem-endpoint https://splunk.example.com:8088/services/collector/event \
   --siem-token "$SPLUNK_HEC_TOKEN"
 ```
+
+**2. Docker Compose**
+```yaml
+services:
+  agentwall:
+    image: ghcr.io/noviqtechnologies/agentwall:v2.0.0-beta
+    volumes:
+      - ./policy.yaml:/etc/agentwall/policy.yaml:ro
+      - ./audit.log:/var/log/agentwall/audit.log
+    command: ["start", "--policy", "/etc/agentwall/policy.yaml", "--listen", "0.0.0.0:8080"]
+    ports:
+      - "8080:8080"
+```
+
+**3. Kubernetes Sidecar (Recommended)**
+*(Using GitOps rather than deprecated `agentwall init sidecar`)*
+Inject the `agentwall` container alongside your MCP server Pod, bound to localhost.
+
+### Configuration (`agentwall-gateway.yaml`)
+A typical production policy includes `credential_scope` constraints:
+```yaml
+version: "2"
+default_action: deny
+
+tools:
+  - name: execute_query
+    action: allow
+    credential_scope: ["db:read", "db:write"] # FR-5 v2.0
+    parameters:
+      - name: query
+        type: string
+        required: true
+```
+
+### Zero-Downtime Policy Hot-Reload
+You can dynamically reload `agentwall-policy.yaml` without dropping connections.
+- **API Call:** `curl -X POST http://localhost:8080/reload`
+- **Signal:** `kill -SIGHUP $(pidof agentwall)`
+
+### Architecture & Security Guarantees
+- **Bypass Prevention:** Use OS-level network namespaces (`netns`) and firewall rules to drop outbound packets from the agent that do not route to the gateway.
+- **Fail-Closed Supervisor:** Ensure the agent process terminates if AgentWall crashes. Use process groups or a supervisor like `systemd` with `BindsTo=agentwall.service`.
+
+### Acceptance Criteria Checklist (FR-5)
+- [x] **AC-5.1:** HTTP 403 JSON-RPC error mapping
+- [x] **AC-5.2:** P99 overhead < 5ms
+- [x] **AC-5.3:** Concurrency & rate-limiting lock-free structures
+- [x] **AC-5.4:** Non-blocking SIEM exporter
+- [x] **AC-5.5:** Fail-closed policy parse/hash validation
+- [x] **AC-5.6:** Zero-downtime hot-reloads
+- [x] **AC-5.7:** Parse v2.0 `ToolRule` schema extensions
+- [x] **AC-5.8:** Credential scope validation
+- [x] **AC-5.9:** Integration test suite
 
 ### Verify the Audit Log
 ```bash
@@ -278,6 +347,7 @@ tools:
 | `AGENTWALL_INCLUDE_PARAMS` | `start` | `true` to include raw parameters in audit logs |
 | `AGENTWALL_SHADOW_MODE` | `start` | `true` to enable shadow mode on `start` |
 | `AGENTWALL_DRY_RUN` | `start` | Log violations but forward all calls |
+| `AGENTWALL_STRICT_CREDENTIAL_SCOPE` | `start` | `true` to upgrade credential scope mismatches from WARN to DENY (FR-5 v2.0) |
 | `AGENTWALL_REPORT_PATH` | `start` | File path to write a session report on shutdown |
 | `ALLOW_WILDCARD_IDENTITY` | `start`, `loader` | `true` to allow wildcard identity (`*`) in tool policies |
 | `VEXA_GATEWAY_URL` | `test` | Gateway endpoint URL for test command validation |
@@ -292,8 +362,8 @@ tools:
 **Enforced Guarantees:**
 - Default-deny architecture for unlisted tools.
 - Strict parameter schema validation (JSON Schema, URL schemes, regex, path traversal).
-- Cryptographic binding of identity (OIDC) to decisions.
-- Fail-closed operational posture.
+- Cryptographic binding of identity (OIDC) to decisions, including mandatory Credential Scopes (FR-5).
+- Fail-closed operational posture across network and process levels.
 
 **Out of Scope:**
 - Semantic prompt-injection detection (we focus on deterministic string normalizers).

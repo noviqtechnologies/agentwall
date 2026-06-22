@@ -93,12 +93,12 @@ const PATTERN_DEFS: &[(&str, &str)] = &[
 fn category_for_index(idx: usize) -> InjectionCategory {
     match idx {
         0 | 1 => InjectionCategory::JailbreakPhrase,
-        2 | 3 | 4 => InjectionCategory::InstructionManipulation,
+        2..=4 => InjectionCategory::InstructionManipulation,
         5 | 6 => InjectionCategory::CredentialSolicitation,
         7 => InjectionCategory::MemoryStatePoisoning,
         8 => InjectionCategory::PreferencePoisoning,
         9 | 10 => InjectionCategory::CovertActionDirective,
-        11 | 12 | 13 => InjectionCategory::ModelInstructionBoundary,
+        11..=13 => InjectionCategory::ModelInstructionBoundary,
         14 | 15 => InjectionCategory::CjkInstructionOverride,
         _ => InjectionCategory::JailbreakPhrase, // fallback
     }
@@ -146,7 +146,7 @@ impl InjectionScanner {
         // Minimum length heuristic: real base64 payloads are usually >= 16 chars
         // and contain `=` padding or are a multiple of 4.
         let looks_like_b64 = text.len() >= 16
-            && (text.ends_with('=') || text.len() % 4 == 0)
+            && (text.ends_with('=') || text.len().is_multiple_of(4))
             && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
 
         if looks_like_b64 {
@@ -183,10 +183,7 @@ impl InjectionScanner {
         let mut text = input.nfkc().collect::<String>();
         
         // Pass 2: Zero-width character stripping & Cyrillic homoglyphs
-        text = text.replace('\u{200B}', "")
-                   .replace('\u{200C}', "")
-                   .replace('\u{200D}', "")
-                   .replace('\u{FEFF}', "")
+        text = text.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "")
                    .replace('а', "a") // Cyrillic 'a'
                    .replace('о', "o")
                    .replace('е', "e")

@@ -42,6 +42,7 @@ impl KillMode {
     ///
     /// In v6.1, only `"connection"` is accepted. `"process"` and `"both"` return
     /// an error with a migration message.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "connection" => Ok(KillMode::Connection),

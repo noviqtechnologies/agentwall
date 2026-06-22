@@ -84,6 +84,9 @@ fn test_tool_history_memory_bounding() {
         metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
         event_tx: tokio::sync::broadcast::channel(256).0,
+        credential_scope_validator: Arc::new(agentwall::policy::credential_scope::CredentialScopeValidator::new(false)),
+        gateway_start_time: std::time::Instant::now(),
+        policy_path: None,
     };
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -173,6 +176,9 @@ fn test_cycle_detection_blocking() {
         metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
         event_tx: tokio::sync::broadcast::channel(256).0,
+        credential_scope_validator: Arc::new(agentwall::policy::credential_scope::CredentialScopeValidator::new(false)),
+        gateway_start_time: std::time::Instant::now(),
+        policy_path: None,
     };
 
     let req = json!({
@@ -276,6 +282,9 @@ fn test_pause_interactive_fallback_in_non_tty() {
         metrics_siem_export_total: Arc::new(AtomicU64::new(0)),
         metrics_siem_export_failed_total: Arc::new(AtomicU64::new(0)),
         event_tx: tokio::sync::broadcast::channel(256).0,
+        credential_scope_validator: Arc::new(agentwall::policy::credential_scope::CredentialScopeValidator::new(false)),
+        gateway_start_time: std::time::Instant::now(),
+        policy_path: None,
     };
 
     let req = json!({

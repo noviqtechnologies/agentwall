@@ -496,7 +496,118 @@ async fn handle_request(
                     }
                 }
             }
+            // FR-5 v2.0: Gateway status endpoint — mode, uptime, policy, metrics
+            "/gateway/status" => {
+                use std::sync::atomic::Ordering;
+                let uptime_secs = state.gateway_start_time.elapsed().as_secs();
+                let policy_loaded = state.policy_loaded.load(Ordering::Relaxed);
+                let mode = if state.shadow_mode {
+                    "shadow"
+                } else if state.dry_run {
+                    "dry-run"
+                } else {
+                    "enforce"
+                };
+                let status = serde_json::json!({
+                    "mode": mode,
+                    "policy_loaded": policy_loaded,
+                    "policy_path": state.policy_path,
+                    "uptime_secs": uptime_secs,
+                    "strict_credential_scope": state.credential_scope_validator.strict,
+                    "metrics": {
+                        "requests_total": state.metrics_requests_total.load(Ordering::Relaxed),
+                        "allow_total": state.metrics_allow_total.load(Ordering::Relaxed),
+                        "deny_total": state.metrics_deny_total.load(Ordering::Relaxed),
+                        "rate_limited_total": state.metrics_rate_limited_total.load(Ordering::Relaxed),
+                        "firewall_cycle_total": state.metrics_firewall_cycle_total.load(Ordering::Relaxed),
+                        "siem_export_total": state.metrics_siem_export_total.load(Ordering::Relaxed),
+                        "siem_export_failed_total": state.metrics_siem_export_failed_total.load(Ordering::Relaxed),
+                    },
+                    "upstream_url": &state.upstream_url,
+                    "listen": "see --listen flag",
+                    "fr22_integration_pending": true,
+                    "note": "credential_scope validation is a stub — FR-22 Identity Platform integration pending"
+                });
+                return Ok(json_response(StatusCode::OK, &status));
+            }
             _ => {}
+        }
+    }
+
+    // FR-5 v2.0: Policy hot-reload endpoint (AC-5.6)
+    // Reloads the policy YAML from the path originally passed at startup.
+    // Existing connections are NOT dropped — the new policy takes effect for
+    // the NEXT request through each session (Arc<RwLock> swap is atomic).
+    if method == hyper::Method::POST && path == "/reload" {
+        match &state.policy_path {
+            None => {
+                let err = serde_json::json!({
+                    "error": "No policy path configured. Start the gateway with --policy <path> to enable hot-reload.",
+                    "hint": "agentwall start --policy agentwall-policy.yaml"
+                });
+                return Ok(json_response(StatusCode::BAD_REQUEST, &err));
+            }
+            Some(policy_path_str) => {
+                let path_clone = policy_path_str.clone();
+                let reload_result = tokio::task::spawn_blocking(move || {
+                    crate::policy::loader::load_policy(
+                        std::path::Path::new(&path_clone),
+                        None, // issuer override not re-applied on hot-reload
+                    )
+                }).await;
+
+                match reload_result {
+                    Ok(crate::policy::loader::PolicyLoadResult::Loaded { policy, raw_hash, warnings }) => {
+                        // Atomically swap the policy — zero dropped connections
+                        match state.policy.write() {
+                            Ok(mut guard) => *guard = Some(policy),
+                            Err(_) => {
+                                let err = serde_json::json!({"error": "Policy lock poisoned during reload"});
+                                return Ok(json_response(StatusCode::INTERNAL_SERVER_ERROR, &err));
+                            }
+                        }
+                        state.policy_loaded.store(true, std::sync::atomic::Ordering::SeqCst);
+
+                        crate::logging::log_event(
+                            crate::logging::Level::Info,
+                            "policy_reloaded",
+                            serde_json::json!({
+                                "path": &state.policy_path,
+                                "hash": &raw_hash,
+                                "warnings": &warnings,
+                            }),
+                        );
+
+                        // Broadcast SSE event so the dashboard Gateway panel updates live
+                        let sse_event = serde_json::json!({
+                            "event": "gateway_reload",
+                            "policy_hash": &raw_hash,
+                            "warnings": &warnings,
+                        });
+                        if let Ok(s) = serde_json::to_string(&sse_event) {
+                            let _ = state.event_tx.send(s);
+                        }
+
+                        return Ok(json_response(StatusCode::OK, &serde_json::json!({
+                            "status": "reloaded",
+                            "policy_hash": raw_hash,
+                            "warnings": warnings,
+                        })));
+                    }
+                    Ok(crate::policy::loader::PolicyLoadResult::Degraded { reason }) => {
+                        let err = serde_json::json!({"error": format!("Policy degraded: {}", reason)});
+                        return Ok(json_response(StatusCode::UNPROCESSABLE_ENTITY, &err));
+                    }
+                    Ok(crate::policy::loader::PolicyLoadResult::Fatal { error }) => {
+                        let err = serde_json::json!({"error": format!("Policy fatal: {}", error)});
+                        return Ok(json_response(StatusCode::UNPROCESSABLE_ENTITY, &err));
+                    }
+                    Err(e) => {
+                        let err = serde_json::json!({"error": format!("Reload task failed: {}", e)});
+                        return Ok(json_response(StatusCode::INTERNAL_SERVER_ERROR, &err));
+                    }
+                }
+            }
         }
     }
 

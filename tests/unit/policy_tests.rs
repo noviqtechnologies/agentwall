@@ -35,6 +35,9 @@ fn allow_tool(name: &str, params: Vec<CompiledParam>) -> CompiledTool {
         risk: None,
         parameters: params,
         identity: None,
+        credential_scope: vec![],
+        semantic_anomaly_threshold: None,
+        a2a_trust_level: None,
     }
 }
 
@@ -45,6 +48,9 @@ fn deny_tool(name: &str) -> CompiledTool {
         risk: None,
         parameters: vec![],
         identity: None,
+        credential_scope: vec![],
+        semantic_anomaly_threshold: None,
+        a2a_trust_level: None,
     }
 }
 

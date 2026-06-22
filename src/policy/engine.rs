@@ -40,6 +40,9 @@ pub struct CompiledTool {
     pub parameters: Vec<CompiledParam>,
     /// FR-201: Bound to specific agent sub claim
     pub identity: Option<String>,
+    pub credential_scope: Vec<String>,
+    pub semantic_anomaly_threshold: Option<f32>,
+    pub a2a_trust_level: Option<String>,
 }
 
 /// Compiled representation of a structural validator (FR-202)
@@ -193,17 +196,15 @@ impl CompiledPolicy {
             let value = params_obj.get(&param_rule.name);
 
             // Check required
-            if param_rule.required {
-                if value.is_none() || value == Some(&Value::Null) {
-                    return EvalResult::Deny {
-                        reason_code: "param_required_missing".to_string(),
-                        param_name: Some(param_rule.name.clone()),
-                        param_value: None,
-                        pattern: None,
-                        json_pointer: None,
-                        validator_name: None,
-                    };
-                }
+            if param_rule.required && (value.is_none() || value == Some(&Value::Null)) {
+                return EvalResult::Deny {
+                    reason_code: "param_required_missing".to_string(),
+                    param_name: Some(param_rule.name.clone()),
+                    param_value: None,
+                    pattern: None,
+                    json_pointer: None,
+                    validator_name: None,
+                };
             }
 
             // Skip validation if parameter is absent and not required

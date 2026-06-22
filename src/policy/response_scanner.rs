@@ -89,9 +89,6 @@ struct PatternDef {
     individual_regex: Regex,
 }
 
-/// High-risk tools whose output should be scanned
-
-
 /// The 10 regex patterns (mapping to 7 PRD categories)
 const PATTERN_DEFS: &[(&str, &str)] = &[
     // AWS Access Key IDs
@@ -116,7 +113,7 @@ const PATTERN_DEFS: &[(&str, &str)] = &[
 fn category_for_index(idx: usize) -> SecretCategory {
     match idx {
         0 | 1 => SecretCategory::AwsAccessKey,
-        2 | 3 | 4 => SecretCategory::GitHubToken,
+        2..=4 => SecretCategory::GitHubToken,
         5 => SecretCategory::OpenAiApiKey,
         6 => SecretCategory::AnthropicApiKey,
         7 => SecretCategory::SshPrivateKey,

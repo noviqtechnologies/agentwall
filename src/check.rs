@@ -112,7 +112,7 @@ pub fn run_check(
         // Try parsing as JSON lines (audit.log format)
         let mut lines_calls = Vec::new();
         let content = String::from_utf8_lossy(&fixture_bytes);
-        for (_i, line) in content.lines().enumerate() {
+        for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
@@ -146,7 +146,7 @@ pub fn run_check(
                 let mut params_str = Vec::new();
                 if let Some(obj) = call.params.as_object() {
                     for (k, v) in obj {
-                        let v_str = v.as_str().unwrap_or_else(|| "");
+                        let v_str = v.as_str().unwrap_or("");
                         if !v_str.is_empty() {
                             params_str.push(format!("{}={}", k, v_str));
                         } else {

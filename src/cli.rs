@@ -159,6 +159,17 @@ pub enum Commands {
         /// Intended for audit/baselining before enabling enforcement.
         #[arg(long, env = "AGENTWALL_SHADOW_MODE", default_value_t = false)]
         shadow_mode: bool,
+
+        /// FR-5 v2.0: Upgrade credential scope mismatches from WARN to DENY.
+        ///
+        /// When set, tool calls from agents that do not present the required
+        /// X-AgentWall-Credential-Scope header (or present insufficient scopes)
+        /// will be hard-denied with a 403 error instead of logged as a warning.
+        ///
+        /// Requires FR-22 (Agent Identity Platform) for full scope validation.
+        /// Default: false (WARN mode — log only, permit the call).
+        #[arg(long, env = "AGENTWALL_STRICT_CREDENTIAL_SCOPE", default_value_t = false)]
+        strict_credential_scope: bool,
     },
 
     /// Validate a policy against a gateway instance using fixture test calls (FR-204)

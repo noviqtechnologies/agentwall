@@ -1,6 +1,6 @@
 use agentwall::audit::logger::{AuditLogger, AuditLoggerConfig};
 use agentwall::report::{format_text_report, generate_report};
-use serde_json::json;
+
 use tempfile::NamedTempFile;
 
 #[tokio::test]

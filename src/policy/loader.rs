@@ -360,6 +360,10 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
             risk: tool.risk.clone(),
             parameters: compiled_params,
             identity: identity_bound,
+            // FR-5 v2.0 fields
+            credential_scope: tool.credential_scope.clone(),
+            semantic_anomaly_threshold: tool.semantic_anomaly_threshold,
+            a2a_trust_level: tool.a2a_trust_level.clone(),
         });
     }
 

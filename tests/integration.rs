@@ -7,4 +7,7 @@ mod integration {
     mod dashboard_test;
     mod egress_proxy_tests;
     mod stdio_tests;
+    /// FR-5: Centralized Enforcement Gateway acceptance criteria tests
+    mod gateway_fr5;
 }
+

@@ -27,6 +27,7 @@ pub enum SiemBackend {
 impl SiemBackend {
     /// Parse a backend name from a CLI / env-var string.
     /// Returns `Local` for unknown values so the gateway degrades gracefully.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_ascii_lowercase().as_str() {
             "splunk"     => Self::Splunk,
