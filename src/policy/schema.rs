@@ -34,6 +34,9 @@ pub struct PolicyFile {
     /// FR-306: Agent Firewall — cycle detection and loop prevention.
     pub firewall: Option<FirewallConfig>,
 
+    /// FR-4: Self Healing configuration.
+    pub self_healing: Option<SelfHealingConfig>,
+
     /// Tool allowlist. Empty = all denied.
     pub tools: Option<Vec<ToolRule>>,
 }
@@ -106,6 +109,17 @@ impl Default for FirewallConfig {
 
 fn default_enabled() -> bool {
     true
+}
+
+/// FR-4: Self Healing configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelfHealingConfig {
+    pub enabled: bool,
+    pub decay_window: String,
+    pub auto_suggest: bool,
+    pub suggest_threshold: f64,
+    pub approval_required: bool,
 }
 
 /// Identity configuration (OIDC).

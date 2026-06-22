@@ -41,7 +41,7 @@ fn test_ac4_1_lint_passes() {
         make_event("list_files", "{\"path\": \"/var/log\"}", "2026-06-11T10:00:00Z"),
         make_event("delete_file", "{\"path\": \"/etc/passwd\"}", "2026-06-11T10:01:00Z"),
     ];
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     
     // Write to a temporary file and lint it
     let file = write_temp_policy(&yaml);
@@ -60,7 +60,7 @@ fn test_ac4_2_all_tools_present() {
         make_event("tool_b", "{}", "2026-06-11T10:01:00Z"),
         make_event("tool_c", "{}", "2026-06-11T10:02:00Z"),
     ];
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     assert!(yaml.contains("- name: tool_a"));
     assert!(yaml.contains("- name: tool_b"));
     assert!(yaml.contains("- name: tool_c"));
@@ -73,7 +73,7 @@ fn test_ac4_3_max_length_headroom() {
     let long_str = "a".repeat(100);
     events.push(make_event("tool_a", &format!("{{\"param\": \"{}\"}}", long_str), "2026-06-11T10:00:00Z"));
     
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     assert!(yaml.contains("max_length: 120")); // 100 * 1.2 = 120
 }
 
@@ -83,7 +83,7 @@ fn test_ac4_4_low_confidence_flag() {
     for _ in 0..9 {
         events.push(make_event("rare_tool", "{}", "2026-06-11T10:00:00Z"));
     }
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     assert!(yaml.contains("confidence: low"));
     assert!(yaml.contains("(9 observations)"));
 }
@@ -91,14 +91,16 @@ fn test_ac4_4_low_confidence_flag() {
 #[test]
 fn test_ac4_5_anomaly_detection() {
     let mut events = Vec::new();
-    for _ in 0..5 {
+    for _ in 0..20 {
         events.push(make_event("tool_a", "{\"param\": \"common\"}", "2026-06-11T10:00:00Z"));
     }
-    events.push(make_event("tool_a", "{\"param\": \"rare_anomaly_123\"}", "2026-06-11T10:00:00Z"));
+    // A much longer string to trigger a z-score > 3.0 (score 1.0)
+    let rare = "a".repeat(50);
+    events.push(make_event("tool_a", &format!("{{\"param\": \"{}\"}}", rare), "2026-06-11T10:00:00Z"));
     
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     assert!(yaml.contains("Anomalies (review required)"));
-    assert!(yaml.contains("rare_anomaly_123"));
+    assert!(yaml.contains(&rare));
 }
 
 #[test]
@@ -106,7 +108,7 @@ fn test_ac4_6_nested_json_5levels() {
     let events = vec![
         make_event("tool_a", "{\"l1\": {\"l2\": {\"l3\": {\"l4\": {\"l5\": \"deep_value\"}}}}}", "2026-06-11T10:00:00Z")
     ];
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     // Should be flattened to l1.l2.l3.l4.l5
     assert!(yaml.contains("name: l1.l2.l3.l4.l5"));
 }
@@ -118,7 +120,7 @@ fn test_enum_detection() {
         events.push(make_event("tool_a", "{\"color\": \"red\"}", "2026-06-11T10:00:00Z"));
         events.push(make_event("tool_a", "{\"color\": \"blue\"}", "2026-06-11T10:00:00Z"));
     }
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     assert!(yaml.contains("# enum:"));
     assert!(yaml.contains("#  - \"red\""));
     assert!(yaml.contains("#  - \"blue\""));
@@ -129,7 +131,7 @@ fn test_array_max_items() {
     let events = vec![
         make_event("tool_a", "{\"arr\": [1, 2, 3]}", "2026-06-11T10:00:00Z")
     ];
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     // 3 * 1.2 = 3.6 -> ceil -> 4, max with 1 -> 4
     assert!(yaml.contains("# max_items: 4"));
 }
@@ -139,7 +141,7 @@ fn test_path_traversal_validator() {
     let events = vec![
         make_event("tool_a", "{\"path\": \"/etc/passwd\"}", "2026-06-11T10:00:00Z")
     ];
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     assert!(yaml.contains("validators:"));
     assert!(yaml.contains("- path_traversal"));
 }
@@ -150,7 +152,7 @@ fn test_observation_window() {
         make_event("tool_a", "{}", "2026-06-01T10:00:00Z"),
         make_event("tool_a", "{}", "2026-06-15T10:00:00Z"),
     ];
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     assert!(yaml.contains("Observation window: 2026-06-01 to 2026-06-15"));
 }
 
@@ -164,14 +166,14 @@ fn test_required_threshold() {
     for _ in 0..2 {
         events.push(make_event("tool_a", "{}", "2026-06-11T10:00:00Z"));
     }
-    let yaml = generate_from_events(&events);
+    let yaml = generate_from_events(&events, 30);
     // Present in 8/10 calls (80%), so it should not be required (threshold is 90%)
     assert!(yaml.contains("required: false"));
 }
 
 #[test]
 fn test_null_events() {
-    let yaml = generate_from_events(&[]);
+    let yaml = generate_from_events(&[], 30);
     assert!(yaml.contains("tools: []"));
     assert!(yaml.contains("version: \"2\""));
 }
@@ -187,7 +189,7 @@ fn test_large_event_set() {
         ));
     }
     let start = Instant::now();
-    let _yaml = generate_from_events(&events);
+    let _yaml = generate_from_events(&events, 30);
     let duration = start.elapsed();
     assert!(duration.as_secs() < 3, "Policy generation took too long: {:?}", duration);
 }

@@ -246,6 +246,10 @@ pub enum Commands {
         /// Output file path for the generated policy (default: ./agentwall-policy.yaml)
         #[arg(long, default_value = "agentwall-policy.yaml")]
         output: String,
+
+        /// Decay window in days for self-healing behavioral learning (FR-4)
+        #[arg(long, default_value_t = 30)]
+        decay_window: u32,
     },
 
     Init {

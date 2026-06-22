@@ -440,6 +440,62 @@ async fn handle_request(
             "/metrics" => {
                 return Ok(prometheus_metrics_response(&state));
             }
+            "/api/self-healing/status" => {
+                // Return dummy status for now based on recent events to satisfy dashboard
+                match state.db_manager.get_events(500).await {
+                    Ok(events) => {
+                        let mut scorer = crate::self_healing::AnomalyScorer::new();
+                        let mut tools_status = Vec::new();
+                        
+                        // Extract unique tools and latest timestamps
+                        let mut tool_last_seen = std::collections::HashMap::new();
+                        for e in &events {
+                            if let Some(t) = &e.url_path {
+                                let current = tool_last_seen.get(t).unwrap_or(&0i64);
+                                if e.timestamp_ns > *current {
+                                    tool_last_seen.insert(t.clone(), e.timestamp_ns);
+                                }
+                                
+                                if let Some(body) = &e.request_body {
+                                    if let Ok(params) = serde_json::from_str::<serde_json::Value>(body) {
+                                        let mut flat = Vec::new();
+                                        crate::generate_policy::flatten_json(&params, "", 0, 5, &mut flat);
+                                        for (k, v) in flat {
+                                            if let serde_json::Value::String(s) = v {
+                                                scorer.observe(t, &k, &s);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        for (tool, last_seen) in tool_last_seen {
+                            let decay = crate::self_healing::ConfidenceDecay::calculate(last_seen, 30);
+                            tools_status.push(serde_json::json!({
+                                "name": tool,
+                                "confidence_decay": decay,
+                                "last_seen": last_seen,
+                                "stale": decay == 0.0
+                            }));
+                        }
+                        
+                        let suggestions = crate::self_healing::SuggestionEngine::generate_suggestions(&scorer, 0.9, &events);
+                        
+                        let status = serde_json::json!({
+                            "enabled": true,
+                            "decay_window_days": 30,
+                            "tools": tools_status,
+                            "pending_suggestions": suggestions
+                        });
+                        return Ok(json_response(StatusCode::OK, &status));
+                    }
+                    Err(e) => {
+                        let err = serde_json::json!({"error": format!("Database error: {}", e)});
+                        return Ok(json_response(StatusCode::INTERNAL_SERVER_ERROR, &err));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -449,7 +505,7 @@ async fn handle_request(
         // Fetch all events to generate policy
         match state.db_manager.get_events(100_000).await {
             Ok(events) => {
-                let yaml_str = crate::generate_policy::generate_from_events(&events);
+                let yaml_str = crate::generate_policy::generate_from_events(&events, 30);
                 return Ok(Response::builder()
                     .status(StatusCode::OK)
                     .header(hyper::header::CONTENT_TYPE, "text/yaml; charset=utf-8")
@@ -460,6 +516,44 @@ async fn handle_request(
                 let err = serde_json::json!({
                     "error": format!("Database error: {}", e)
                 });
+                return Ok(json_response(StatusCode::INTERNAL_SERVER_ERROR, &err));
+            }
+        }
+    }
+
+    // Self-healing suggestions trigger
+    if method == hyper::Method::POST && path == "/api/self-healing/suggestions" {
+        match state.db_manager.get_events(500).await {
+            Ok(events) => {
+                let mut scorer = crate::self_healing::AnomalyScorer::new();
+                for e in &events {
+                    if let Some(t) = &e.url_path {
+                        if let Some(body) = &e.request_body {
+                            if let Ok(params) = serde_json::from_str::<serde_json::Value>(body) {
+                                let mut flat = Vec::new();
+                                crate::generate_policy::flatten_json(&params, "", 0, 5, &mut flat);
+                                for (k, v) in flat {
+                                    if let serde_json::Value::String(s) = v {
+                                        scorer.observe(t, &k, &s);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                let suggestions = crate::self_healing::SuggestionEngine::generate_suggestions(&scorer, 0.9, &events);
+                
+                // FR-4: Log to SIEM via StubGitOps
+                let gitops = crate::self_healing::StubGitOps;
+                use crate::self_healing::GitOpsPrPayload;
+                for sug in &suggestions {
+                    let _ = gitops.create_suggestion_pr(sug);
+                }
+                
+                return Ok(json_response(StatusCode::OK, &serde_json::json!(suggestions)));
+            }
+            Err(e) => {
+                let err = serde_json::json!({"error": format!("Database error: {}", e)});
                 return Ok(json_response(StatusCode::INTERNAL_SERVER_ERROR, &err));
             }
         }

@@ -100,11 +100,14 @@ python my_agent.py
 ```
 All events appear in `~/.agentwall/events.db` and the local dashboard at `http://127.0.0.1:8080`.
 
-### 3. Generate a Policy Draft
+### 3. Generate a Policy Draft & Self-Healing
+Generate a robust policy draft with self-healing behavioral insights. The `--decay-window` flag specifies how long to retain confidence in observed tools (default: 30d).
+
 ```bash
-agentwall generate-policy
+agentwall generate-policy --decay-window 30d
 # Output: ./agentwall-policy.yaml
 ```
+The generated policy includes Z-score anomaly detection flags and self-healing review suggestions.
 
 ### 4. Validate & Submit
 Validate the policy using a deployed gateway instance (file-only local validation is deprecated):
@@ -194,11 +197,19 @@ agentwall report audit.log --format text
 
 ## Policy Reference
 
-Policies are Schema v2 YAML files. `default_action: deny` is required. Object parameters require an inline `schema` block.
+Policies are Schema v2 YAML files. `default_action: deny` is required. Object parameters require an inline `schema` block. The policy can also house a `self_healing` configuration directive to govern behavioral learning parameters.
 
 ```yaml
 version: "2"
 default_action: deny
+
+# FR-4 Self-Healing Configuration
+self_healing:
+  enabled: true
+  decay_window: 30d             # Period of time before inactive tools are marked stale
+  auto_suggest: true            # Propose schema suggestions for deviations
+  suggest_threshold: 0.9        # Anomaly scoring threshold to log to SIEM / Suggestions
+  approval_required: true       # Require explicit developer approval in Dashboard
 
 auth:
   provider: okta
@@ -212,6 +223,9 @@ session:
 tools:
   - name: read_file
     action: allow
+    # Self-healing metadata generated dynamically:
+    # risk_tier: TIER_3  confidence: high  (145 observations)
+    # confidence_decay: 1.00  last_seen: 2026-06-22T12:00:00Z  stale: false
     parameters:
       - name: path
         type: string
@@ -220,6 +234,10 @@ tools:
         validators:
           - path_traversal
           - regex: "^/allowed/.*"
+
+# ── Anomalies (review required) ────────────────────────────────────────
+# - read_file.path: observed anomalous value "/etc/passwd" (anomaly_score: 0.98)
+#   → Is this expected? Review before enabling enforcement.
 ```
 
 ---

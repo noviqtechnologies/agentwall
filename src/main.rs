@@ -163,8 +163,8 @@ async fn main() {
         } => {
             run_dev(listen, mcp_url, stdio, no_browser, enforce, args).await
         }
-        Commands::GeneratePolicy { output } => {
-            run_generate_policy(output).await
+        Commands::GeneratePolicy { output, decay_window } => {
+            run_generate_policy(output, decay_window).await
         }
         Commands::Validate { policy, tool, payload } => {
             match agentwall::validate::execute(&policy, &tool, &payload) {
@@ -1018,7 +1018,7 @@ async fn run_dev(
 ///
 /// Reads up to 500 events from the local SQLite event store (chronological order),
 /// runs the analysis engine, and writes the resulting YAML to `output_path`.
-async fn run_generate_policy(output_path: String) -> i32 {
+async fn run_generate_policy(output_path: String, decay_window: u32) -> i32 {
     println!("{} Reading observed tool calls from event store...", "ℹ".blue());
 
     let db = agentwall::proxy::db::DbManager::init();
@@ -1056,7 +1056,7 @@ async fn run_generate_policy(output_path: String) -> i32 {
             .cyan()
     );
 
-    let yaml = agentwall::generate_policy::generate_from_events(&events);
+    let yaml = agentwall::generate_policy::generate_from_events(&events, decay_window);
 
     match std::fs::write(&output_path, &yaml) {
         Ok(_) => {

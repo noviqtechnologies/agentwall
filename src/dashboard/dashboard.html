@@ -903,7 +903,10 @@
         <span class="nav-icon">07</span> Generate Policy
       </div>
       <div class="nav-item" data-panel="panel-integrations">
-        <span class="nav-icon">08</span> Integrations (FR-20)
+        <span class="nav-icon">08</span> Integrations
+      </div>
+      <div class="nav-item" data-panel="panel-self-healing">
+        <span class="nav-icon">09</span> Self-Healing Policy
       </div>
     </div>
 
@@ -1102,8 +1105,10 @@
         <div id="dlp-empty" class="card" style="display:none;">
           <div class="risk-empty">
             <span class="big-check">🛡️</span>
-            <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No DLP Violations Detected</h3>
-            <p style="font-size: 0.85rem;">All observed responses from tools, models, and external APIs are free of sensitive secrets/DLP violations.</p>
+            <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No DLP Violations
+              Detected</h3>
+            <p style="font-size: 0.85rem;">All observed responses from tools, models, and external APIs are free of
+              sensitive secrets/DLP violations.</p>
           </div>
         </div>
       </div>
@@ -1135,8 +1140,10 @@
         <div id="inj-empty" class="card" style="display:none;">
           <div class="risk-empty">
             <span class="big-check">🛡️</span>
-            <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No Injections/Poisoning Detected</h3>
-            <p style="font-size: 0.85rem;">All observed responses from tools, models, and external APIs are clean of prompt injections.</p>
+            <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No Injections/Poisoning
+              Detected</h3>
+            <p style="font-size: 0.85rem;">All observed responses from tools, models, and external APIs are clean of
+              prompt injections.</p>
           </div>
         </div>
       </div>
@@ -1179,7 +1186,7 @@
       <!-- Panel 7: Integrations -->
       <div id="panel-integrations" class="panel">
         <div class="panel-header">
-          <h2>🧩 Integrations (FR-20)</h2>
+          <h2>🧩 Integrations</h2>
         </div>
 
         <div class="policy-info">
@@ -1236,7 +1243,8 @@
             </tbody>
           </table>
           <p style="font-size:0.75rem; color:var(--text-muted); margin-top:20px;">
-            To see what would change without modifying files, append <code style="color:var(--accent)">--dry-run</code> to the command.
+            To see what would change without modifying files, append <code style="color:var(--accent)">--dry-run</code>
+            to the command.
           </p>
         </div>
 
@@ -1245,8 +1253,60 @@
           <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:20px;">
             Generate a Kubernetes Sidecar deployment manifest to place AgentWall in front of an upstream MCP service.
           </p>
-          <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; font-family: var(--font-mono); font-size: 0.8rem;">
+          <div
+            style="background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; font-family: var(--font-mono); font-size: 0.8rem;">
             <span style="color:var(--accent)">agentwall</span> init sidecar --mcp-upstream http://mcp-server:3000
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: Self-Healing Policy (FR-4) -->
+      <div id="panel-self-healing" class="panel">
+        <div class="panel-header">
+          <h2>🌱 Self-Healing Behavioral Learning</h2>
+        </div>
+        <div class="card">
+          <h3>Self-Healing Status</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">
+            Automatically detects behavioral drift and generates PRs to adjust policy thresholds via GitOps.
+          </p>
+          <div class="stats-bar" id="sh-stats">
+            <div class="stat-card">
+              <div class="stat-label">Decay Window</div>
+              <div class="stat-value" id="stat-decay-window">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Monitored Tools</div>
+              <div class="stat-value accent" id="stat-sh-tools">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Pending Suggestions</div>
+              <div class="stat-value amber" id="stat-sh-suggestions">—</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:12px; margin-top:20px;">
+            <button class="btn btn-primary" onclick="triggerSelfHealing()">Run Behavioral Analysis Now</button>
+            <div class="spinner" id="sh-spinner" style="align-self: center; display: none;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Tool Confidence & Decay</h3>
+          <div class="table-wrap">
+            <table id="sh-tools-table">
+              <thead>
+                <tr>
+                  <th>Tool Name</th>
+                  <th>Last Seen</th>
+                  <th>Confidence Decay</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="sh-tools-body">
+                <tr>
+                  <td colspan="4" class="risk-empty" style="padding:20px;">No data available</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1879,6 +1939,8 @@
 
       document.getElementById('inv-last-update').textContent =
         new Date().toLocaleTimeString('en-US', { hour12: false });
+
+      fetchSelfHealingStatus();
     }
 
     // ── SSE for timeline ───────────────────────────────────────────────────────
@@ -2001,6 +2063,62 @@
         toast('Copy failed — use the download button instead.', 'error');
       }
     });
+
+    // ── Self Healing ───────────────────────────────────────────────────────────
+    async function fetchSelfHealingStatus() {
+      try {
+        const r = await fetch('/api/self-healing/status');
+        if (!r.ok) return;
+        const data = await r.json();
+
+        document.getElementById('stat-decay-window').textContent = data.decay_window_days + 'd';
+        document.getElementById('stat-sh-tools').textContent = data.tools.length;
+        document.getElementById('stat-sh-suggestions').textContent = data.pending_suggestions.length;
+
+        const tbody = document.getElementById('sh-tools-body');
+        if (data.tools.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="risk-empty" style="padding:20px;">No tools monitored</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data.tools.map(t => {
+          const isStale = t.stale;
+          const statusBadge = isStale ? '<span class="badge red">STALE</span>' : '<span class="badge green">ACTIVE</span>';
+          return `<tr>
+            <td class="tool-name">${escHtml(t.name)}</td>
+            <td><code style="font-family:var(--font-mono);font-size:0.75rem;">${fmtTime(t.last_seen)}</code></td>
+            <td>${t.confidence_decay.toFixed(2)}</td>
+            <td>${statusBadge}</td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        console.error('Failed to fetch self-healing status', e);
+      }
+    }
+
+    async function triggerSelfHealing() {
+      const btn = event.target;
+      const spin = document.getElementById('sh-spinner');
+
+      btn.disabled = true;
+      spin.style.display = 'block';
+
+      try {
+        const r = await fetch('/api/self-healing/suggestions', { method: 'POST' });
+        if (!r.ok) {
+          toast('Analysis failed', 'error');
+        } else {
+          const suggestions = await r.json();
+          toast(`Analysis complete. Found ${suggestions.length} suggestions and pushed to SIEM/GitOps.`, 'success');
+          fetchSelfHealingStatus();
+        }
+      } catch (e) {
+        toast('Analysis failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        spin.style.display = 'none';
+      }
+    }
 
     // ── Init ──────────────────────────────────────────────────────────────────
     (async function init() {
