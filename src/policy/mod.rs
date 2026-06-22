@@ -8,3 +8,5 @@ pub mod dlp;
 pub mod injection;
 /// FR-5 v2.0: Credential scope stub validator (FR-22 integration pending).
 pub mod credential_scope;
+pub mod community_rules;
+pub mod semantic;

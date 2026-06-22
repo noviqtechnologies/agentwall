@@ -525,6 +525,8 @@ mod tests {
             injection_findings: None,
             latency_ms: Some(5.0),
             verdict: Some("allow".to_string()),
+            semantic_anomaly_score: None,
+            identity_context: None,
         }
     }
 

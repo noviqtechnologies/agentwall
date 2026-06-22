@@ -63,6 +63,8 @@ pub async fn handle_egress(
                 injection_findings: None,
                 latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
                 verdict: Some("allow".to_string()),
+                semantic_anomaly_score: None,
+                identity_context: None,
             };
             if let Ok(json_str) = serde_json::to_string(&event) {
                 let _ = state_clone.event_tx.send(json_str);
@@ -144,6 +146,8 @@ pub async fn handle_egress(
                 injection_findings: None,
                 latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
                 verdict: Some("allow".to_string()),
+                semantic_anomaly_score: None,
+                identity_context: None,
             };
             if let Ok(json_str) = serde_json::to_string(&event) {
                 let _ = state_clone.event_tx.send(json_str);
@@ -234,6 +238,8 @@ pub async fn handle_egress(
                     injection_findings: None,
                     latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
                     verdict: Some(verdict),
+                    semantic_anomaly_score: None,
+                    identity_context: None,
                 };
                 if let Ok(json_str) = serde_json::to_string(&event) {
                     let _ = state.event_tx.send(json_str);
@@ -349,6 +355,8 @@ pub async fn handle_egress(
         injection_findings: injection_findings_json,
         latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
         verdict: Some(verdict),
+        semantic_anomaly_score: None,
+        identity_context: None,
     };
     if let Ok(json_str) = serde_json::to_string(&event) {
         let _ = state.event_tx.send(json_str);

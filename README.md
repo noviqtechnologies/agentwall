@@ -43,8 +43,10 @@ AgentWall is built to provide deterministic, tamper-proof control over what agen
 * **Adaptive Enforcement & Baselines:** Computes threat scores, escalates from warning to blocking dynamically, and builds behavioral contracts.
 * **Emergency Kill Switch:** Immediate session termination via SIGUSR1, sentinel file, or remote API without tearing down the underlying proxy.
 
-### 🔐 Data Loss Prevention (DLP) & Secret Detection
-* **Content-Aware DLP:** 62 built-in regex patterns detecting AWS Keys, GitHub Tokens, Stripe Keys, SSH Private Keys, DB URIs, and PII (SSNs, Emirates IDs).
+### 🔐 Hybrid Data Loss Prevention (DLP) & Secret Detection
+* **Deterministic DLP:** 67 built-in regex patterns detecting Azure Storage Keys, GCP API Keys, Slack Tokens, SendGrid Keys, Credit Card Numbers (with Luhn validation), AWS Keys, GitHub Tokens, Stripe Keys, SSH Private Keys, DB URIs, and PII.
+* **Community Rules:** Extensible YAML configuration for loading custom team or community-curated secret detection patterns on startup.
+* **Semantic Scanner (FR-12B):** Heuristic anomaly detection stub simulating Phi-4-Mini (3.8B) evaluation. Real-time, asynchronous scoring of payloads to catch semantic exfiltration, instruction manipulation, and poisoning—without adding synchronous latency.
 * **Deep Scanning:** Supports Base64 recursive decoding (up to 3 layers deep), Shannon entropy analysis for cryptographic material, and BIP-39 validation for crypto seed phrases.
 * **Canary Token Subsystem:** Generates, injects, and detects canary tokens to identify data exfiltration attempts.
 
@@ -352,6 +354,8 @@ tools:
 | `ALLOW_WILDCARD_IDENTITY` | `start`, `loader` | `true` to allow wildcard identity (`*`) in tool policies |
 | `VEXA_GATEWAY_URL` | `test` | Gateway endpoint URL for test command validation |
 | `AGENTWALL_OIDC_TOKEN` | `test` | OIDC Bearer token for gateway authentication during test |
+| `AGENTWALL_SEMANTIC_SCANNING` | `start` | `true` to enable heuristic semantic anomaly scanning |
+| `AGENTWALL_SEMANTIC_THRESHOLD` | `start` | Threshold for semantic anomaly findings (default: 0.85) |
 
 *(Run `agentwall start --help` for the full list of flags).*
 

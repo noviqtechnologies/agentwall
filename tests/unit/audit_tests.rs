@@ -101,23 +101,27 @@ async fn test_audit_log_rotation() {
             .unwrap();
     }
 
-    // On Windows the logger lazily creates the new active file on the next write after
-    // rotation.  Write one more entry to ensure audit.log exists before we verify it.
-    logger
-        .write_entry(
-            "test-session-123",
-            "test_event",
-            "tool_flush",
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
+    // On Windows (and in general) the logger sends the ack BEFORE doing rotation.
+    // Write TWO extra sentinel entries after the loop so that by the time the SECOND
+    // ack arrives the background thread has definitely finished any rotation triggered
+    // by the FIRST sentinel — i.e. the active audit.log is stable and non-empty.
+    for sentinel in &["tool_flush_1", "tool_flush_2"] {
+        logger
+            .write_entry(
+                "test-session-123",
+                "test_event",
+                sentinel,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+    }
 
     // Since max_bytes was tiny, it should have rotated a few times.
     let files: Vec<_> = fs::read_dir(dir.path())

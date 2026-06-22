@@ -293,6 +293,8 @@ async fn stdio_scan_response(
                 injection_findings: Some(serde_json::json!({"findings": findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()}).to_string()),
                 latency_ms: Some(0.0),
                 verdict: Some("deny".to_string()),
+                semantic_anomaly_score: None,
+                identity_context: None,
             };
             if let Ok(json_str) = serde_json::to_string(&event) {
                 let _ = state.event_tx.send(json_str);
@@ -335,6 +337,8 @@ async fn stdio_scan_response(
                     injection_findings: Some(serde_json::json!({"findings": ["timeout: potential ReDoS"]}).to_string()),
                     latency_ms: Some(0.0),
                     verdict: Some("deny".to_string()),
+                    semantic_anomaly_score: None,
+                    identity_context: None,
                 };
                 if let Ok(json_str) = serde_json::to_string(&event) {
                     let _ = state.event_tx.send(json_str);
@@ -383,6 +387,8 @@ async fn stdio_scan_response(
                 injection_findings: Some(serde_json::json!({"findings": findings.iter().map(|f| format!("{}: {}", f.category.as_str(), f.preview)).collect::<Vec<_>>()}).to_string()),
                 latency_ms: Some(0.0),
                 verdict: Some("allow".to_string()),
+                semantic_anomaly_score: None,
+                identity_context: None,
             };
             if let Ok(json_str) = serde_json::to_string(&event) {
                 let _ = state.event_tx.send(json_str);

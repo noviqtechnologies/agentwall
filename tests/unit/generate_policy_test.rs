@@ -23,8 +23,10 @@ fn make_event(tool: &str, params: &str, timestamp: &str) -> EgressEvent {
         response_body_hash: None,
         dlp_findings: None,
         injection_findings: None,
-        latency_ms: Some(10.0),
+        latency_ms: None,
         verdict: Some("allow".to_string()),
+        semantic_anomaly_score: None,
+        identity_context: None,
     }
 }
 

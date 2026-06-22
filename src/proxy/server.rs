@@ -797,6 +797,8 @@ async fn handle_request(
             injection_findings: injection_findings_json.clone(),
             latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
             verdict: Some(if should_kill || response.get("error").is_some() { "deny".to_string() } else { "allow".to_string() }),
+            semantic_anomaly_score: None,
+            identity_context: None,
         };
         let db = state.db_manager.clone();
         

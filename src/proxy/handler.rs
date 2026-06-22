@@ -85,6 +85,8 @@ pub struct ProxyState {
     pub response_scan_config: std::sync::RwLock<crate::policy::response_scanner::ResponseScanConfig>,
     /// FR-12: Content-Aware DLP & Secret Detection on outbound requests
     pub dlp_scanner: Arc<crate::policy::dlp::DlpScanner>,
+    /// FR-12B: Semantic anomaly scanner (Phi-4-Mini heuristic stub)
+    pub semantic_scanner: Arc<crate::policy::semantic::SemanticScanner>,
     /// FR-13: Injection & Poisoning Detector
     pub injection_scanner: Arc<crate::policy::injection::InjectionScanner>,
     /// FR-306: Sliding window of recent tool call fingerprints (bounded to 5).
@@ -300,6 +302,42 @@ pub async fn evaluate_jsonrpc(
                 ).await;
             }
         }
+    }
+
+    // FR-12B: Semantic Scanner (Phi-4-Mini Heuristic Stub)
+    if state.semantic_scanner.config.enabled {
+        let tool_name_clone = tool_name.to_string();
+        let session_id_clone = session.session_id.clone();
+        let semantic_scanner = state.semantic_scanner.clone();
+        let db_manager = state.db_manager.clone();
+        let shadow_mode = state.shadow_mode;
+
+        // Fire and forget async evaluation
+        tokio::spawn(async move {
+            let finding = semantic_scanner.calculate_score_sync(&tool_name_clone, &params_str);
+            let timestamp_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+            
+            // Write to DB
+            db_manager.update_anomaly_score(session_id_clone.clone(), timestamp_ns, finding.anomaly_score as f64);
+
+            if finding.anomaly_score >= semantic_scanner.config.threshold {
+                logging::log_event(
+                    Level::Warn,
+                    "semantic_anomaly",
+                    json!({
+                        "tool": tool_name_clone,
+                        "session": &session_id_clone,
+                        "score": finding.anomaly_score,
+                        "type": finding.finding_type.as_str(),
+                        "explanation": finding.explanation,
+                        "shadow_mode": shadow_mode
+                    }),
+                );
+            }
+        });
+        
+        // Note: For full enforce mode, we could await the score here and block.
+        // Currently keeping it purely async to avoid adding latency per AC-12.7.
     }
 
     // ── Step 2: Credential Scope Validation (FR-5 / AC-5.8) ─────────────

@@ -216,6 +216,7 @@
     /* ── Main Content ── */
     .main-content {
       flex: 1;
+      min-height: 0; /* Fix: allow flexbox child to shrink and be scroll-bounded */
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -236,6 +237,7 @@
 
     .panel-container {
       flex: 1;
+      min-height: 0; /* Fix: must be 0 (not auto) so overflow-y: auto activates */
       overflow-y: auto;
       padding: 28px 32px;
       scroll-behavior: smooth;
@@ -899,6 +901,9 @@
       <div class="nav-item" data-panel="panel-injection">
         <span class="nav-icon">06</span> Injection & Poisoning
       </div>
+      <div class="nav-item" data-panel="panel-semantic">
+        <span class="nav-icon">06b</span> Semantic Scanner
+      </div>
       <div class="nav-item" data-panel="panel-policy">
         <span class="nav-icon">07</span> Generate Policy
       </div>
@@ -1147,6 +1152,39 @@
               Detected</h3>
             <p style="font-size: 0.85rem;">All observed responses from tools, models, and external APIs are clean of
               prompt injections.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 6b: Semantic Scanner -->
+      <div id="panel-semantic" class="panel">
+        <div class="panel-header">
+          <h2>🧠 Semantic Scanner</h2>
+          <span id="semantic-count-badge" class="badge muted">0 detections</span>
+        </div>
+
+        <div class="card" style="padding: 0; overflow: hidden;" id="semantic-card">
+          <div class="table-wrap">
+            <table id="tbl-semantic">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Tool/Context</th>
+                  <th>Anomaly Score</th>
+                  <th>Category</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="semantic-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="semantic-empty" class="card" style="display:none;">
+          <div class="risk-empty">
+            <span class="big-check">🧠</span>
+            <h3 style="font-family: var(--font-head); color: var(--green); margin-bottom: 8px;">No Semantic Anomalies Detected</h3>
+            <p style="font-size: 0.85rem;">All observed tool payloads appear semantically benign.</p>
           </div>
         </div>
       </div>
@@ -1975,6 +2013,32 @@
         }
       }
 
+      // Semantic Finding parsing
+      let semanticBlockHtml = '';
+      if (event.semantic_anomaly_score !== undefined && event.semantic_anomaly_score !== null && event.semantic_anomaly_score >= 0.85) {
+        let explanation = "Normal behavior.";
+        if (event.semantic_finding_type === "ToolDescriptionPoisoning") explanation = "Tool description contains prompt injection directives.";
+        if (event.semantic_finding_type === "ResponseInstructionManipulation") explanation = "Response attempts to alter the agent's core instructions.";
+        if (event.semantic_finding_type === "SemanticExfiltration") explanation = "Suspicious combination of data transmission and HTTP endpoints.";
+        
+        semanticBlockHtml = `
+          <div class="json-label" style="color: var(--amber); display: flex; align-items: center; gap: 6px; font-weight: 700; margin-top: 12px; font-size: 0.75rem;">
+            🧠 Semantic Anomaly Detected (Score: ${event.semantic_anomaly_score.toFixed(2)})
+          </div>
+          <div style="background: rgba(227,179,65,0.08); border: 1px solid var(--amber); border-radius: var(--radius-sm); padding: 10px 14px; font-family: var(--font-mono); font-size: 0.78rem; color: #ffd670; margin-top: 6px;">
+            <ul style="list-style-type: square; margin: 0; padding: 0;">
+              <li style="margin-left: 16px; margin-top: 4px;">Type: ${escHtml(event.semantic_finding_type || "SemanticExfiltration")}</li>
+              <li style="margin-left: 16px; margin-top: 4px;">Explanation: ${escHtml(explanation)}</li>
+            </ul>
+          </div>
+        `;
+      }
+
+      if (!isDenied && event.semantic_anomaly_score >= 0.85) {
+        verdictClass = 'amber';
+        verdictLabel = 'SEMANTIC ANOMALY';
+      }
+
       row.innerHTML = `
     <span class="tl-ts">${fmtTime(event.timestamp_ns)}</span>
     <span class="tl-tool" style="min-width: 280px; display: inline-flex; align-items: center; gap: 6px;">
@@ -1987,6 +2051,7 @@
     <div class="tl-expand" style="width: 100%;">
       ${dlpBlockHtml}
       ${injectionBlockHtml}
+      ${semanticBlockHtml}
       <div class="json-label">Parameters / Payload</div>
       <div class="json-block">${escHtml((() => { try { return JSON.stringify(JSON.parse(paramsStr), null, 2); } catch { return paramsStr; } })())}</div>
       <div class="json-label">Response</div>
@@ -2243,6 +2308,49 @@
       }).join('');
     }
 
+    // ── Semantic Scanner Panel ────────────────────────────────────────────────
+    function renderSemantic(events) {
+      const body = document.getElementById('semantic-body');
+      const card = document.getElementById('semantic-card');
+      const emptyEl = document.getElementById('semantic-empty');
+      const badge = document.getElementById('semantic-count-badge');
+
+      const semanticFindings = [];
+      for (const e of events) {
+        if (e.semantic_anomaly_score !== undefined && e.semantic_anomaly_score !== null && e.semantic_anomaly_score >= 0.85) {
+            semanticFindings.push({
+              ts: e.timestamp_ns,
+              tool: e.url_path || 'unknown',
+              score: e.semantic_anomaly_score,
+              category: "Semantic Anomaly",
+              explanation: "Score exceeded 0.85 threshold"
+            });
+        }
+      }
+
+      badge.textContent = semanticFindings.length + ' detections';
+
+      if (semanticFindings.length === 0) {
+        card.style.display = 'none';
+        emptyEl.style.display = '';
+        return;
+      }
+
+      card.style.display = '';
+      emptyEl.style.display = 'none';
+
+      body.innerHTML = semanticFindings.map(r => {
+        let badgeColor = r.score >= 0.9 ? 'red' : 'amber';
+        return `<tr>
+      <td class="ts">${fmtTime(r.ts)}</td>
+      <td class="tool-name">${escHtml(r.tool)}</td>
+      <td><span class="badge ${badgeColor}">${r.score.toFixed(2)}</span></td>
+      <td><span class="badge ${badgeColor}">${escHtml(r.category)}</span></td>
+      <td><code style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-bright)">${escHtml(r.explanation)}</code></td>
+    </tr>`;
+      }).join('');
+    }
+
     // ── Poll & refresh all panels ──────────────────────────────────────────────
     async function refresh() {
       let stats = null;
@@ -2260,6 +2368,7 @@
       renderRisks(allEvents);
       renderDlp(allEvents);
       renderInjections(allEvents);
+      renderSemantic(allEvents);
       renderParamExplorer(allEvents);
 
       document.getElementById('inv-last-update').textContent =
@@ -2298,6 +2407,7 @@
           renderRisks(allEvents);
           renderDlp(allEvents);
           renderInjections(allEvents);
+          renderSemantic(allEvents);
           
           // Gateway FR-5 block log
           addGatewayBlockedCall(event);
