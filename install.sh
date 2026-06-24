@@ -24,7 +24,7 @@ fi
 echo "[*] Detected OS: $OS"
 echo "[*] Detected Arch: $ARCH"
 
-VERSION="v1.0.11"
+VERSION="v1.0.12"
 echo "[*] Using version: $VERSION"
 
 ASSET_NAME="agentwall-${VERSION}-${OS}-${ARCH}.zip"
