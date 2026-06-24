@@ -62,7 +62,7 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 
 # Reqwest for forwarding
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 shlex = "1.3"
 

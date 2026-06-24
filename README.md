@@ -288,6 +288,18 @@ auth:
   audience: agentwall
   issuer: https://your-org.okta.com
 
+# FR-22 Agent Identity Configuration
+identity:
+  provider: oidc
+  issuer: https://your-org.okta.com
+  agents:
+    - id: my-agent
+      description: "Data analysis agent"
+      allowed_tools: ["read_file", "execute_query"]
+    - id: deploy-agent
+      description: "Deployment agent"
+      allowed_tools: ["*"]
+
 session:
   max_calls_per_second: 10
 
@@ -326,6 +338,10 @@ tools:
 | `agentwall report <log>` | Generate a session report from an audit log. |
 | `agentwall validate` | Single-payload policy check for authors. |
 | `agentwall promote` | Production readiness checks and Ed25519 signing. |
+| `agentwall identity create` | Provision a new Vault identity and generate a scoped JWT credential. |
+| `agentwall identity rotate` | Invalidate active credential and issue a fresh JWT. |
+| `agentwall identity inspect` | Display the active credential details and expiration. |
+| `agentwall identity audit` | Dump the HMAC-chained identity event log for forensics. |
 | `agentwall init sidecar` | (Deprecated in v6.1) Generate K8s sidecar proxy manifests. |
 | `agentwall wrap <target>` | Patch IDE configs to route via AgentWall. |
 | `agentwall unwrap <target>` | Restore IDE configurations to their original state. |

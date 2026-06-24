@@ -98,6 +98,7 @@ fn test_tool_history_memory_bounding() {
         None,
         local_policy,
         None,
+        None,
     ));
 
     // Call 10 times with different parameters so cycle detection isn't triggered,
@@ -200,6 +201,7 @@ fn test_cycle_detection_blocking() {
         None,
         None,
         local_policy,
+        None,
         None,
     ));
     let res1 = rt.block_on(evaluate_jsonrpc(&state, &session, &req));
@@ -307,6 +309,7 @@ fn test_pause_interactive_fallback_in_non_tty() {
         None,
         None,
         local_policy,
+        None,
         None,
     ));
 

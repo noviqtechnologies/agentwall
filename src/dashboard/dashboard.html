@@ -913,6 +913,9 @@
       <div class="nav-item" data-panel="panel-self-healing">
         <span class="nav-icon">09</span> Self-Healing Policy
       </div>
+      <div class="nav-item" data-panel="panel-identity">
+        <span class="nav-icon">10</span> Identity Governance
+      </div>
       <div class="nav-item" data-panel="panel-gateway" id="nav-gateway">
         <span class="nav-icon" style="background:rgba(83,155,245,0.15); color:var(--accent);">⛨</span> Gateway
       </div>
@@ -1353,7 +1356,70 @@
       </div>
     </div><!-- panel-container end: self-healing -->
 
-      <!-- Panel 10: Gateway (FR-5 v2.0) -->
+      <!-- Panel 10: Identity & Credentials (FR-22) -->
+      <div id="panel-identity" class="panel">
+        <div class="panel-header">
+          <h2>🔐 Identity & Credential Governance</h2>
+        </div>
+        <div class="card">
+          <h3>Agent Identity Management</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">
+            AgentWall v2.0 introduces native multi-tenant OIDC validation and just-in-time credential vending for AI agents.
+          </p>
+          <div class="stats-bar">
+            <div class="stat-card">
+              <div class="stat-label">Active Credentials</div>
+              <div class="stat-value accent">3</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">OIDC Validation</div>
+              <div class="stat-value green">Active</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Vault Backend</div>
+              <div class="stat-value amber">HashiCorp</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:12px; margin-top:20px;">
+            <button class="btn btn-primary" onclick="alert('Feature coming soon in full UI release')">Rotate Agent Credentials</button>
+            <button class="btn" onclick="alert('Feature coming soon in full UI release')">View Identity Audit Log</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Identity CLI Commands</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:20px;">
+            You can manage agent identities directly from the terminal.
+          </p>
+          <table style="margin-top: 10px;">
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="tool-name">agentwall identity create</td>
+                <td>Provisions a new Vault identity and generates a scoped JWT credential.</td>
+              </tr>
+              <tr>
+                <td class="tool-name">agentwall identity rotate</td>
+                <td>Invalidates the active credential and issues a fresh JWT.</td>
+              </tr>
+              <tr>
+                <td class="tool-name">agentwall identity inspect</td>
+                <td>Displays the active credential details and expiration.</td>
+              </tr>
+              <tr>
+                <td class="tool-name">agentwall identity audit</td>
+                <td>Dumps the HMAC-chained identity event log for forensics.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Panel 11: Gateway (FR-5 v2.0) -->
       <div id="panel-gateway" class="panel">
         <div class="panel-header">
           <h2>⛨ Centralized Enforcement Gateway</h2>

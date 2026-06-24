@@ -127,6 +127,7 @@ fn evict_expired_sessions(state: &ProxyState) {
 async fn resolve_session(
     state: &ProxyState,
     auth_header: Option<&str>,
+    credential_header: Option<&str>,
     client_ip: &str,
 ) -> Result<Arc<super::session::SessionContext>, (StatusCode, String)> {
     // Fix 5: Poison-safe RwLock read — if a prior writer panicked, log and deny rather
@@ -240,6 +241,7 @@ async fn resolve_session(
                     email,
                     current_policy,
                     Some(client_ip.to_string()),
+                    credential_header.map(|s| s.to_string()),
                 ));
 
                 // Fix 3: Evict expired sessions before inserting new one
@@ -318,6 +320,7 @@ async fn resolve_session(
             None,
             current_policy,
             Some(client_ip.to_string()),
+            credential_header.map(|s| s.to_string()),
         ));
 
         // Fix 3: Evict expired sessions before inserting new one
@@ -356,8 +359,11 @@ async fn handle_request(
         let auth_header = req.headers().get(hyper::header::AUTHORIZATION)
             .and_then(|h| h.to_str().ok())
             .map(|s| s.to_string());
+        let credential_header = req.headers().get("X-AgentWall-Credential")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
         
-        let session = match resolve_session(&state, auth_header.as_deref(), client_ip).await {
+        let session = match resolve_session(&state, auth_header.as_deref(), credential_header.as_deref(), client_ip).await {
             Ok(s) => s,
             Err((status, err_msg)) => {
                 let err = serde_json::json!({
@@ -683,6 +689,10 @@ async fn handle_request(
         .and_then(|h| h.to_str().ok())
         .map(|s| s.to_string());
 
+    let credential_header = req.headers().get("X-AgentWall-Credential")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+
     // Read body
     let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
         Ok(collected) => collected.to_bytes(),
@@ -710,7 +720,7 @@ async fn handle_request(
     let start_time = std::time::Instant::now();
 
     // Resolve dynamic multi-tenant session context (FR-101)
-    let session = match resolve_session(&state, auth_header.as_deref(), client_ip).await {
+    let session = match resolve_session(&state, auth_header.as_deref(), credential_header.as_deref(), client_ip).await {
         Ok(s) => s,
         Err((status, err_msg)) => {
             let err = serde_json::json!({

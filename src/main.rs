@@ -10,6 +10,7 @@ use agentwall::policy;
 use agentwall::promote;
 use agentwall::proxy;
 use agentwall::report;
+use agentwall::identity; // FR-22
 use agentwall::{log_error, log_warn};
 
 use colored::*;
@@ -151,6 +152,29 @@ async fn main() {
             report_include_params,
         } => run_report(&log_path, output.as_deref(), &format, report_include_params),
         Commands::Init { target } => init::run_init(&target),
+        // FR-22: Identity subcommand dispatch
+        Commands::Identity { command } => match command {
+            cli::IdentityCommands::Create { agent, scope, ttl, rotation_policy } => {
+                identity::run_identity(identity::IdentityCommand::Create {
+                    agent, scope, ttl, rotation_policy
+                })
+            }
+            cli::IdentityCommands::Rotate { agent, drain_secs } => {
+                identity::run_identity(identity::IdentityCommand::Rotate { agent, drain_secs })
+            }
+            cli::IdentityCommands::Audit { agent, verify } => {
+                identity::run_identity(identity::IdentityCommand::Audit { agent, verify })
+            }
+            cli::IdentityCommands::Scope { agent, tool, allow, deny, policy } => {
+                let is_allow = allow || !deny; // default to allow if not explicitly denied
+                identity::run_identity(identity::IdentityCommand::Scope {
+                    agent, tool, allow: is_allow, policy_path: policy
+                })
+            }
+            cli::IdentityCommands::Inspect { credential } => {
+                identity::run_identity(identity::IdentityCommand::Inspect { credential_id: credential })
+            }
+        },
         Commands::Unwrap { target } => agentwall::wrap::run_unwrap_target(&target),
         Commands::StdioProxy { args, scan_responses, block_on_secrets, max_scan_bytes } => {
             run_stdio_proxy(args, scan_responses, block_on_secrets, max_scan_bytes).await

@@ -14,3 +14,4 @@ pub mod lint;
 pub mod dashboard;
 pub mod generate_policy;
 pub mod self_healing;
+pub mod identity;

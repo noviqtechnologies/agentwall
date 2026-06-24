@@ -356,25 +356,24 @@ pub async fn evaluate_jsonrpc(
         };
 
         if !required_scopes.is_empty() {
-            // The credential scope header is conventionally forwarded by identity-aware agents.
-            // In this stub, we read it from the session's extra headers stored in params metadata.
-            // When FR-22 is available, this will come from the validated OIDC token claims.
-            let agent_scope = session.identity_sub.as_deref(); // stub: use identity_sub as proxy scope
-            let scope_result = state.credential_scope_validator.validate(
+            let agent_id = session.identity_sub.as_deref().unwrap_or("unknown-agent");
+            let credential_id = session.active_credential_id.as_deref().unwrap_or("");
+            
+            let scope_result = crate::identity::scope_validator::IdentityScopeValidator::validate(
+                agent_id,
                 tool_name,
-                &required_scopes,
-                agent_scope,
-                &session.session_id,
+                credential_id,
             );
 
-            if let crate::policy::credential_scope::CredentialScopeResult::Insufficient { reason } = scope_result {
+            if let crate::identity::scope_validator::CredentialScopeCheckResult::Insufficient(reason) = &scope_result {
+                let reason_str = reason.clone();
                 state.metrics_deny_total.fetch_add(1, Ordering::Relaxed);
                 let _ = state.audit_logger.write_entry(
                     &session.session_id,
                     "credential_scope_deny",
                     tool_name,
                     None,
-                    Some(reason.clone()),
+                    Some(reason_str.clone()),
                     None,
                     session.identity_sub.clone(),
                     session.identity_email.clone(),
@@ -387,7 +386,7 @@ pub async fn evaluate_jsonrpc(
                     json!({
                         "tool": tool_name,
                         "session": &session.session_id,
-                        "reason": &reason,
+                        "reason": &reason_str,
                     }),
                 );
                 return ProxyAction::Respond(json!({
@@ -395,7 +394,7 @@ pub async fn evaluate_jsonrpc(
                     "id": id,
                     "error": {
                         "code": -32403,
-                        "message": format!("Credential Scope Insufficient: {}", reason),
+                        "message": format!("Credential Scope Insufficient: {}", reason_str),
                         "data": {
                             "session_id": &session.session_id,
                             "tool": tool_name,
@@ -403,7 +402,79 @@ pub async fn evaluate_jsonrpc(
                         }
                     }
                 }));
+            } else if let crate::identity::scope_validator::CredentialScopeCheckResult::Invalid(reason) = &scope_result {
+                let reason_str = reason.clone();
+                state.metrics_deny_total.fetch_add(1, Ordering::Relaxed);
+                let _ = state.audit_logger.write_entry(
+                    &session.session_id,
+                    "credential_invalid",
+                    tool_name,
+                    None,
+                    Some(reason_str.clone()),
+                    None,
+                    session.identity_sub.clone(),
+                    session.identity_email.clone(),
+                    None,
+                    session.request_ip.clone(),
+                ).await;
+                logging::log_event(
+                    Level::Warn,
+                    "credential_invalid",
+                    json!({
+                        "tool": tool_name,
+                        "session": &session.session_id,
+                        "reason": &reason_str,
+                    }),
+                );
+                return ProxyAction::Respond(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32401,
+                        "message": format!("Invalid Credential: {}", reason_str),
+                        "data": {
+                            "session_id": &session.session_id,
+                            "tool": tool_name,
+                        }
+                    }
+                }));
+            } else if let crate::identity::scope_validator::CredentialScopeCheckResult::Expired = &scope_result {
+                state.metrics_deny_total.fetch_add(1, Ordering::Relaxed);
+                let _ = state.audit_logger.write_entry(
+                    &session.session_id,
+                    "credential_expired",
+                    tool_name,
+                    None,
+                    Some("credential expired".to_string()),
+                    None,
+                    session.identity_sub.clone(),
+                    session.identity_email.clone(),
+                    None,
+                    session.request_ip.clone(),
+                ).await;
+                logging::log_event(
+                    Level::Warn,
+                    "credential_expired",
+                    json!({
+                        "tool": tool_name,
+                        "session": &session.session_id,
+                        "credential_id": credential_id,
+                    }),
+                );
+                return ProxyAction::Respond(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32401,
+                        "message": "Credential Expired",
+                        "data": {
+                            "session_id": &session.session_id,
+                            "tool": tool_name,
+                        }
+                    }
+                }));
             }
+
         }
     }
 

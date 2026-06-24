@@ -39,6 +39,32 @@ pub struct PolicyFile {
 
     /// Tool allowlist. Empty = all denied.
     pub tools: Option<Vec<ToolRule>>,
+
+    /// Agent identity configuration (FR-22).
+    pub agents: Option<Vec<AgentIdentityPolicy>>,
+}
+
+/// Agent identity and credential policy (FR-22).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentIdentityPolicy {
+    pub id: String,
+    pub sub: String,
+    #[serde(default)]
+    pub credential_scope: Vec<CredentialScope>,
+    pub max_credential_ttl: Option<String>,
+    pub rotation_policy: Option<String>,
+}
+
+/// Per-tool credential scope (FR-22).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CredentialScope {
+    pub tool: String,
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub databases: Vec<String>,
 }
 
 /// FR-306: Action to take when a cycle is detected.
@@ -117,12 +143,19 @@ pub struct SelfHealingConfig {
     pub approval_required: bool,
 }
 
-/// Identity configuration (OIDC).
+/// Identity configuration (OIDC & Vault FR-22).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IdentityConfig {
-    pub issuer: String,
-    pub audience: String,
+    pub provider: Option<String>,
+    pub vault_addr: Option<String>,
+    pub oidc_issuer: Option<String>,
+    pub credential_type: Option<String>,
+    pub default_ttl: Option<String>,
+    pub rotation_drain: Option<String>,
+    // Legacy fields (v1):
+    pub issuer: Option<String>,
+    pub audience: Option<String>,
 }
 
 /// OIDC provider authentication configuration (FR-201).

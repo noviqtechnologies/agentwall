@@ -268,6 +268,12 @@ pub enum Commands {
         target: Option<InitTarget>,
     },
 
+    /// Agent Identity & Credential Governance (FR-22)
+    Identity {
+        #[command(subcommand)]
+        command: IdentityCommands,
+    },
+
     /// Automatically wrap an existing agent command with AgentWall (FR-301, FR-302)
     Wrap {
         /// The command to wrap (e.g. "npx @modelcontextprotocol/server-memory")
@@ -437,3 +443,78 @@ pub enum InitTarget {
         mcp_upstream: String,
     },
 }
+
+#[derive(Subcommand)]
+pub enum IdentityCommands {
+    /// Provision a scoped, short-lived credential for an agent
+    Create {
+        /// Agent identifier
+        #[arg(long)]
+        agent: String,
+        
+        /// Scope string (e.g., "read-only")
+        #[arg(long)]
+        scope: String,
+        
+        /// Time-to-live (e.g., "1h", "30m")
+        #[arg(long, default_value = "1h")]
+        ttl: String,
+        
+        /// Optional rotation policy (e.g., "daily")
+        #[arg(long)]
+        rotation_policy: Option<String>,
+    },
+    
+    /// Rotate an agent's active credential with zero downtime
+    Rotate {
+        /// Agent identifier
+        #[arg(long)]
+        agent: String,
+        
+        /// Drain period in seconds (old credential remains valid for this long)
+        #[arg(long, default_value_t = 30)]
+        drain_secs: u64,
+    },
+    
+    /// Display the HMAC-chained identity audit history
+    Audit {
+        /// Agent identifier
+        #[arg(long)]
+        agent: String,
+        
+        /// Verify the HMAC chain integrity before displaying
+        #[arg(long, default_value_t = false)]
+        verify: bool,
+    },
+    
+    /// Set per-tool-call credential scoping rules
+    Scope {
+        /// Agent identifier
+        #[arg(long)]
+        agent: String,
+        
+        /// Tool name to scope
+        #[arg(long)]
+        tool: String,
+        
+        /// Explicitly allow this tool (default)
+        #[arg(long, group = "action")]
+        allow: bool,
+        
+        /// Explicitly deny this tool
+        #[arg(long, group = "action")]
+        deny: bool,
+        
+        /// Policy file to update (optional)
+        #[arg(long, default_value = "agentwall-policy.yaml")]
+        policy: String,
+    },
+    
+    /// Inspect a specific credential binding
+    Inspect {
+        /// Credential binding ID (UUID)
+        #[arg(long)]
+        credential: String,
+    },
+}
+

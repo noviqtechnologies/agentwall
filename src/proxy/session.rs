@@ -39,6 +39,9 @@ pub struct SessionContext {
 
     /// Isolated client remote IP address (FR-201)
     pub request_ip: Option<String>,
+
+    /// FR-22: Active credential presented by the agent for scoping.
+    pub active_credential_id: Option<String>,
 }
 
 impl SessionContext {
@@ -49,6 +52,7 @@ impl SessionContext {
         identity_email: Option<String>,
         active_policy: Option<CompiledPolicy>,
         request_ip: Option<String>,
+        active_credential_id: Option<String>,
     ) -> Self {
         let session_id = Uuid::new_v4().to_string();
         let start_time = Instant::now();
@@ -68,6 +72,7 @@ impl SessionContext {
             tool_history: Mutex::new(Vec::new()),
             start_time,
             request_ip,
+            active_credential_id,
         }
     }
 

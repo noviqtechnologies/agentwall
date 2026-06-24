@@ -87,6 +87,7 @@ async fn test_concurrency_and_isolation_100_sessions() {
                 Some(format!("agent-{}@enterprise.com", idx)),
                 Some(policy_clone),
                 None,
+                None,
             ));
             
             state_clone.sessions.insert(session_token, session.clone());
@@ -147,6 +148,7 @@ async fn test_rate_limiting_isolation() {
         None,
         Some(policy.clone()),
         None,
+        None,
     ));
     state.sessions.insert("token-a".to_string(), session_a.clone());
 
@@ -155,6 +157,7 @@ async fn test_rate_limiting_isolation() {
         Some("agent-b".to_string()),
         None,
         Some(policy.clone()),
+        None,
         None,
     ));
     state.sessions.insert("token-b".to_string(), session_b.clone());
@@ -239,6 +242,7 @@ async fn test_cycle_detection_isolation() {
         None,
         Some(policy.clone()),
         None,
+        None,
     ));
     state.sessions.insert("token-a".to_string(), session_a.clone());
 
@@ -247,6 +251,7 @@ async fn test_cycle_detection_isolation() {
         Some("agent-b".to_string()),
         None,
         Some(policy.clone()),
+        None,
         None,
     ));
     state.sessions.insert("token-b".to_string(), session_b.clone());
@@ -328,6 +333,7 @@ async fn test_hot_reload_policy_isolation() {
         None,
         state.policy.read().unwrap().clone(),
         None,
+        None,
     ));
     state.sessions.insert("token-a".to_string(), session_a.clone());
 
@@ -342,6 +348,7 @@ async fn test_hot_reload_policy_isolation() {
         Some("agent-b".to_string()),
         None,
         state.policy.read().unwrap().clone(),
+        None,
         None,
     ));
     state.sessions.insert("token-b".to_string(), session_b.clone());
@@ -398,6 +405,7 @@ async fn test_dynamic_tool_history_max() {
         None,
         Some(policy.clone()),
         None,
+        None,
     ));
 
     let req = json!({
@@ -441,6 +449,7 @@ async fn test_session_ttl_expiry() {
         Some("agent-test".to_string()),
         None,
         Some(policy),
+        None,
         None,
     );
 

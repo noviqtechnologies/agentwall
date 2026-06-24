@@ -58,6 +58,22 @@ services:
     networks:
       - agentwall-net
 
+  # ── HashiCorp Vault (FR-22) ─────────────────────────────────────────────────
+  vault:
+    image: hashicorp/vault:1.16
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "root"
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - agentwall-net
+
   # ── Mock MCP Tool Server ────────────────────────────────────────────────────
   mock-mcp:
     build:

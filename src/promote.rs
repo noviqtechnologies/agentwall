@@ -48,8 +48,9 @@ pub fn run_promote(policy_path: &str, key_path: Option<&str>) -> i32 {
 
     // Check identity issuer (HTTPS)
     if let Some(ident) = &policy_file.identity {
-        if !ident.issuer.starts_with("https://") {
-            errors.push(format!("Identity issuer must use HTTPS: {}", ident.issuer));
+        let issuer = ident.issuer.as_deref().or(ident.oidc_issuer.as_deref()).unwrap_or("");
+        if !issuer.starts_with("https://") {
+            errors.push(format!("Identity issuer must use HTTPS: {}", issuer));
         }
     } else {
         errors.push("Production policies MUST have an identity configuration (FR-202).".to_string());

@@ -375,7 +375,7 @@ pub fn load_policy(path: &Path, issuer_override: Option<String>) -> PolicyLoadRe
     let (oidc_issuer, oidc_audience, oidc_cache_ttl) = if let Some(auth_cfg) = policy_file.auth {
         (Some(auth_cfg.issuer), Some(auth_cfg.audience), auth_cfg.cache_ttl_minutes)
     } else if let Some(ident) = policy_file.identity {
-        (Some(ident.issuer), Some(ident.audience), None)
+        (ident.issuer.or(ident.oidc_issuer), ident.audience, None)
     } else {
         (None, None, None)
     };
