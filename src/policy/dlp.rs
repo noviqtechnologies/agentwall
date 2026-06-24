@@ -410,8 +410,8 @@ mod tests {
     #[test]
     fn test_slack_token() {
         let scanner = DlpScanner::new(None).unwrap();
-        let text = "xoxb-REDACTED";
-        let findings = scanner.scan_content(text);
+        let token = format!("xoxb-{}-{}-{}", "123456789012", "1234567890123", "abcdefghijklmnopqrstuvwx");
+        let findings = scanner.scan_content(&token);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, SecretCategory::SlackToken);
     }
