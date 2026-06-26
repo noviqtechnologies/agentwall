@@ -1,8 +1,5 @@
 /target
 docs/
-!docs/AgentWall-Technical-Design-Document.md
-!docs/agentwall_prd_v02.md
-!docs/VexaAgentWall-PRD-v6.1.md
 scratch/
 graphify-out/
 
@@ -16,7 +13,7 @@ session-report.json
 report.json
 matrix_results.json
 
-# html
+# HTML & CSS (dashboard.html is tracked)
 *.html
 !src/dashboard/dashboard.html
 *.css
@@ -51,11 +48,6 @@ tests/tmp_*
 policy.yaml
 policy.yaml.bak
 
-# Demo UI artifacts
-demo-ui/policy.yaml
-demo-ui/audit.log
-demo-ui/session-report.json
-demo-ui/policy.yaml.sig
 # Python caches
 __pycache__/
 **/__pycache__/
@@ -68,6 +60,8 @@ node_modules/
 # Environment variables
 .env
 .env.*
+
+# Generated test plan docs (covered by formal test suite)
 tests/PHASE1_VERIFICATION_TEST_PLAN.docx
 tests/PHASE1_VERIFICATION_TEST_PLAN.md
 tests/fixtures/README.md

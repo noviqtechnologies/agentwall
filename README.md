@@ -4,7 +4,7 @@ Vexa AgentWall is a full egress proxy and security gateway for AI agents operati
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-2.0.0--beta-green.svg" alt="Version"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-1.0.12-green.svg" alt="Version"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.89%2B-orange.svg" alt="Rust"></a>
 </p>
 
@@ -14,14 +14,15 @@ Vexa AgentWall is a full egress proxy and security gateway for AI agents operati
 
 ---
 
-## The Two-Engine Model
+## The Three-Engine Model
 
-AgentWall operates as two distinct tools with a clean separation of concerns:
+AgentWall v2.0 operates as three distinct, complementary layers:
 
 1. **Local Developer CLI (`agentwall dev`)** — A zero-friction full egress proxy in shadow mode. It intercepts and records all outbound traffic from your agent: MCP JSON-RPC tool calls, direct HTTP/HTTPS fetches, CONNECT tunnels, and WebSocket connections. It surfaces risk patterns in a local dashboard and generates a YAML security policy draft. **No enforcement, no cloud, no signup.**
 2. **Centralized Enforcement Gateway** — A team/org deployment that enforces reviewed policies for all production agents. It is operated by the platform or security team—not the developer—ensuring compliance and true security control.
+3. **Agent Identity Platform** *(Preview / Phase 2)* — Per-agent credential provisioning, short-lived credential brokering, secret rotation, and audit trails. CLI commands are available as an early preview; vault integrations (HashiCorp Vault, AWS Secrets Manager, Azure Key Vault) are in active development.
 
-> **Why two separate tools?** A security control operated by the same person it constrains is not a security control. Local enforcement on a developer's machine can be bypassed. The centralized gateway breaks that conflict of interest by acting as a hardened infrastructure bottleneck.
+> **Why separate engines?** A security control operated by the same person it constrains is not a security control. Local enforcement on a developer's machine can be bypassed. The centralized gateway breaks that conflict of interest by acting as a hardened infrastructure bottleneck.
 
 ---
 
@@ -32,30 +33,31 @@ AgentWall is built to provide deterministic, tamper-proof control over what agen
 ### 🔍 Unparalleled Observation & Routing
 * **Unified Egress Proxy:** Intercepts MCP, HTTP CONNECT, WebSocket, and plain HTTP traffic.
 * **Ecosystem Integrations:** Automatic discovery and patching for Claude Desktop, Cursor, VS Code, JetBrains, Zed, Cline, OpenCode, and Antigravity.
-* **Local Web Dashboard:** Real-time visibility into tool inventories, session timelines, parameter exploration, and risk flags—all stored locally via SQLite.
-* **Auto-Policy Generation:** Automatically drafts robust YAML security policies (`agentwall-policy.yaml`) from observed traffic patterns.
+* **Local Web Dashboard:** Minimal single-page event log with real-time tool call visibility, filter, and CSV/JSON export — all stored locally via SQLite.
+* **Auto-Policy Generation:** Automatically drafts robust YAML security policies (`agentwall-policy.yaml`) from observed traffic patterns with self-healing confidence decay.
 
 ### 🛡️ Enterprise-Grade Enforcement (v2.0)
 * **9-Step Enforcement Pipeline:** Rigorous sequential validation including Identity, Credential Scope, Policy Engine, DLP, Injection, Semantic (Stub), A2A, Response Scan, and Audit Logging.
 * **Default-Deny Policy Engine:** Strict tool allowlisting with deep schema validation, bounds checking, and parameter enum enforcement.
-* **Process Sandbox:** OS-level containment using Landlock LSM + seccomp + netns on Linux and `sandbox-exec` on macOS to force all agent traffic through the proxy.
-* **Tool Call Chain Detector:** Analyzes call trajectories to detect and block recursive runaway loops and anomalous behavioral sequences.
-* **Adaptive Enforcement & Baselines:** Computes threat scores, escalates from warning to blocking dynamically, and builds behavioral contracts.
-* **Emergency Kill Switch:** Immediate session termination via SIGUSR1, sentinel file, or remote API without tearing down the underlying proxy.
+* **Process Sandbox:** OS-level containment using Landlock LSM + seccomp + netns on Linux. *(Note: macOS `sandbox-exec` is deprecated by Apple and deferred; Linux covers production deployments.)*
+* **Adaptive Enforcement & Baselines:** *(Deferred to Phase 3)* Threat scoring and escalation from warning to blocking.
+* **Tool Call Chain Detector:** *(Deferred to Phase 3)* Detection of recursive runaway loops.
+* **Emergency Kill Switch:** *(Deferred to Phase 3)* Session termination via SIGUSR1, sentinel file, or remote API.
 
 ### 🔐 Hybrid Data Loss Prevention (DLP) & Secret Detection
-* **Deterministic DLP:** 67 built-in regex patterns detecting Azure Storage Keys, GCP API Keys, Slack Tokens, SendGrid Keys, Credit Card Numbers (with Luhn validation), AWS Keys, GitHub Tokens, Stripe Keys, SSH Private Keys, DB URIs, and PII.
+* **Deterministic DLP:** 21 built-in regex patterns detecting AWS Keys, GitHub Tokens, OpenAI/Anthropic API Keys, Stripe Keys, SSH Private Keys, Azure Storage Keys, GCP API Keys, Slack Tokens, SendGrid Keys, PostgreSQL/MongoDB/Redis URIs, Credit Card Numbers (Luhn validated), UAE Emirates ID, US SSN, and environment variable references.
 * **Community Rules:** Extensible YAML configuration for loading custom team or community-curated secret detection patterns on startup.
-* **Semantic Scanner (FR-12B):** Heuristic anomaly detection stub simulating Phi-4-Mini (3.8B) evaluation. Real-time, asynchronous scoring of payloads to catch semantic exfiltration, instruction manipulation, and poisoning—without adding synchronous latency.
-* **Deep Scanning:** Supports Base64 recursive decoding (up to 3 layers deep), Shannon entropy analysis for cryptographic material, and BIP-39 validation for crypto seed phrases.
-* **Canary Token Subsystem:** Generates, injects, and detects canary tokens to identify data exfiltration attempts.
+* **Semantic Scanner (FR-12B) — Stub:** Heuristic anomaly detection stub that scores payloads for semantic exfiltration and instruction manipulation. The full quantized 3B model (Phi-4-Mini) is in active development; the current stub provides a scoring interface without live model inference.
+* **Deep Scanning:** Supports Base64 recursive decoding (up to 3 layers deep), Shannon entropy analysis (> 4.5 bits/char, length > 32) for cryptographic material, and BIP-39 validation for crypto seed phrases.
+* **Canary Token Subsystem:** *(Deferred to Phase 3)*
 
 ### 🛑 Injection & Poisoning Defense
-* **Deterministic Injection Detection:** 6-pass normalizer and 29-pattern injection scanner that blocks inbound tool responses and external payloads from compromising your agent. *(Note: AgentWall focuses on deterministic pattern matching, not semantic LLM evaluation).*
+* **Deterministic Injection Detection:** 6-pass normalizer (NFKC, zero-width stripping, Cyrillic homoglyphs, URL decode, Base64 decode, leetspeak, case-fold) and 16-pattern injection scanner that blocks inbound tool responses and external payloads from compromising your agent. *(AgentWall focuses on deterministic pattern matching; the semantic scanner supplements this for sophisticated attacks that patterns miss.)*
 * **Risk Flags:** Auto-detects path traversal (`../`), shell injection metacharacters, external URLs, unbounded strings, and destructive operation names.
+* **Tool Poisoning Detection:** Detects mid-session `tools/list` response mutations (hash-based).
 
 ### 📋 Compliance & Auditing
-* **HMAC Audit Logger:** Tamper-evident, offline-verifiable audit logs.
+* **HMAC Audit Logger:** Tamper-evident, offline-verifiable audit logs (`agentwall verify-log`).
 * **SIEM Integration:** Direct export to Splunk, Datadog, OpenSearch, or local files.
 * **OIDC Identity Binding:** Validates JWTs to bind agent requests to specific policy profiles.
 
@@ -110,10 +112,14 @@ Generate a robust policy draft with self-healing behavioral insights. The `--dec
 agentwall generate-policy --decay-window 30d
 # Output: ./agentwall-policy.yaml
 ```
-The generated policy includes Z-score anomaly detection flags and self-healing review suggestions.
+The generated policy includes confidence decay metadata and anomaly review suggestions.
 
-### 4. Validate & Submit
-Validate the policy using a deployed gateway instance (file-only local validation is deprecated):
+### 4. Lint & Submit
+Validate the policy file before submitting to your security team:
+```bash
+agentwall lint agentwall-policy.yaml
+```
+Validate the policy against a deployed gateway instance (file-only local validation is deprecated):
 ```bash
 agentwall test --policy agentwall-policy.yaml --gateway http://localhost:8080 --oidc-token "$TOKEN" ./fixtures.json
 ```
@@ -184,10 +190,10 @@ The centralized gateway evaluates policies, enforces DLP, logs audits, and prote
 | 1 | **Identity Validation** | Validates OIDC JWTs and extracts claims. |
 | 2 | **Credential Scope** | Validates identity scopes against policy requirements (FR-5). |
 | 3 | **Policy Engine** | Checks tool against default-deny allowlist and JSON schema. |
-| 4 | **DLP Scan** | Content-aware scan for secrets and PII. |
-| 5 | **Injection Scan** | Checks payloads against 29 prompt injection signatures. |
-| 6 | **Semantic Anomaly** | (Stub) LLM-based intent evaluation. |
-| 7 | **A2A Scan** | Validates inter-agent protocol messages. |
+| 4 | **DLP Scan** | Content-aware scan for secrets and PII (21 built-in patterns + community rules). |
+| 5 | **Injection Scan** | Checks payloads against 16 prompt injection signatures via 6-pass normalizer. |
+| 6 | **Semantic Anomaly** | (Stub) Heuristic intent scoring — full LLM model in active development. |
+| 7 | **A2A Scan** | *(Planned — Phase 2)* Validates inter-agent protocol messages. |
 | 8 | **Response Scan** | Analyzes tool output to prevent data exfiltration. |
 | 9 | **Audit Log** | Writes a durable, tamper-evident HMAC audit record. |
 
@@ -209,7 +215,7 @@ The centralized gateway evaluates policies, enforces DLP, logs audits, and prote
 ```yaml
 services:
   agentwall:
-    image: ghcr.io/noviqtechnologies/agentwall:v2.0.0-beta
+    image: ghcr.io/noviqtechnologies/agentwall:v1.0.12
     volumes:
       - ./policy.yaml:/etc/agentwall/policy.yaml:ro
       - ./audit.log:/var/log/agentwall/audit.log
@@ -222,7 +228,7 @@ services:
 *(Using GitOps rather than deprecated `agentwall init sidecar`)*
 Inject the `agentwall` container alongside your MCP server Pod, bound to localhost.
 
-### Configuration (`agentwall-gateway.yaml`)
+### Configuration (`agentwall-policy.yaml`)
 A typical production policy includes `credential_scope` constraints:
 ```yaml
 version: "2"
@@ -262,6 +268,32 @@ You can dynamically reload `agentwall-policy.yaml` without dropping connections.
 ```bash
 agentwall verify-log audit.log
 agentwall report audit.log --format text
+```
+
+---
+
+## Agent Identity & Credential Governance (Preview)
+
+> [!NOTE]
+> The Agent Identity Platform (`agentwall identity`) is available as a **CLI preview**. Full vault backend integrations (HashiCorp Vault, AWS Secrets Manager, Azure Key Vault) are in active development (Phase 2).
+
+AgentWall v2.0 introduces per-agent credential governance — the system that provisions, scopes, rotates, and audits agent credentials. Agents request short-lived, scoped credentials at runtime instead of holding long-lived secrets in environment variables.
+
+```bash
+# Provision a scoped credential for an agent (1-hour TTL)
+agentwall identity create --agent my-agent --scope read-only --ttl 1h
+
+# Rotate credentials with zero downtime (old credential valid for 30s drain period)
+agentwall identity rotate --agent my-agent
+
+# Audit credential history (HMAC-chained)
+agentwall identity audit --agent my-agent --verify
+
+# Set per-tool-call credential scoping
+agentwall identity scope --agent my-agent --tool execute_shell --deny
+
+# Inspect a specific credential binding
+agentwall identity inspect --credential <credential-id>
 ```
 
 ---
@@ -338,10 +370,11 @@ tools:
 | `agentwall report <log>` | Generate a session report from an audit log. |
 | `agentwall validate` | Single-payload policy check for authors. |
 | `agentwall promote` | Production readiness checks and Ed25519 signing. |
-| `agentwall identity create` | Provision a new Vault identity and generate a scoped JWT credential. |
-| `agentwall identity rotate` | Invalidate active credential and issue a fresh JWT. |
+| `agentwall identity create` | Provision a new scoped, short-lived credential for an agent. |
+| `agentwall identity rotate` | Rotate active credential with zero-downtime drain period. |
 | `agentwall identity inspect` | Display the active credential details and expiration. |
 | `agentwall identity audit` | Dump the HMAC-chained identity event log for forensics. |
+| `agentwall identity scope` | Set per-tool-call allow/deny scoping for an agent's credential. |
 | `agentwall init sidecar` | (Deprecated in v6.1) Generate K8s sidecar proxy manifests. |
 | `agentwall wrap <target>` | Patch IDE configs to route via AgentWall. |
 | `agentwall unwrap <target>` | Restore IDE configurations to their original state. |
@@ -377,6 +410,34 @@ tools:
 
 ---
 
+## Roadmap
+
+| Feature | Status | Phase |
+|---------|--------|-------|
+| Unified Egress Proxy (MCP, HTTP, WebSocket) | ✅ Built | Phase 1 |
+| Shadow Mode & Local Event Store (SQLite) | ✅ Built | Phase 1 |
+| Minimal Local Dashboard | ✅ Built | Phase 1 |
+| Auto-Policy Generation with Self-Healing | ✅ Built | Phase 1 |
+| Deterministic DLP (21 patterns) | ✅ Built | Phase 1 |
+| Injection Detection (16 patterns, 6-pass normalizer) | ✅ Built | Phase 1 |
+| HMAC Audit Logger + SIEM Export | ✅ Built | Phase 1 |
+| Enforcement Gateway (Policy Engine, FR-5) | ✅ Built | Phase 1 |
+| OIDC Identity Binding | ✅ Built | Phase 1 |
+| Ecosystem Integrations (8 IDEs) | ✅ Built | Phase 1 |
+| Agent Identity CLI (Preview) | ✅ Preview | Phase 1 |
+| Semantic Scanner (Full 3B Model) | 🔨 In Development | Phase 2 |
+| Linux Process Sandbox (Landlock + seccomp) | 🔨 In Development | Phase 2 |
+| A2A Protocol Scanner | 🗓 Planned | Phase 2 |
+| Full Identity Platform (Vault/AWS SM/Azure KV) | 🗓 Planned | Phase 2 |
+| SaaS Dashboard | 🗓 Planned | Phase 2–3 |
+| Tool Call Chain Detection | 🗓 Planned | Phase 3 |
+| Emergency Kill Switch | 🗓 Planned | Phase 3 |
+| Adaptive Enforcement & Behavioral Baseline | 🗓 Planned | Phase 3 |
+| Canary Token Subsystem | 🗓 Planned | Phase 3 |
+| Compliance-as-Code Engine (NIST, SOC 2, ISO 27001) | 🗓 Planned | Phase 3 |
+
+---
+
 ## Security Model
 
 **Enforced Guarantees:**
@@ -385,10 +446,11 @@ tools:
 - Cryptographic binding of identity (OIDC) to decisions, including mandatory Credential Scopes (FR-5).
 - Fail-closed operational posture across network and process levels.
 
-**Out of Scope:**
-- Semantic prompt-injection detection (we focus on deterministic string normalizers).
-- Remote OS-level process termination (we sever connections).
-- Cloud-hosted dashboards (everything is local or BYO-SIEM).
+**Current Limitations / Out of Scope:**
+- Semantic prompt-injection detection via live LLM is a stub — deterministic string normalizers cover 16 known attack patterns today.
+- Remote OS-level process termination (connections are severed, not processes killed).
+- Cloud-hosted dashboards (everything is local or BYO-SIEM in Phase 1).
+- macOS `sandbox-exec` process isolation (deprecated by Apple; deferred indefinitely).
 
 ---
 

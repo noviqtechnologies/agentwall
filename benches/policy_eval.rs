@@ -34,6 +34,9 @@ fn make_policy(n: usize) -> CompiledPolicy {
             action: "allow".to_string(),
             risk: None,
             identity: None,
+            credential_scope: vec![],
+            semantic_anomaly_threshold: None,
+            a2a_trust_level: None,
             parameters: vec![
                 CompiledParam {
                     name: "path".to_string(),
@@ -86,6 +89,9 @@ fn make_policy_with_schema() -> CompiledPolicy {
             action: "allow".to_string(),
             risk: None,
             identity: None,
+            credential_scope: vec![],
+            semantic_anomaly_threshold: None,
+            a2a_trust_level: None,
             parameters: vec![CompiledParam {
                 name: "options".to_string(),
                 param_type: ParamType::Object,
