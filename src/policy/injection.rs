@@ -290,7 +290,7 @@ impl InjectionScanner {
             for idx in matched_indices {
                 let (name, re) = &patterns_data[idx];
                 for m in re.find_iter(&normalized) {
-                    thread_findings.push((name.clone(), truncated_preview(m.as_str())));
+                     thread_findings.push((idx, name.clone(), truncated_preview(m.as_str())));
                 }
             }
             // Ignore send error — caller will see Timeout via recv_timeout
@@ -300,9 +300,9 @@ impl InjectionScanner {
         let deadline = std::time::Duration::from_millis(Self::SCAN_TIMEOUT_MS);
         match rx.recv_timeout(deadline) {
             Ok(thread_findings) => {
-                for (i, (name, preview)) in thread_findings.into_iter().enumerate() {
+                for (pattern_idx, name, preview) in thread_findings.into_iter() {
                     findings.push(InjectionFinding {
-                        category: category_for_index(i),
+                        category: category_for_index(pattern_idx),
                         pattern_name: name,
                         preview,
                     });
