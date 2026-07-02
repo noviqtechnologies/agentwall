@@ -166,10 +166,21 @@ async fn main() {
                 identity::run_identity(identity::IdentityCommand::Audit { agent, verify })
             }
             cli::IdentityCommands::Scope { agent, tool, allow, deny, policy } => {
-                let is_allow = allow || !deny; // default to allow if not explicitly denied
-                identity::run_identity(identity::IdentityCommand::Scope {
-                    agent, tool, allow: is_allow, policy_path: policy
-                })
+                // Fix AW-BUG-005: require exactly one of --allow or --deny.
+                // Previous logic: allow || !deny evaluated to true when both false,
+                // silently creating ALLOW rules without explicit intent.
+                if !allow && !deny {
+                    eprintln!("{} Must specify either --allow or --deny", "✖".red());
+                    eprintln!("  Usage: agentwall identity scope --agent {} --tool {} --allow --policy {}", agent, tool, policy);
+                    2
+                } else if allow && deny {
+                    eprintln!("{} Cannot specify both --allow and --deny", "✖".red());
+                    2
+                } else {
+                    identity::run_identity(identity::IdentityCommand::Scope {
+                        agent, tool, allow, policy_path: policy
+                    })
+                }
             }
             cli::IdentityCommands::Inspect { credential } => {
                 identity::run_identity(identity::IdentityCommand::Inspect { credential_id: credential })
