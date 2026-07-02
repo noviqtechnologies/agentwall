@@ -86,7 +86,41 @@ pub async fn handle_egress(
             format!("ws://{}:{}{}", target_host, target_port, url_path)
         };
         
-        let (response, websocket) = hyper_tungstenite::upgrade(req, None).unwrap();
+        // Fix AW-BUG-003: handle malformed WebSocket upgrade gracefully instead
+        // of panicking. Missing Sec-WebSocket-Key or invalid headers now return
+        // 400 Bad Request with an audit log entry, instead of crashing the handler.
+        let (response, websocket) = match hyper_tungstenite::upgrade(req, None) {
+            Ok(pair) => pair,
+            Err(e) => {
+                eprintln!("WebSocket upgrade failed: {}", e);
+                let event = EgressEvent {
+                    timestamp_ns: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
+                    session_id: session.session_id.clone(),
+                    transport: "websocket".to_string(),
+                    method: Some("websocket_upgrade_failed".to_string()),
+                    target_host: target_host.clone(),
+                    target_port: Some(target_port as i64),
+                    url_path: Some(url_path.clone()),
+                    request_headers: None,
+                    request_body: None,
+                    request_body_hash: None,
+                    response_status: Some(400),
+                    response_body: None,
+                    response_body_hash: None,
+                    dlp_findings: None,
+                    injection_findings: None,
+                    latency_ms: None,
+                    verdict: Some("deny".to_string()),
+                    semantic_anomaly_score: None,
+                    identity_context: None,
+                };
+                let _ = state.db_manager.insert(event).await;
+                return Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(Full::new(Bytes::from(format!("WebSocket upgrade failed: {}", e))))
+                    .unwrap());
+            }
+        };
         let session_id = session.session_id.clone();
         let state_clone = state.clone();
         let timestamp_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
@@ -221,7 +255,7 @@ pub async fn handle_egress(
 
                 // Log egress event for blocked request
                 let event = EgressEvent {
-                    timestamp_ns,
+                    timestamp_ns: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                     session_id,
                     transport: "fetch".to_string(),
                     method: Some(method_str),
