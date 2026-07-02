@@ -29,11 +29,18 @@ pub async fn handle_egress(
         let start_time = std::time::Instant::now();
 
         tokio::task::spawn(async move {
+            // Fix AW-BUG-004: track actual connection outcome for accurate audit logging.
+            // Default to failure (502/deny); only set success (200/allow) when TCP connect succeeds.
+            let mut final_status: i64 = 502;
+            let mut final_verdict = "deny".to_string();
+
             match hyper::upgrade::on(req).await {
                 Ok(upgraded) => {
                     let mut upgraded = hyper_util::rt::TokioIo::new(upgraded);
                     match tokio::net::TcpStream::connect(&target_url).await {
                         Ok(mut server) => {
+                            final_status = 200;
+                            final_verdict = "allow".to_string();
                             let _ = tokio::io::copy_bidirectional(&mut upgraded, &mut server).await;
                         }
                         Err(e) => {
@@ -56,13 +63,13 @@ pub async fn handle_egress(
                 request_headers: None,
                 request_body: None,
                 request_body_hash: None,
-                response_status: Some(200),
+                response_status: Some(final_status),
                 response_body: None,
                 response_body_hash: None,
                 dlp_findings: None,
                 injection_findings: None,
                 latency_ms: Some(start_time.elapsed().as_secs_f64() * 1000.0),
-                verdict: Some("allow".to_string()),
+                verdict: Some(final_verdict),
                 semantic_anomaly_score: None,
                 identity_context: None,
             };
