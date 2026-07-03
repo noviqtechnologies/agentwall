@@ -619,8 +619,10 @@ async fn handle_request(
 
     // Policy Generation endpoint
     if method == hyper::Method::POST && path == "/api/generate-policy" {
-        // Fetch all events to generate policy
-        match state.db_manager.get_events(100_000).await {
+        // Fix AW-BUG-002: use get_all_events (ASC order, oldest first) to match
+        // the CLI behavior in main.rs. generate_from_events() expects chronological
+        // ordering for confidence decay, anomaly scoring, and first/last seen tracking.
+        match state.db_manager.get_all_events(500).await {
             Ok(events) => {
                 let yaml_str = crate::generate_policy::generate_from_events(&events, 30);
                 return Ok(Response::builder()
