@@ -69,15 +69,12 @@ jobs:
       - name: Prepare Release Directory
         shell: bash
         run: |
-          mkdir -p release/bin release/ui release/config
+          mkdir -p release/bin
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cp target/${{ matrix.target }}/release/agentwall.exe release/bin/
           else
             cp target/${{ matrix.target }}/release/agentwall release/bin/
           fi
-          cp demo-ui/index.html release/ui/
-          cp demo-ui/bridge.py release/ui/
-          cp demo-ui/policy.example.yaml release/config/policy.yaml.example
 
       - name: Create Zip (Unix)
         if: matrix.os != 'windows-latest'
