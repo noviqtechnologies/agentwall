@@ -170,6 +170,28 @@ pub enum Commands {
         /// Default: false (WARN mode — log only, permit the call).
         #[arg(long, env = "AGENTWALL_STRICT_CREDENTIAL_SCOPE", default_value_t = false)]
         strict_credential_scope: bool,
+
+        // ── FR-5 §5.5.6: TLS Configuration ─────────────────────────────────
+
+        /// TLS certificate chain PEM file for HTTPS listener (FR-5 §5.5.6).
+        ///
+        /// The file should contain the leaf certificate first, followed by any
+        /// intermediate CA certificates. Both --tls-cert and --tls-key must be
+        /// provided together; the gateway fails to start if only one is given.
+        ///
+        /// When omitted, the gateway listens on plain HTTP (not recommended for
+        /// production — use a reverse proxy or provide certs directly).
+        #[arg(long, env = "AGENTWALL_TLS_CERT")]
+        tls_cert: Option<String>,
+
+        /// TLS private key PEM file for HTTPS listener (FR-5 §5.5.6).
+        ///
+        /// Accepts PKCS#8 (BEGIN PRIVATE KEY), RSA (BEGIN RSA PRIVATE KEY),
+        /// or EC (BEGIN EC PRIVATE KEY) formats.
+        ///
+        /// Must be provided together with --tls-cert.
+        #[arg(long, env = "AGENTWALL_TLS_KEY")]
+        tls_key: Option<String>,
     },
 
     /// Validate a policy against a gateway instance using fixture test calls (FR-204)

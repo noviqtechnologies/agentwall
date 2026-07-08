@@ -79,6 +79,8 @@ futures-util = "0.3.32"
 bip39 = "2.2.2"
 unicode-normalization = "0.1.25"
 urlencoding = "2.1.3"
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
 
 # Tracing (structured stderr)
 # We roll our own JSON stderr logger for exact event control

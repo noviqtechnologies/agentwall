@@ -39,6 +39,7 @@ pub async fn run_server(
     state: Arc<ProxyState>,
     listen_addr: SocketAddr,
     mut shutdown_rx: watch::Receiver<bool>,
+    tls_acceptor: Option<super::tls::TlsAcceptor>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Enable SO_REUSEADDR to handle TIME_WAIT on Windows (FR-101)
     let domain = if listen_addr.is_ipv4() { Domain::IPV4 } else { Domain::IPV6 };
@@ -54,15 +55,43 @@ pub async fn run_server(
     std_listener.set_nonblocking(true)?;
     let listener = TcpListener::from_std(std_listener)?;
 
+    // FR-5 AC-5.5: Track all active connection tasks so we can abort them
+    // on shutdown (fail-closed). JoinSet::abort_all() cancels every tracked
+    // task, and the reaping branch below prevents unbounded memory growth.
+    let mut connection_tasks = tokio::task::JoinSet::new();
+
     loop {
         tokio::select! {
             accept_result = listener.accept() => {
                 let (stream, addr) = accept_result?;
                 let client_ip = addr.ip().to_string();
-                let io = TokioIo::new(stream);
                 let state = state.clone();
+                let tls = tls_acceptor.clone();
 
-                tokio::spawn(async move {
+                connection_tasks.spawn(async move {
+                    // FR-5 §5.5.6: TLS handshake (if configured).
+                    // Done inside the spawned task so a slow handshake
+                    // doesn't block the accept loop from taking new connections.
+                    let stream = if let Some(acceptor) = tls {
+                        match acceptor.accept(stream).await {
+                            Ok(tls_stream) => super::tls::MaybeTlsStream::Tls(tls_stream),
+                            Err(e) => {
+                                crate::logging::log_event(
+                                    crate::logging::Level::Warn,
+                                    "tls_handshake_failed",
+                                    serde_json::json!({
+                                        "remote_addr": client_ip,
+                                        "error": e.to_string()
+                                    }),
+                                );
+                                return;
+                            }
+                        }
+                    } else {
+                        super::tls::MaybeTlsStream::Plain(stream)
+                    };
+                    let io = TokioIo::new(stream);
+
                     let service = service_fn(move |req: Request<Incoming>| {
                         let state = state.clone();
                         let client_ip = client_ip.clone();
@@ -110,7 +139,41 @@ pub async fn run_server(
                     break;
                 }
             }
+            // FR-5 AC-5.5: Reap completed connection tasks to prevent memory leak.
+            // If a task panicked, the panic hook (installed in main.rs) already
+            // triggered shutdown via the watch channel — this just logs it.
+            Some(result) = connection_tasks.join_next() => {
+                if let Err(e) = result {
+                    if e.is_panic() {
+                        crate::logging::log_event(
+                            crate::logging::Level::Error,
+                            "connection_task_panicked",
+                            serde_json::json!({"error": e.to_string()}),
+                        );
+                    }
+                }
+            }
         }
+    }
+
+    // FR-5 AC-5.5: Fail-closed shutdown — abort ALL active connections.
+    //
+    // "Gateway crash results in all active agent connections dropping
+    //  within 1 second. No requests proxied after crash."
+    //
+    // abort_all() sends a cancellation signal to every tracked task.
+    // Hyper's serve_connection futures are cancel-safe — dropping them
+    // closes the TCP stream, which resets the client connection immediately.
+    let active = connection_tasks.len();
+    if active > 0 {
+        connection_tasks.abort_all();
+        // Wait for all tasks to actually finish (near-instant after abort)
+        while connection_tasks.join_next().await.is_some() {}
+        crate::logging::log_event(
+            crate::logging::Level::Info,
+            "fail_closed_shutdown",
+            serde_json::json!({"active_connections_aborted": active}),
+        );
     }
 
     Ok(())

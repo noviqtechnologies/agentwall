@@ -1,0 +1,13 @@
+{{- if and .Values.gateway.enabled (not .Values.gateway.policy.externalConfigMap) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agentwall.policyConfigMapName" . }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+    {{- include "agentwall.gatewaySelectorLabels" . | nindent 4 }}
+data:
+  policy.yaml: |
+{{ .Values.gateway.policy.inline | indent 4 }}
+{{- end }}

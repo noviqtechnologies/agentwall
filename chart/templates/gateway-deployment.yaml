@@ -1,0 +1,168 @@
+{{- if .Values.gateway.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentwall.fullname" . }}-gateway
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+    {{- include "agentwall.gatewaySelectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  strategy:
+    {{- toYaml .Values.gateway.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "agentwall.gatewaySelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentwall.gatewaySelectorLabels" . | nindent 8 }}
+        # FR-5 §5.5.8: convention label so the default NetworkPolicy
+        # gatewayPodSelector ({agentwall.io/gateway: "true"}) matches
+        # this pod out-of-the-box.
+        agentwall.io/gateway: "true"
+      annotations:
+        # Trigger a rolling restart whenever the policy ConfigMap or TLS
+        # Secret content changes. Without these annotations, `helm upgrade`
+        # would update the ConfigMap but leave pods running with stale data
+        # until manual restart.
+        checksum/policy-config: {{ include (print $.Template.BasePath "/gateway-configmap.yaml") . | sha256sum }}
+        {{- if and .Values.gateway.tls.enabled .Values.gateway.tls.createSelfSigned }}
+        checksum/tls-secret: {{ include (print $.Template.BasePath "/gateway-tls-secret.yaml") . | sha256sum }}
+        {{- end }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.gateway.securityContext | nindent 8 }}
+      containers:
+      - name: gateway
+        image: {{ include "agentwall.gatewayImage" . }}
+        imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+        args:
+          - "start"
+          - "--policy"
+          - "/etc/agentwall/policy.yaml"
+          - "--listen"
+          - "0.0.0.0:{{ .Values.gateway.service.port }}"
+          - "--mcp-url"
+          - "{{ .Values.gateway.mcpUrl }}"
+          {{- if .Values.gateway.oidcIssuer }}
+          - "--oidc-issuer"
+          - "{{ .Values.gateway.oidcIssuer }}"
+          {{- end }}
+          {{- if .Values.gateway.logPath }}
+          - "--log-path"
+          - "{{ .Values.gateway.logPath }}"
+          {{- end }}
+          {{- if ne .Values.gateway.siem.backend "none" }}
+          - "--siem-backend"
+          - "{{ .Values.gateway.siem.backend }}"
+          - "--siem-endpoint"
+          - "{{ .Values.gateway.siem.endpoint }}"
+          - "--siem-timeout-secs"
+          - "{{ .Values.gateway.siem.timeoutSecs }}"
+          {{- end }}
+          {{- if .Values.gateway.tls.enabled }}
+          # FR-5 §5.5.6: TLS listener
+          - "--tls-cert"
+          - "/etc/agentwall/tls/tls.crt"
+          - "--tls-key"
+          - "/etc/agentwall/tls/tls.key"
+          {{- end }}
+          {{- if .Values.gateway.features.dryRun }}
+          - "--dry-run"
+          {{- end }}
+          {{- if .Values.gateway.features.scanResponses }}
+          - "--scan-responses"
+          {{- end }}
+          {{- if .Values.gateway.features.blockOnSecrets }}
+          - "--block-on-secrets"
+          {{- end }}
+          {{- if .Values.gateway.features.shadowMode }}
+          - "--shadow-mode"
+          {{- end }}
+          {{- if .Values.gateway.features.strictCredentialScope }}
+          - "--strict-credential-scope"
+          {{- end }}
+          {{- if .Values.gateway.features.includeParams }}
+          - "--include-params"
+          {{- end }}
+        env:
+          {{- if .Values.gateway.siem.token }}
+          - name: AGENTWALL_SIEM_TOKEN
+            value: {{ .Values.gateway.siem.token | quote }}
+          {{- end }}
+        ports:
+        - name: gateway
+          containerPort: {{ .Values.gateway.service.port }}
+          protocol: TCP
+        volumeMounts:
+        - name: policy
+          mountPath: /etc/agentwall
+          readOnly: true
+        {{- if .Values.gateway.tls.enabled }}
+        - name: tls
+          mountPath: /etc/agentwall/tls
+          readOnly: true
+        {{- end }}
+        # Writable tmpfs — the gateway uses /tmp for scratch, and
+        # readOnlyRootFilesystem is enforced by security context.
+        - name: tmp
+          mountPath: /tmp
+        securityContext:
+          {{- toYaml .Values.gateway.containerSecurityContext | nindent 10 }}
+        resources:
+          {{- toYaml .Values.gateway.resources | nindent 10 }}
+        # /healthz is served by the existing HTTP router in server.rs.
+        # We probe on the same port the gateway listens on; if TLS is on,
+        # k8s probes support scheme=HTTPS.
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: gateway
+            scheme: {{ if .Values.gateway.tls.enabled }}HTTPS{{ else }}HTTP{{ end }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: gateway
+            scheme: {{ if .Values.gateway.tls.enabled }}HTTPS{{ else }}HTTP{{ end }}
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          timeoutSeconds: 3
+        lifecycle:
+          preStop:
+            exec:
+              # Give in-flight requests a chance to finish before SIGTERM.
+              # 5s is a compromise between fast rollouts and graceful drain.
+              command: ["sleep", "5"]
+      volumes:
+      - name: policy
+        configMap:
+          name: {{ include "agentwall.policyConfigMapName" . }}
+      {{- if .Values.gateway.tls.enabled }}
+      - name: tls
+        secret:
+          secretName: {{ include "agentwall.tlsSecretName" . }}
+          defaultMode: 0400
+      {{- end }}
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 64Mi
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.gateway.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

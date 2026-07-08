@@ -1,0 +1,70 @@
+╔═══════════════════════════════════════════════════════════════════════╗
+║          VEXA AgentWall {{ .Chart.AppVersion }} installed                        ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+Namespace: {{ .Values.namespace.name }}
+Release:   {{ .Release.Name }}
+
+━━━ COMPONENTS DEPLOYED ━━━
+
+  ✓ Operator:  {{ include "agentwall.fullname" . }}-operator
+  {{- if .Values.gateway.enabled }}
+  ✓ Gateway:   {{ include "agentwall.fullname" . }}-gateway (Service on port {{ .Values.gateway.service.port }})
+  {{- end }}
+  {{- if .Values.crds.install }}
+  ✓ CRD:       agentwallpolicies.agentwall.io
+  {{- end }}
+
+━━━ QUICK VERIFICATION ━━━
+
+1. Watch the operator come up:
+
+   kubectl -n {{ .Values.namespace.name }} rollout status deploy/{{ include "agentwall.fullname" . }}-operator
+
+{{- if .Values.gateway.enabled }}
+
+2. Watch the gateway come up:
+
+   kubectl -n {{ .Values.namespace.name }} rollout status deploy/{{ include "agentwall.fullname" . }}-gateway
+
+3. Port-forward and hit /healthz:
+
+   kubectl -n {{ .Values.namespace.name }} port-forward svc/{{ include "agentwall.fullname" . }}-gateway {{ .Values.gateway.service.port }}
+   {{- if .Values.gateway.tls.enabled }}
+   curl -k https://localhost:{{ .Values.gateway.service.port }}/healthz
+   {{- else }}
+   curl http://localhost:{{ .Values.gateway.service.port }}/healthz
+   {{- end }}
+{{- end }}
+
+{{- if .Values.policy.create }}
+
+4. Inspect the sample AgentWallPolicy CR:
+
+   kubectl -n {{ .Values.namespace.name }} get agentwallpolicy {{ .Values.policy.name }} -o yaml
+
+{{- if .Values.policy.networkPolicyEnforced }}
+5. Verify the generated NetworkPolicy (FR-5 §5.5.8):
+
+   kubectl -n {{ .Values.namespace.name }} get networkpolicy {{ .Values.policy.name }}-agentwall-egress -o yaml
+
+   Only pods labeled  agentwall.io/agent=true  in this namespace are affected.
+   Their egress is restricted to the gateway pod on port {{ .Values.gateway.service.port }} + DNS.
+{{- end }}
+{{- end }}
+
+━━━ NEXT STEPS ━━━
+
+• Create your own AgentWallPolicy: see docs/policy-schema.md
+• Enable TLS on the gateway: set gateway.tls.enabled=true
+• Enable NetworkPolicy enforcement: set networkPolicy.enforced=true on your CR
+• Trigger policy hot-reload: kubectl exec -it <gateway-pod> -- kill -HUP 1
+
+For full docs: https://github.com/noviqtechnologies/agentwall
+
+{{- if and .Values.gateway.tls.enabled .Values.gateway.tls.createSelfSigned }}
+
+⚠  WARNING: You installed with createSelfSigned=true. The generated cert
+   is DEV-ONLY (no rotation, no CA validation). Replace it with a real
+   Secret (kubernetes.io/tls) before going to production.
+{{- end }}

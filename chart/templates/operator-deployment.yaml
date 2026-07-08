@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentwall.fullname" . }}-operator
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+    {{- include "agentwall.operatorSelectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "agentwall.operatorSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentwall.operatorSelectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "agentwall.operatorServiceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.operator.securityContext | nindent 8 }}
+      containers:
+      - name: manager
+        image: {{ include "agentwall.operatorImage" . }}
+        imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+        args:
+          - --metrics-bind-address=:{{ .Values.operator.metricsPort }}
+          {{- if .Values.operator.leaderElection }}
+          - --leader-elect
+          {{- end }}
+        ports:
+        - name: metrics
+          containerPort: {{ .Values.operator.metricsPort }}
+          protocol: TCP
+        - name: webhook
+          containerPort: 9443
+          protocol: TCP
+        securityContext:
+          {{- toYaml .Values.operator.containerSecurityContext | nindent 10 }}
+        resources:
+          {{- toYaml .Values.operator.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: metrics
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: metrics
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      terminationGracePeriodSeconds: 10
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
