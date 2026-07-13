@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "agentwall.operatorServiceAccountName" . }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agentwall.fullname" . }}-operator
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - agentwall.io
+  resources:
+  - agentwallpolicies
+  verbs: [create, delete, get, list, patch, update, watch]
+- apiGroups:
+  - agentwall.io
+  resources:
+  - agentwallpolicies/status
+  verbs: [get, patch, update]
+- apiGroups: [""]
+  resources:
+  - pods
+  - configmaps
+  verbs: [create, delete, get, list, patch, update, watch]
+# FR-5 §5.5.8: NetworkPolicy reconciliation.
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs: [create, delete, get, list, patch, update, watch]
+{{- if .Values.operator.leaderElection }}
+# Leader election requires read/write on coordination.k8s.io/leases.
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs: [create, get, list, update]
+- apiGroups: [""]
+  resources:
+  - events
+  verbs: [create, patch]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agentwall.fullname" . }}-operator
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agentwall.fullname" . }}-operator
+subjects:
+- kind: ServiceAccount
+  name: {{ include "agentwall.operatorServiceAccountName" . }}
+  namespace: {{ .Values.namespace.name }}

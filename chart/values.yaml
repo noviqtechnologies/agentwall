@@ -1,0 +1,201 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# AgentWall Helm Chart Values
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Every value has a comment explaining what it does and why the default is
+# what it is. Sections you'll most likely touch first are marked "COMMON".
+#
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── Global / namespace ────────────────────────────────────────────────────
+namespace:
+  # COMMON. Create the namespace on install. Set to false if you're using an
+  # existing namespace or a namespace controller (e.g. Argo project).
+  create: true
+  # Name of the namespace to create/use. Referenced by RBAC bindings too.
+  name: agentwall-system
+
+# ─── CRDs ──────────────────────────────────────────────────────────────────
+crds:
+  # Install the AgentWallPolicy CRD as part of this chart. Set to false if
+  # you install CRDs out-of-band (recommended for prod: install once cluster
+  # wide via a separate `helm install --set crds.install=true` step, then
+  # deploy the app chart with crds.install=false).
+  install: true
+
+# ─── Operator ──────────────────────────────────────────────────────────────
+operator:
+  # COMMON. Container image for the operator.
+  image:
+    repository: noviqtech/agentwall-operator
+    tag: ""   # defaults to Chart.appVersion — override to pin an exact digest
+    pullPolicy: IfNotPresent
+
+  replicas: 1
+
+  # Leader election is off by default because we only run 1 replica. Turn it
+  # on if you scale operator replicas > 1 for HA.
+  leaderElection: false
+
+  # Metrics port for operator's /metrics endpoint. Scrape via ServiceMonitor
+  # if you use Prometheus operator (not created by this chart).
+  metricsPort: 8080
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Standard workload knobs. Empty values mean "cluster default".
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Pod-level security context. Runs as non-root, drops all caps, read-only
+  # root filesystem. This matches the operator's actual needs — it only
+  # reads/writes the K8s API, never the local disk.
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+# ─── Gateway (the enforcement proxy) ───────────────────────────────────────
+gateway:
+  # COMMON. Deploy the gateway as part of this chart. Set to false if you
+  # deploy it separately (e.g. as a sidecar, or via a different chart).
+  enabled: true
+
+  # COMMON. Container image for the gateway.
+  image:
+    repository: noviqtech/agentwall
+    tag: ""   # defaults to Chart.appVersion
+    pullPolicy: IfNotPresent
+
+  replicas: 1
+
+  # COMMON. Policy file mounted into the gateway. Two ways to provide it:
+  #   1. inline: paste YAML into `policy.inline` below (chart creates a ConfigMap)
+  #   2. externalConfigMap: point at a ConfigMap you manage separately
+  policy:
+    # If both are set, externalConfigMap wins.
+    externalConfigMap: ""     # e.g. "my-policy-config"
+    inline: |
+      version: "1.0"
+      default_action: deny
+      tools:
+        # Fill in your allowed tools here.
+        # See docs at /docs/policy-schema.md
+      identity:
+        oidc:
+          issuer: ""   # set if you use OIDC
+      firewall:
+        cycle_detection:
+          enabled: true
+          window_calls: 5
+      response_scanning:
+        enabled: true
+        block_on_secrets: true
+
+  # ─── TLS (FR-5 §5.5.6) ────────────────────────────────────────────────
+  # When enabled, the gateway listens on HTTPS instead of plain HTTP.
+  # The referenced Secret must contain `tls.crt` and `tls.key` in PEM format.
+  tls:
+    enabled: false
+    # Existing Secret with tls.crt and tls.key (kubernetes.io/tls type).
+    # Leave blank and set create=true below to have this chart generate one
+    # for you (WARNING: self-signed, DEV ONLY).
+    secretName: ""
+    # Set to true to create a self-signed cert Secret for testing. Uses
+    # Helm's genSelfSignedCert; the resulting cert is valid for 365 days.
+    # NEVER use in production — no rotation, no proper CN validation.
+    createSelfSigned: false
+
+  service:
+    # ClusterIP is the safe default. Set to LoadBalancer or NodePort if you
+    # need external access — but that's rarely what you want for a security
+    # proxy that's supposed to sit between agents and MCP servers.
+    type: ClusterIP
+    port: 8080
+    # If tls.enabled=true this is the HTTPS port; otherwise plain HTTP.
+
+  # COMMON. Upstream MCP server URL the gateway forwards allowed calls to.
+  mcpUrl: "http://mock-mcp:3000"
+
+  # OIDC issuer for identity validation (FR-201/FR-22). Leave blank to
+  # disable JWT validation entirely (not recommended for prod).
+  oidcIssuer: ""
+
+  # Audit log destination. "" means container stdout only. Set a path like
+  # /var/log/agentwall/audit.log with a matching volumeMount to persist.
+  logPath: ""
+
+  # SIEM export (FR-203). "none" disables. Set to "splunk" or "elastic" to
+  # forward audit events; requires siemEndpoint + siemToken.
+  siem:
+    backend: "none"
+    endpoint: ""
+    token: ""       # store real token in a Secret and reference via envFrom
+    timeoutSecs: 2
+
+  # Feature flags on the gateway CLI. Every flag has a corresponding CLI arg.
+  features:
+    dryRun: false                    # --dry-run
+    scanResponses: true              # --scan-responses
+    blockOnSecrets: true             # --block-on-secrets
+    shadowMode: false                # --shadow-mode
+    strictCredentialScope: false     # --strict-credential-scope
+    includeParams: false             # --include-params
+
+  # Standard workload knobs.
+  resources:
+    limits:
+      cpu: "1"
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Same security posture as the operator.
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+  # Rolling update settings. maxUnavailable=0 means zero-downtime rollouts
+  # (as long as replicas >= 2).
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+# ─── Sample AgentWallPolicy CR ─────────────────────────────────────────────
+# Optional convenience: create an AgentWallPolicy CR as part of the chart
+# install. Handy for demos; disable in production and manage CRs separately.
+policy:
+  create: false
+  name: default
+  # Set to true to have the operator generate a NetworkPolicy that restricts
+  # agent pod egress (FR-5 §5.5.8). See operator docs for label conventions.
+  networkPolicyEnforced: false

@@ -4,7 +4,7 @@ Vexa AgentWall is a full egress proxy and security gateway for AI agents operati
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-1.0.12-green.svg" alt="Version"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-1.0.13-green.svg" alt="Version"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.89%2B-orange.svg" alt="Rust"></a>
 </p>
 
@@ -224,7 +224,27 @@ services:
       - "8080:8080"
 ```
 
-**3. Kubernetes Sidecar (Recommended)**
+**3. With TLS (FR-5 §5.5.6)**
+```bash
+./agentwall start \
+  --policy policy.yaml \
+  --listen 0.0.0.0:8443 \
+  --tls-cert /path/to/cert.pem \
+  --tls-key /path/to/key.pem
+```
+When `--tls-cert` and `--tls-key` are omitted the gateway falls back to plain HTTP (backward compatible). Both flags also accept `AGENTWALL_TLS_CERT` / `AGENTWALL_TLS_KEY` environment variables.
+
+**4. Helm Chart (FR-5 §5.5.3)**
+```bash
+helm install agentwall ./chart \
+  --namespace agentwall-system \
+  --create-namespace \
+  --set gateway.tls.enabled=true \
+  --set gateway.tls.secretName=my-gateway-tls
+```
+The chart deploys the operator, gateway, RBAC, CRD, and optional NetworkPolicy enforcement. See `chart/README.md` and `chart/values.yaml` for the full reference.
+
+**5. Kubernetes Sidecar**
 *(Using GitOps rather than deprecated `agentwall init sidecar`)*
 Inject the `agentwall` container alongside your MCP server Pod, bound to localhost.
 
@@ -244,25 +264,27 @@ tools:
         required: true
 ```
 
-### Zero-Downtime Policy Hot-Reload
+### Zero-Downtime Policy Hot-Reload (AC-5.6)
 You can dynamically reload `agentwall-policy.yaml` without dropping connections.
 - **API Call:** `curl -X POST http://localhost:8080/reload`
-- **Signal:** `kill -SIGHUP $(pidof agentwall)`
+- **Signal (Linux):** `kill -SIGHUP $(pidof agentwall)` — triggers the same reload logic as the HTTP endpoint, logs timing and policy hash, and broadcasts an SSE event so the dashboard updates live. Completes in < 100ms on typical policies. SIGHUP is the standard mechanism for K8s ConfigMap reloads via lifecycle hooks.
 
 ### Architecture & Security Guarantees
 - **Bypass Prevention:** Use OS-level network namespaces (`netns`) and firewall rules to drop outbound packets from the agent that do not route to the gateway.
-- **Fail-Closed Supervisor:** Ensure the agent process terminates if AgentWall crashes. Use process groups or a supervisor like `systemd` with `BindsTo=agentwall.service`.
+- **Fail-Closed Mode (AC-5.5):** The gateway installs a global panic hook — if any task panics (policy engine, DLP scanner, injection detector, or connection handler), all active connections are aborted within 1 second via `JoinSet::abort_all()`. No traffic is proxied after a crash. This is always-on; there is no fail-open mode for a security gateway.
+- **TLS Listener (§5.5.6):** Production deployments use `--tls-cert` and `--tls-key` to serve HTTPS. Uses `rustls` (pure Rust, no OpenSSL dependency). When omitted, the gateway falls back to plain HTTP for backward compatibility.
+- **K8s NetworkPolicy (§5.5.8):** The operator automatically generates an egress-deny `NetworkPolicy` when `spec.networkPolicy.enforced: true` is set on the `AgentWallPolicy` CR. This restricts pods labeled `agentwall.io/agent=true` to reach only the gateway pod on the MCP port (+DNS). The operator refuses to modify NetworkPolicies it didn't create, guarding against accidental overwrite of manually-managed policies.
 
 ### Acceptance Criteria Checklist (FR-5)
 - [x] **AC-5.1:** HTTP 403 JSON-RPC error mapping
 - [x] **AC-5.2:** P99 overhead < 5ms
 - [x] **AC-5.3:** Concurrency & rate-limiting lock-free structures
 - [x] **AC-5.4:** Non-blocking SIEM exporter
-- [x] **AC-5.5:** Fail-closed policy parse/hash validation
-- [x] **AC-5.6:** Zero-downtime hot-reloads
+- [x] **AC-5.5:** Fail-closed — panic hook triggers full shutdown, JoinSet aborts all connections
+- [x] **AC-5.6:** Zero-downtime hot-reloads via `POST /reload` and `SIGHUP` signal handler
 - [x] **AC-5.7:** Parse v2.0 `ToolRule` schema extensions
 - [x] **AC-5.8:** Credential scope validation
-- [x] **AC-5.9:** Integration test suite
+- [x] **AC-5.9:** Integration test suite (251 tests)
 
 ### Verify the Audit Log
 ```bash
@@ -403,6 +425,8 @@ tools:
 | `ALLOW_WILDCARD_IDENTITY` | `start`, `loader` | `true` to allow wildcard identity (`*`) in tool policies |
 | `VEXA_GATEWAY_URL` | `test` | Gateway endpoint URL for test command validation |
 | `AGENTWALL_OIDC_TOKEN` | `test` | OIDC Bearer token for gateway authentication during test |
+| `AGENTWALL_TLS_CERT` | `start` | Path to TLS certificate PEM file for HTTPS listener (FR-5 §5.5.6) |
+| `AGENTWALL_TLS_KEY` | `start` | Path to TLS private key PEM file for HTTPS listener (FR-5 §5.5.6) |
 | `AGENTWALL_SEMANTIC_SCANNING` | `start` | `true` to enable heuristic semantic anomaly scanning |
 | `AGENTWALL_SEMANTIC_THRESHOLD` | `start` | Threshold for semantic anomaly findings (default: 0.85) |
 
@@ -422,6 +446,9 @@ tools:
 | Injection Detection (16 patterns, 6-pass normalizer) | ✅ Built | Phase 1 |
 | HMAC Audit Logger + SIEM Export | ✅ Built | Phase 1 |
 | Enforcement Gateway (Policy Engine, FR-5) | ✅ Built | Phase 1 |
+| FR-5 Production Hardening (TLS, SIGHUP, Fail-Closed) | ✅ Built | Phase 1 |
+| K8s NetworkPolicy Auto-Injection (FR-5 §5.5.8) | ✅ Built | Phase 1 |
+| Helm Chart (FR-5 §5.5.3) | ✅ Built | Phase 1 |
 | OIDC Identity Binding | ✅ Built | Phase 1 |
 | Ecosystem Integrations (8 IDEs) | ✅ Built | Phase 1 |
 | Agent Identity CLI (Preview) | ✅ Preview | Phase 1 |
@@ -444,7 +471,9 @@ tools:
 - Default-deny architecture for unlisted tools.
 - Strict parameter schema validation (JSON Schema, URL schemes, regex, path traversal).
 - Cryptographic binding of identity (OIDC) to decisions, including mandatory Credential Scopes (FR-5).
-- Fail-closed operational posture across network and process levels.
+- Fail-closed operational posture: panic hook + JoinSet abort drops all connections within 1 second on any task panic.
+- TLS termination via rustls (pure Rust, zero OpenSSL CVE surface).
+- K8s NetworkPolicy enforcement restricts agent pod egress to gateway-only.
 
 **Current Limitations / Out of Scope:**
 - Semantic prompt-injection detection via live LLM is a stub — deterministic string normalizers cover 16 known attack patterns today.

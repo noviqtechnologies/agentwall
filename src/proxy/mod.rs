@@ -6,3 +6,4 @@ pub mod codec;
 pub mod session;
 pub mod db;
 pub mod egress;
+pub mod tls;

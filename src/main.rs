@@ -101,6 +101,8 @@ async fn main() {
             include_params,
             shadow_mode,
             strict_credential_scope,
+            tls_cert,
+            tls_key,
         } => {
             run_start(
                 policy,
@@ -125,6 +127,8 @@ async fn main() {
                 include_params,
                 shadow_mode,
                 strict_credential_scope,
+                tls_cert,
+                tls_key,
             )
             .await
         }
@@ -372,6 +376,8 @@ async fn run_start(
     include_params: bool,
     shadow_mode: bool,
     strict_credential_scope: bool,
+    tls_cert: Option<String>,
+    tls_key: Option<String>,
 ) -> i32 {
     println!("{} Loading configuration...", "ℹ".blue());
 
@@ -617,8 +623,78 @@ async fn run_start(
     println!("{} Press Ctrl+C to stop", "⌨".blue());
     println!("{}", "-".repeat(60).cyan());
 
+    // ── FR-5 §5.5.6: Build TLS acceptor if cert and key are provided ────
+    let tls_acceptor = match (tls_cert.as_deref(), tls_key.as_deref()) {
+        (Some(cert), Some(key)) => {
+            print!("{} Loading TLS cert/key... ", "🔒".blue());
+            match proxy::tls::build_tls_acceptor(
+                std::path::Path::new(cert),
+                std::path::Path::new(key),
+            ) {
+                Ok(acceptor) => {
+                    println!("{}", "OK".green().bold());
+                    println!(
+                        "{} {} {}",
+                        "🔒".green(),
+                        "TLS:".bold(),
+                        "Enabled (HTTPS listener)".green()
+                    );
+                    Some(acceptor)
+                }
+                Err(e) => {
+                    println!("{}", "FAILED".red().bold());
+                    eprintln!("{} TLS setup failed: {}", "✖".red(), e);
+                    return 1;
+                }
+            }
+        }
+        (Some(_), None) | (None, Some(_)) => {
+            eprintln!(
+                "{} Both --tls-cert and --tls-key must be provided together",
+                "✖".red()
+            );
+            return 1;
+        }
+        (None, None) => {
+            println!(
+                "{} {} {}",
+                "⚠".yellow(),
+                "TLS:".bold(),
+                "Disabled (plain HTTP — not recommended for production)".yellow()
+            );
+            None
+        }
+    };
+
     // Shutdown channel
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+    // FR-5 AC-5.5: Fail-closed panic hook.
+    //
+    // Why this matters for a security gateway:
+    // If any task panics — policy engine, DLP scanner, injection detector,
+    // connection handler — the gateway is in a degraded state where traffic
+    // could be proxied without full policy enforcement. A silent continue
+    // is a security hole. The correct behavior is: detect the panic, trigger
+    // a full shutdown, abort all active connections.
+    //
+    // How it works:
+    // 1. Panic hook fires in the panicking thread (before tokio catches the unwind)
+    // 2. Hook sends `true` on shutdown_tx (watch::send is sync-safe)
+    // 3. run_server's accept loop sees shutdown_rx.changed() and breaks
+    // 4. JoinSet::abort_all() cancels all active connection tasks (server.rs)
+    // 5. Process exits with error code
+    let shutdown_tx_panic = shutdown_tx.clone();
+    let default_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        eprintln!(
+            "\nFATAL: Gateway panic detected — initiating fail-closed shutdown (AC-5.5)"
+        );
+        // Trigger shutdown before printing backtrace (speed matters for fail-closed)
+        let _ = shutdown_tx_panic.send(true);
+        // Delegate to the default hook for backtrace output
+        default_panic_hook(info);
+    }));
 
     // Handle SIGTERM (Unix) / Ctrl+C
     let shutdown_tx_clone = shutdown_tx.clone();
@@ -630,8 +706,128 @@ async fn run_start(
         let _ = shutdown_tx_clone.send(true);
     });
 
+    // FR-5 AC-5.6: SIGHUP handler for policy hot-reload.
+    //
+    // Why SIGHUP?
+    // In Unix, SIGHUP is the standard signal for "reload configuration without
+    // restarting." K8s sends it when a ConfigMap changes (via a sidecar or
+    // lifecycle hook), and ops teams use `kill -HUP <pid>` in production.
+    // The PRD requires reload to complete in < 100ms — load_policy on a typical
+    // policy YAML takes ~1-2ms, so we're well within budget.
+    //
+    // Why #[cfg(unix)]?
+    // SIGHUP doesn't exist on Windows. The POST /reload HTTP endpoint (server.rs)
+    // still works on all platforms. Production targets are Linux containers.
+    #[cfg(unix)]
+    {
+        let sighup_state = state.clone();
+        let sighup_policy_path = policy_path.clone();
+        tokio::spawn(async move {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sighup = signal(SignalKind::hangup())
+                .expect("failed to register SIGHUP handler");
+
+            loop {
+                sighup.recv().await;
+
+                let reload_start = std::time::Instant::now();
+
+                let path_str = match &sighup_policy_path {
+                    Some(p) => p.clone(),
+                    None => {
+                        crate::logging::log_event(
+                            crate::logging::Level::Warn,
+                            "sighup_reload_skipped",
+                            serde_json::json!({
+                                "reason": "No policy path configured (--policy not set)"
+                            }),
+                        );
+                        continue;
+                    }
+                };
+
+                let path_for_task = path_str.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    crate::policy::loader::load_policy(
+                        std::path::Path::new(&path_for_task),
+                        None, // issuer override not re-applied on hot-reload
+                    )
+                }).await;
+
+                match result {
+                    Ok(crate::policy::loader::PolicyLoadResult::Loaded { policy, raw_hash, warnings }) => {
+                        match sighup_state.policy.write() {
+                            Ok(mut guard) => *guard = Some(policy),
+                            Err(_) => {
+                                crate::logging::log_event(
+                                    crate::logging::Level::Error,
+                                    "sighup_reload_failed",
+                                    serde_json::json!({"error": "Policy lock poisoned"}),
+                                );
+                                continue;
+                            }
+                        }
+                        sighup_state.policy_loaded.store(true, std::sync::atomic::Ordering::SeqCst);
+
+                        let elapsed_ms = reload_start.elapsed().as_secs_f64() * 1000.0;
+
+                        crate::logging::log_event(
+                            crate::logging::Level::Info,
+                            "policy_reloaded_sighup",
+                            serde_json::json!({
+                                "path": &path_str,
+                                "hash": &raw_hash,
+                                "warnings": &warnings,
+                                "elapsed_ms": elapsed_ms,
+                            }),
+                        );
+
+                        // Broadcast SSE event so dashboard updates live
+                        let sse_event = serde_json::json!({
+                            "event": "gateway_reload",
+                            "trigger": "SIGHUP",
+                            "policy_hash": &raw_hash,
+                            "warnings": &warnings,
+                        });
+                        if let Ok(s) = serde_json::to_string(&sse_event) {
+                            let _ = sighup_state.event_tx.send(s);
+                        }
+
+                        println!(
+                            "{} Policy reloaded via SIGHUP in {:.1}ms (hash: {})",
+                            "🔄".green(),
+                            elapsed_ms,
+                            &raw_hash[..12]
+                        );
+                    }
+                    Ok(crate::policy::loader::PolicyLoadResult::Degraded { reason }) => {
+                        crate::logging::log_event(
+                            crate::logging::Level::Warn,
+                            "sighup_reload_degraded",
+                            serde_json::json!({"error": format!("Policy degraded: {}", reason)}),
+                        );
+                    }
+                    Ok(crate::policy::loader::PolicyLoadResult::Fatal { error }) => {
+                        crate::logging::log_event(
+                            crate::logging::Level::Error,
+                            "sighup_reload_failed",
+                            serde_json::json!({"error": format!("Policy fatal: {}", error)}),
+                        );
+                    }
+                    Err(e) => {
+                        crate::logging::log_event(
+                            crate::logging::Level::Error,
+                            "sighup_reload_failed",
+                            serde_json::json!({"error": format!("Reload task panicked: {}", e)}),
+                        );
+                    }
+                }
+            }
+        });
+    }
+
     // Run the server
-    if let Err(e) = proxy::server::run_server(state, listen_addr, shutdown_rx).await {
+    if let Err(e) = proxy::server::run_server(state, listen_addr, shutdown_rx, tls_acceptor).await {
         eprintln!("{} Server error: {}", "✖".red(), e);
         return 1;
     }
@@ -1075,7 +1271,7 @@ async fn run_dev(
         let _ = shutdown_tx_clone.send(true);
     });
 
-    if let Err(e) = proxy::server::run_server(state, listen_addr, shutdown_rx).await {
+    if let Err(e) = proxy::server::run_server(state, listen_addr, shutdown_rx, None).await {
         eprintln!("{} Server error: {}", "✖".red(), e);
         return 1;
     }

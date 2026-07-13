@@ -1,0 +1,18 @@
+{{- if .Values.policy.create -}}
+apiVersion: agentwall.io/v1alpha1
+kind: AgentWallPolicy
+metadata:
+  name: {{ .Values.policy.name }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+spec:
+  policy: |
+{{ .Values.gateway.policy.inline | indent 4 }}
+  networkPolicy:
+    # FR-5 §5.5.8: when true, operator generates a NetworkPolicy that
+    # restricts pods labeled agentwall.io/agent=true to reach only the
+    # gateway on the MCP port (+DNS). Off by default so this chart is
+    # safe to install into namespaces with existing workloads.
+    enforced: {{ .Values.policy.networkPolicyEnforced }}
+{{- end }}
