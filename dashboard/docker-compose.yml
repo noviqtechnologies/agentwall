@@ -29,6 +29,8 @@ services:
       DEV_MODE: "true"
       ALLOW_DEV_MODE: "true"
       GATEWAY_SECRET: local-dev-shared-secret-change-me
+      POLICY_READ_SECRET: local-dev-policy-read-secret
+      GATEWAY_URL: ""
     ports:
       - "8400:8400"
     healthcheck:

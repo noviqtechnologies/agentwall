@@ -89,6 +89,8 @@ fn test_tool_history_memory_bounding() {
         gateway_start_time: std::time::Instant::now(),
         policy_path: None,
         dashboard_client: None,
+        listen_is_loopback: true,
+        policy_read_secret: None,
     };
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -184,6 +186,8 @@ fn test_cycle_detection_blocking() {
         gateway_start_time: std::time::Instant::now(),
         policy_path: None,
         dashboard_client: None,
+        listen_is_loopback: true,
+        policy_read_secret: None,
     };
 
     let req = json!({
@@ -293,6 +297,8 @@ fn test_pause_interactive_fallback_in_non_tty() {
         gateway_start_time: std::time::Instant::now(),
         policy_path: None,
         dashboard_client: None,
+        listen_is_loopback: true,
+        policy_read_secret: None,
     };
 
     let req = json!({

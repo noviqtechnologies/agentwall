@@ -18,6 +18,15 @@ type Config struct {
 	// Dashboard operators do NOT use this — they use OIDC.
 	GatewaySecret string
 
+	// PolicyReadSecret authenticates dashboard-api → gateway requests for
+	// self-healing/policy-read endpoints. Separate trust boundary from
+	// GatewaySecret (which is gateway → dashboard-api for ingest).
+	PolicyReadSecret string
+
+	// GatewayURL is the internal URL of the AgentWall gateway (e.g.
+	// http://agentwall-gateway:8080). Used to proxy policy-read requests.
+	GatewayURL string
+
 	// DevMode disables auth requirements. Requires BOTH DEV_MODE=true AND
 	// ALLOW_DEV_MODE=true to activate — prevents accidental copy-paste of
 	// dev config into production Helm values.
@@ -42,6 +51,8 @@ func Load() (*Config, error) {
 	devMode := os.Getenv("DEV_MODE") == "true" && os.Getenv("ALLOW_DEV_MODE") == "true"
 
 	gatewaySecret := os.Getenv("GATEWAY_SECRET")
+	policyReadSecret := os.Getenv("POLICY_READ_SECRET")
+	gatewayURL := os.Getenv("GATEWAY_URL")
 	oidcIssuer := os.Getenv("OIDC_ISSUER")
 	oidcClientID := os.Getenv("OIDC_CLIENT_ID")
 
@@ -55,11 +66,13 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Port:          port,
-		DatabaseURL:   dbURL,
-		OIDCIssuer:    oidcIssuer,
-		OIDCClientID:  oidcClientID,
-		GatewaySecret: gatewaySecret,
-		DevMode:       devMode,
+		Port:             port,
+		DatabaseURL:      dbURL,
+		OIDCIssuer:       oidcIssuer,
+		OIDCClientID:     oidcClientID,
+		GatewaySecret:    gatewaySecret,
+		PolicyReadSecret: policyReadSecret,
+		GatewayURL:       gatewayURL,
+		DevMode:          devMode,
 	}, nil
 }

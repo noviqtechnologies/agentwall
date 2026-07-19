@@ -333,6 +333,8 @@ async fn run_stdio_proxy(
         policy_path: None,
         gateway_start_time: std::time::Instant::now(),
         dashboard_client: agentwall::dashboard_fr23::client::DashboardClient::from_env().map(Arc::new),
+        listen_is_loopback: true,
+        policy_read_secret: std::env::var("POLICY_READ_SECRET").ok().filter(|s| !s.is_empty()),
     });
 
     let mut parts = args.clone();
@@ -590,6 +592,8 @@ async fn run_start(
         policy_path: policy_path.clone(),
         gateway_start_time: std::time::Instant::now(),
         dashboard_client: agentwall::dashboard_fr23::client::DashboardClient::from_env().map(Arc::new),
+        listen_is_loopback: listen_addr.ip().is_loopback(),
+        policy_read_secret: std::env::var("POLICY_READ_SECRET").ok().filter(|s| !s.is_empty()),
     });
 
     if state.dashboard_client.is_some() {
@@ -1086,6 +1090,8 @@ async fn run_wrap(
         policy_path: None,
         gateway_start_time: std::time::Instant::now(),
         dashboard_client: agentwall::dashboard_fr23::client::DashboardClient::from_env().map(Arc::new),
+        listen_is_loopback: true,
+        policy_read_secret: std::env::var("POLICY_READ_SECRET").ok().filter(|s| !s.is_empty()),
     });
 
     // Parse the command string
@@ -1210,6 +1216,8 @@ async fn run_dev(
         policy_path: None,
         gateway_start_time: std::time::Instant::now(),
         dashboard_client: agentwall::dashboard_fr23::client::DashboardClient::from_env().map(Arc::new),
+        listen_is_loopback: listen.parse::<SocketAddr>().map(|a| a.ip().is_loopback()).unwrap_or(true),
+        policy_read_secret: std::env::var("POLICY_READ_SECRET").ok().filter(|s| !s.is_empty()),
     });
 
     if stdio {

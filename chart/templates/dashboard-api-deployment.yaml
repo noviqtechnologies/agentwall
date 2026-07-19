@@ -40,6 +40,13 @@ spec:
           value: {{ .Values.dashboardApi.oidc.issuer | quote }}
         - name: OIDC_CLIENT_ID
           value: {{ .Values.dashboardApi.oidc.clientId | quote }}
+        - name: POLICY_READ_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentwall.fullname" . }}-dashboard-policy-read-secret
+              key: POLICY_READ_SECRET
+        - name: GATEWAY_URL
+          value: "http://{{ include "agentwall.fullname" . }}-gateway:{{ .Values.gateway.service.port }}"
         ports:
         - name: http
           containerPort: {{ .Values.dashboardApi.port }}

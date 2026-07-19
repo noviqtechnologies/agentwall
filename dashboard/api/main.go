@@ -44,6 +44,7 @@ func main() {
 	fleetH := handler.NewFleetHandler(db)
 	identityH := handler.NewIdentityHandler(db)
 	alertH := handler.NewAlertHandler(db, broker)
+	policyH := handler.NewPolicyHandler(cfg.GatewayURL, cfg.PolicyReadSecret)
 
 	r := chi.NewRouter()
 	r.Use(chimw.RealIP)
@@ -78,6 +79,9 @@ func main() {
 
 		r.Get("/alerts/recent", alertH.ListRecent)
 		r.Get("/alerts/stream", alertH.Stream)
+
+		r.Get("/policy/status", policyH.GetStatus)
+		r.Post("/policy/suggestions", policyH.GetSuggestions)
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
