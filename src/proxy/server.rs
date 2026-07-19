@@ -402,6 +402,67 @@ async fn resolve_session(
     }
 }
 
+/// Core logic for policy-read auth, extracted for testability.
+/// `auth_header`: the raw Authorization header value (if present).
+/// Returns None if access is allowed, or Some(StatusCode) if denied.
+fn check_policy_read_auth_inner(
+    auth_header: Option<&str>,
+    policy_read_secret: Option<&str>,
+    listen_is_loopback: bool,
+) -> Option<(StatusCode, &'static str)> {
+    match policy_read_secret {
+        Some(expected) => {
+            let provided = auth_header.and_then(|s| s.strip_prefix("Bearer "));
+            match provided {
+                Some(token) => {
+                    let a = token.as_bytes();
+                    let b = expected.as_bytes();
+                    let equal = if a.len() == b.len() {
+                        a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+                    } else {
+                        false
+                    };
+                    if equal {
+                        None
+                    } else {
+                        Some((StatusCode::UNAUTHORIZED, r#"{"error":"invalid policy-read token"}"#))
+                    }
+                }
+                None => Some((StatusCode::UNAUTHORIZED, r#"{"error":"missing Authorization header"}"#)),
+            }
+        }
+        None => {
+            if listen_is_loopback {
+                None
+            } else {
+                Some((StatusCode::SERVICE_UNAVAILABLE,
+                    r#"{"error":"POLICY_READ_SECRET must be set when gateway is bound to a non-loopback address"}"#))
+            }
+        }
+    }
+}
+
+/// Check policy-read auth for self-healing endpoints.
+/// Returns None if access is allowed, or Some(Response) if denied.
+fn check_policy_read_auth(
+    req: &Request<Incoming>,
+    state: &ProxyState,
+) -> Option<Response<Full<Bytes>>> {
+    let auth_header = req.headers()
+        .get(hyper::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok());
+    check_policy_read_auth_inner(
+        auth_header,
+        state.policy_read_secret.as_deref(),
+        state.listen_is_loopback,
+    ).map(|(status, body)| {
+        Response::builder()
+            .status(status)
+            .body(Full::new(Bytes::from(body)))
+            .unwrap()
+    })
+}
+
 /// Handle a single HTTP request
 async fn handle_request(
     req: Request<Incoming>,
@@ -509,6 +570,9 @@ async fn handle_request(
                 return Ok(prometheus_metrics_response(&state));
             }
             "/api/self-healing/status" => {
+                if let Some(deny) = check_policy_read_auth(&req, &state) {
+                    return Ok(deny);
+                }
                 match state.db_manager.get_events(500).await {
                     Ok(events) => {
                         let mut scorer = crate::self_healing::AnomalyScorer::new();
@@ -703,6 +767,9 @@ async fn handle_request(
 
     // Self-healing suggestions trigger
     if method == hyper::Method::POST && path == "/api/self-healing/suggestions" {
+        if let Some(deny) = check_policy_read_auth(&req, &state) {
+            return Ok(deny);
+        }
         match state.db_manager.get_events(500).await {
             Ok(events) => {
                 let mut scorer = crate::self_healing::AnomalyScorer::new();
@@ -1377,3 +1444,68 @@ async fn scan_and_process_response(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn policy_read_auth_loopback_no_secret_allows() {
+        assert!(check_policy_read_auth_inner(None, None, true).is_none());
+    }
+
+    #[test]
+    fn policy_read_auth_non_loopback_no_secret_denies_503() {
+        let result = check_policy_read_auth_inner(None, None, false);
+        assert_eq!(result.unwrap().0, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn policy_read_auth_correct_token_allows() {
+        let result = check_policy_read_auth_inner(
+            Some("Bearer my-secret-token"),
+            Some("my-secret-token"),
+            false,
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn policy_read_auth_wrong_token_denies_401() {
+        let result = check_policy_read_auth_inner(
+            Some("Bearer wrong-token"),
+            Some("my-secret-token"),
+            false,
+        );
+        assert_eq!(result.unwrap().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn policy_read_auth_missing_header_denies_401() {
+        let result = check_policy_read_auth_inner(
+            None,
+            Some("my-secret-token"),
+            false,
+        );
+        assert_eq!(result.unwrap().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn policy_read_auth_loopback_with_secret_still_requires_token() {
+        let result = check_policy_read_auth_inner(
+            None,
+            Some("my-secret-token"),
+            true,
+        );
+        assert_eq!(result.unwrap().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn policy_read_auth_different_lengths_denied() {
+        let result = check_policy_read_auth_inner(
+            Some("Bearer a-much-longer-token-value"),
+            Some("short"),
+            false,
+        );
+        assert_eq!(result.unwrap().0, StatusCode::UNAUTHORIZED);
+    }
+}

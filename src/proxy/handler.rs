@@ -127,6 +127,11 @@ pub struct ProxyState {
 
     /// FR-23: Optional client for sending redacted events to the SaaS dashboard-api.
     pub dashboard_client: Option<Arc<crate::dashboard_fr23::client::DashboardClient>>,
+
+    /// Whether the listen address is loopback-only (127.0.0.1 / ::1).
+    pub listen_is_loopback: bool,
+    /// Shared secret for authenticating dashboard-api→gateway policy read requests.
+    pub policy_read_secret: Option<String>,
 }
 
 pub struct RateLimiter {
