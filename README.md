@@ -320,6 +320,47 @@ agentwall identity inspect --credential <credential-id>
 
 ---
 
+## SaaS Dashboard — Fleet Visibility & DLP Insights (FR-23)
+
+> [!NOTE]
+> The SaaS Dashboard is **opt-in** and **disabled by default**. Existing gateway-only deployments are unaffected. Set `dashboardApi.enabled: true` in Helm values to deploy.
+
+AgentWall includes an optional, self-hosted dashboard for fleet-wide visibility into agent activity, DLP/injection findings, and identity governance. It runs alongside the gateway — no external SaaS dependency.
+
+**Components:**
+
+| Component | Language | Purpose |
+|-----------|----------|---------|
+| `dashboard/proto` | Rust | Wire types shared between gateway and dashboard-api. Enforces AC-23.10 at the type level. |
+| `dashboard/api` | Go | Backend API — ingests redacted events from the gateway, serves fleet/identity/alert endpoints over OIDC-authenticated routes. |
+| `dashboard/frontend` | React/TS | Single-page app — Fleet Overview, Identity Governance, Policy Insights panels. |
+| `src/dashboard_fr23` | Rust | Gateway-side integration — publishes redacted events to dashboard-api via `GATEWAY_SECRET`. |
+
+**Security guarantees:**
+
+- **AC-23.10 — No raw secrets in the dashboard.** The `dashboard-proto` crate defines a `RawEventForRedaction` → `RedactedEvent` boundary that strips all secret material, tool parameters, and response bodies before serialization. This is enforced at the type level (the dashboard-api never sees unredacted types) and verified by automated test + end-to-end validation against a live Postgres instance.
+- **Separate trust boundaries.** `GATEWAY_SECRET` (gateway → dashboard-api ingest) and `POLICY_READ_SECRET` (dashboard-api → gateway policy reads) are independently provisioned and rotatable Helm Secrets. No shared key material.
+- **Policy Insights auth hardening.** Two gateway self-healing endpoints (`/self-healing/status`, `/self-healing/suggestions`) were previously unauthenticated. FR-23 adds a `POLICY_READ_SECRET` bearer-token check with constant-time comparison, gated to require the secret when the gateway is bound to a non-loopback address.
+
+**Deployment:**
+
+```bash
+# Helm (production)
+helm install agentwall ./chart \
+  --set dashboardApi.enabled=true \
+  --set dashboardDb.enabled=true \
+  --set dashboardFrontend.enabled=true \
+  --set dashboardApi.oidc.issuer=https://your-idp.example.com \
+  --set dashboardApi.oidc.clientId=agentwall-dashboard
+
+# Local dev (Docker Compose)
+cd dashboard && docker compose up -d --build
+```
+
+**Current status:** Phase 1 (Fleet Overview + Identity Governance, read-only) is complete. Policy Management (approval workflows, version history) and Compliance Reporting are deferred — the backend capabilities they depend on (self-healing approval workflow persistence, FR-24) do not exist yet.
+
+---
+
 ## Policy Reference
 
 Policies are Schema v2 YAML files. `default_action: deny` is required. Object parameters require an inline `schema` block. The policy can also house a `self_healing` configuration directive to govern behavioral learning parameters.
@@ -456,7 +497,8 @@ tools:
 | Linux Process Sandbox (Landlock + seccomp) | 🔨 In Development | Phase 2 |
 | A2A Protocol Scanner | 🗓 Planned | Phase 2 |
 | Full Identity Platform (Vault/AWS SM/Azure KV) | 🗓 Planned | Phase 2 |
-| SaaS Dashboard | 🗓 Planned | Phase 2–3 |
+| SaaS Dashboard Phase 1 (Fleet + Identity, FR-23) | ✅ Built | Phase 1 |
+| SaaS Dashboard Phase 2 (Policy Mgmt, Compliance) | 🗓 Planned | Phase 2–3 |
 | Tool Call Chain Detection | 🗓 Planned | Phase 3 |
 | Emergency Kill Switch | 🗓 Planned | Phase 3 |
 | Adaptive Enforcement & Behavioral Baseline | 🗓 Planned | Phase 3 |
@@ -478,7 +520,7 @@ tools:
 **Current Limitations / Out of Scope:**
 - Semantic prompt-injection detection via live LLM is a stub — deterministic string normalizers cover 16 known attack patterns today.
 - Remote OS-level process termination (connections are severed, not processes killed).
-- Cloud-hosted dashboards (everything is local or BYO-SIEM in Phase 1).
+- The self-hosted SaaS dashboard (FR-23) provides fleet visibility; there is no Anthropic/Noviq-hosted cloud dashboard.
 - macOS `sandbox-exec` process isolation (deprecated by Apple; deferred indefinitely).
 
 ---
