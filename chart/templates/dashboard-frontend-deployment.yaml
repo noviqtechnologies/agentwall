@@ -1,0 +1,89 @@
+{{- if .Values.dashboardFrontend.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentwall.fullname" . }}-dashboard-frontend
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+    {{- include "agentwall.dashboardFrontendSelectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.dashboardFrontend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "agentwall.dashboardFrontendSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentwall.dashboardFrontendSelectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/nginx-config: {{ include (print $.Template.BasePath "/dashboard-frontend-nginx-configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.dashboardFrontend.securityContext | nindent 8 }}
+      containers:
+      - name: frontend
+        image: {{ include "agentwall.dashboardFrontendImage" . }}
+        imagePullPolicy: {{ .Values.dashboardFrontend.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.dashboardFrontend.port }}
+          protocol: TCP
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+        securityContext:
+          {{- toYaml .Values.dashboardFrontend.containerSecurityContext | nindent 10 }}
+        resources:
+          {{- toYaml .Values.dashboardFrontend.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          timeoutSeconds: 3
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: {{ include "agentwall.fullname" . }}-dashboard-frontend-nginx
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi
+      - name: nginx-cache
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Mi
+      - name: nginx-run
+        emptyDir:
+          medium: Memory
+          sizeLimit: 1Mi
+      terminationGracePeriodSeconds: 10
+      {{- with .Values.dashboardFrontend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dashboardFrontend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dashboardFrontend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

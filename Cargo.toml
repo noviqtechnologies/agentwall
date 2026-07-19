@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "dashboard/proto"]
+
 [package]
 name = "agentwall"
 version = "1.0.13"
@@ -14,6 +17,9 @@ name = "agentwall"
 path = "src/lib.rs"
 
 [dependencies]
+# FR-23: Dashboard wire-boundary types
+dashboard-proto = { path = "dashboard/proto" }
+
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
 

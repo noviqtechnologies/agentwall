@@ -1,0 +1,86 @@
+{{- if .Values.dashboardDb.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "agentwall.fullname" . }}-dashboard-db
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+    {{- include "agentwall.dashboardDbSelectorLabels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "agentwall.fullname" . }}-dashboard-db
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentwall.dashboardDbSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentwall.dashboardDbSelectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.dashboardDb.securityContext | nindent 8 }}
+      containers:
+      - name: postgres
+        image: {{ include "agentwall.dashboardDbImage" . }}
+        imagePullPolicy: {{ .Values.dashboardDb.image.pullPolicy }}
+        env:
+        - name: POSTGRES_USER
+          value: dashboard
+        - name: POSTGRES_DB
+          value: agentwall_dashboard
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentwall.fullname" . }}-dashboard-db
+              key: POSTGRES_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - name: postgres
+          containerPort: {{ .Values.dashboardDb.port }}
+          protocol: TCP
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        securityContext:
+          {{- toYaml .Values.dashboardDb.containerSecurityContext | nindent 10 }}
+        resources:
+          {{- toYaml .Values.dashboardDb.resources | nindent 10 }}
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "dashboard", "-d", "agentwall_dashboard"]
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "dashboard", "-d", "agentwall_dashboard"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.dashboardDb.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dashboardDb.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dashboardDb.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      {{- if .Values.dashboardDb.storageClass }}
+      storageClassName: {{ .Values.dashboardDb.storageClass | quote }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.dashboardDb.storage }}
+{{- end }}

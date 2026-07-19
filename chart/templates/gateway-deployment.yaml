@@ -92,6 +92,15 @@ spec:
           - name: AGENTWALL_SIEM_TOKEN
             value: {{ .Values.gateway.siem.token | quote }}
           {{- end }}
+          {{- if .Values.dashboardApi.enabled }}
+          - name: DASHBOARD_API_URL
+            value: "http://{{ include "agentwall.fullname" . }}-dashboard-api:{{ .Values.dashboardApi.port }}"
+          - name: GATEWAY_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "agentwall.fullname" . }}-dashboard-gateway-secret
+                key: GATEWAY_SECRET
+          {{- end }}
         ports:
         - name: gateway
           containerPort: {{ .Values.gateway.service.port }}

@@ -12,6 +12,7 @@ pub mod wrap;
 pub mod validate;
 pub mod lint;
 pub mod dashboard;
+pub mod dashboard_fr23;
 pub mod generate_policy;
 pub mod self_healing;
 pub mod identity;

@@ -124,6 +124,9 @@ pub struct ProxyState {
     pub policy_path: Option<String>,
     /// Gateway process start time for uptime reporting via GET /gateway/status.
     pub gateway_start_time: std::time::Instant,
+
+    /// FR-23: Optional client for sending redacted events to the SaaS dashboard-api.
+    pub dashboard_client: Option<Arc<crate::dashboard_fr23::client::DashboardClient>>,
 }
 
 pub struct RateLimiter {
