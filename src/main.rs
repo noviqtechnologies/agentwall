@@ -316,9 +316,9 @@ async fn run_stdio_proxy(
         db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
-        dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new(None).expect("Failed to compile DLP regexes")),
-        semantic_scanner: std::sync::Arc::new(crate::policy::semantic::SemanticScanner::new(crate::policy::semantic::SemanticConfig::default())),
-        injection_scanner: std::sync::Arc::new(crate::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
+        dlp_scanner: std::sync::Arc::new(agentwall::policy::dlp::DlpScanner::new(None).expect("Failed to compile DLP regexes")),
+        semantic_scanner: std::sync::Arc::new(agentwall::policy::semantic::SemanticScanner::new(agentwall::policy::semantic::SemanticConfig::default())),
+        injection_scanner: std::sync::Arc::new(agentwall::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -571,9 +571,9 @@ async fn run_start(
         db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
-        dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new(None).expect("Failed to compile DLP regexes")),
-        semantic_scanner: std::sync::Arc::new(crate::policy::semantic::SemanticScanner::new(crate::policy::semantic::SemanticConfig::default())),
-        injection_scanner: std::sync::Arc::new(crate::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
+        dlp_scanner: std::sync::Arc::new(agentwall::policy::dlp::DlpScanner::new(None).expect("Failed to compile DLP regexes")),
+        semantic_scanner: std::sync::Arc::new(agentwall::policy::semantic::SemanticScanner::new(agentwall::policy::semantic::SemanticConfig::default())),
+        injection_scanner: std::sync::Arc::new(agentwall::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -735,8 +735,8 @@ async fn run_start(
                 let path_str = match &sighup_policy_path {
                     Some(p) => p.clone(),
                     None => {
-                        crate::logging::log_event(
-                            crate::logging::Level::Warn,
+                        agentwall::logging::log_event(
+                            agentwall::logging::Level::Warn,
                             "sighup_reload_skipped",
                             serde_json::json!({
                                 "reason": "No policy path configured (--policy not set)"
@@ -748,19 +748,19 @@ async fn run_start(
 
                 let path_for_task = path_str.clone();
                 let result = tokio::task::spawn_blocking(move || {
-                    crate::policy::loader::load_policy(
+                    agentwall::policy::loader::load_policy(
                         std::path::Path::new(&path_for_task),
                         None, // issuer override not re-applied on hot-reload
                     )
                 }).await;
 
                 match result {
-                    Ok(crate::policy::loader::PolicyLoadResult::Loaded { policy, raw_hash, warnings }) => {
+                    Ok(agentwall::policy::loader::PolicyLoadResult::Loaded { policy, raw_hash, warnings }) => {
                         match sighup_state.policy.write() {
                             Ok(mut guard) => *guard = Some(policy),
                             Err(_) => {
-                                crate::logging::log_event(
-                                    crate::logging::Level::Error,
+                                agentwall::logging::log_event(
+                                    agentwall::logging::Level::Error,
                                     "sighup_reload_failed",
                                     serde_json::json!({"error": "Policy lock poisoned"}),
                                 );
@@ -771,8 +771,8 @@ async fn run_start(
 
                         let elapsed_ms = reload_start.elapsed().as_secs_f64() * 1000.0;
 
-                        crate::logging::log_event(
-                            crate::logging::Level::Info,
+                        agentwall::logging::log_event(
+                            agentwall::logging::Level::Info,
                             "policy_reloaded_sighup",
                             serde_json::json!({
                                 "path": &path_str,
@@ -800,23 +800,23 @@ async fn run_start(
                             &raw_hash[..12]
                         );
                     }
-                    Ok(crate::policy::loader::PolicyLoadResult::Degraded { reason }) => {
-                        crate::logging::log_event(
-                            crate::logging::Level::Warn,
+                    Ok(agentwall::policy::loader::PolicyLoadResult::Degraded { reason }) => {
+                        agentwall::logging::log_event(
+                            agentwall::logging::Level::Warn,
                             "sighup_reload_degraded",
                             serde_json::json!({"error": format!("Policy degraded: {}", reason)}),
                         );
                     }
-                    Ok(crate::policy::loader::PolicyLoadResult::Fatal { error }) => {
-                        crate::logging::log_event(
-                            crate::logging::Level::Error,
+                    Ok(agentwall::policy::loader::PolicyLoadResult::Fatal { error }) => {
+                        agentwall::logging::log_event(
+                            agentwall::logging::Level::Error,
                             "sighup_reload_failed",
                             serde_json::json!({"error": format!("Policy fatal: {}", error)}),
                         );
                     }
                     Err(e) => {
-                        crate::logging::log_event(
-                            crate::logging::Level::Error,
+                        agentwall::logging::log_event(
+                            agentwall::logging::Level::Error,
                             "sighup_reload_failed",
                             serde_json::json!({"error": format!("Reload task panicked: {}", e)}),
                         );
@@ -911,14 +911,14 @@ async fn run_wrap(
         println!("{} Auto-detecting known agent configurations...", "ℹ".blue());
         
         let targets = vec![
-            crate::cli::WrapTarget::Claude { dry_run, scan_responses, block_on_secrets },
-            crate::cli::WrapTarget::Cursor { dry_run },
-            crate::cli::WrapTarget::Vscode { dry_run },
-            crate::cli::WrapTarget::Jetbrains { dry_run },
-            crate::cli::WrapTarget::Zed { dry_run },
-            crate::cli::WrapTarget::Cline { dry_run },
-            crate::cli::WrapTarget::Opencode { dry_run },
-            crate::cli::WrapTarget::Antigravity { dry_run },
+            agentwall::cli::WrapTarget::Claude { dry_run, scan_responses, block_on_secrets },
+            agentwall::cli::WrapTarget::Cursor { dry_run },
+            agentwall::cli::WrapTarget::Vscode { dry_run },
+            agentwall::cli::WrapTarget::Jetbrains { dry_run },
+            agentwall::cli::WrapTarget::Zed { dry_run },
+            agentwall::cli::WrapTarget::Cline { dry_run },
+            agentwall::cli::WrapTarget::Opencode { dry_run },
+            agentwall::cli::WrapTarget::Antigravity { dry_run },
         ];
 
         let mut wrapped_any = false;
@@ -1058,9 +1058,9 @@ async fn run_wrap(
         db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
-        dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new(None).expect("Failed to compile DLP regexes")),
-        semantic_scanner: std::sync::Arc::new(crate::policy::semantic::SemanticScanner::new(crate::policy::semantic::SemanticConfig::default())),
-        injection_scanner: std::sync::Arc::new(crate::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
+        dlp_scanner: std::sync::Arc::new(agentwall::policy::dlp::DlpScanner::new(None).expect("Failed to compile DLP regexes")),
+        semantic_scanner: std::sync::Arc::new(agentwall::policy::semantic::SemanticScanner::new(agentwall::policy::semantic::SemanticConfig::default())),
+        injection_scanner: std::sync::Arc::new(agentwall::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -1181,9 +1181,9 @@ async fn run_dev(
         db_manager,
         response_scanner,
         response_scan_config: std::sync::RwLock::new(response_scan_config),
-        dlp_scanner: std::sync::Arc::new(crate::policy::dlp::DlpScanner::new(None).expect("Failed to compile DLP regexes")),
-        semantic_scanner: std::sync::Arc::new(crate::policy::semantic::SemanticScanner::new(crate::policy::semantic::SemanticConfig::default())),
-        injection_scanner: std::sync::Arc::new(crate::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
+        dlp_scanner: std::sync::Arc::new(agentwall::policy::dlp::DlpScanner::new(None).expect("Failed to compile DLP regexes")),
+        semantic_scanner: std::sync::Arc::new(agentwall::policy::semantic::SemanticScanner::new(agentwall::policy::semantic::SemanticConfig::default())),
+        injection_scanner: std::sync::Arc::new(agentwall::policy::injection::InjectionScanner::new().expect("Failed to compile Injection regexes")),
         tool_history: std::sync::Mutex::new(Vec::new()),
         sessions: dashmap::DashMap::new(),
         metrics_requests_total: Arc::new(std::sync::atomic::AtomicU64::new(0)),
