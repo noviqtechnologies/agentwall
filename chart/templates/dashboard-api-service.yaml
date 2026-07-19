@@ -1,0 +1,19 @@
+{{- if .Values.dashboardApi.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentwall.fullname" . }}-dashboard-api
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "agentwall.labels" . | nindent 4 }}
+    {{- include "agentwall.dashboardApiSelectorLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: {{ .Values.dashboardApi.port }}
+    targetPort: http
+    protocol: TCP
+  selector:
+    {{- include "agentwall.dashboardApiSelectorLabels" . | nindent 4 }}
+{{- end }}

@@ -28,6 +28,7 @@ fn create_mock_proxy_state(policy: Option<CompiledPolicy>) -> Arc<ProxyState> {
         policy: std::sync::RwLock::new(policy),
         policy_path: None,
         gateway_start_time: std::time::Instant::now(),
+        dashboard_client: None,
         credential_scope_validator: Arc::new(agentwall::policy::credential_scope::CredentialScopeValidator::new(false)),
         audit_logger,
         session_id: "multi-tenant-test-session".to_string(),

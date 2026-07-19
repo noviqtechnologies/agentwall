@@ -332,6 +332,7 @@ async fn run_stdio_proxy(
         credential_scope_validator: Arc::new(policy::credential_scope::CredentialScopeValidator::new(false)),
         policy_path: None,
         gateway_start_time: std::time::Instant::now(),
+        dashboard_client: agentwall::dashboard_fr23::client::DashboardClient::from_env().map(Arc::new),
     });
 
     let mut parts = args.clone();
@@ -588,7 +589,17 @@ async fn run_start(
         credential_scope_validator,
         policy_path: policy_path.clone(),
         gateway_start_time: std::time::Instant::now(),
+        dashboard_client: agentwall::dashboard_fr23::client::DashboardClient::from_env().map(Arc::new),
     });
+
+    if state.dashboard_client.is_some() {
+        println!(
+            "{} {} {}",
+            "📊".green(),
+            "FR-23 Dashboard:".bold(),
+            "Connected (DASHBOARD_API_URL set)".green()
+        );
+    }
 
     if shadow_mode {
         println!(
@@ -1074,6 +1085,7 @@ async fn run_wrap(
         credential_scope_validator: Arc::new(policy::credential_scope::CredentialScopeValidator::new(false)),
         policy_path: None,
         gateway_start_time: std::time::Instant::now(),
+        dashboard_client: agentwall::dashboard_fr23::client::DashboardClient::from_env().map(Arc::new),
     });
 
     // Parse the command string
@@ -1197,6 +1209,7 @@ async fn run_dev(
         credential_scope_validator: Arc::new(policy::credential_scope::CredentialScopeValidator::new(false)),
         policy_path: None,
         gateway_start_time: std::time::Instant::now(),
+        dashboard_client: agentwall::dashboard_fr23::client::DashboardClient::from_env().map(Arc::new),
     });
 
     if stdio {

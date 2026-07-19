@@ -190,6 +190,116 @@ gateway:
       maxSurge: 1
       maxUnavailable: 0
 
+# ─── FR-23 SaaS Dashboard ──────────────────────────────────────────────────
+# Opt-in. All three sub-components default to enabled=false so existing
+# deployments are completely unaffected by helm upgrade.
+
+dashboardApi:
+  enabled: false
+  image:
+    repository: noviqtech/agentwall-dashboard-api
+    tag: ""   # defaults to Chart.appVersion
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 8400
+
+  oidc:
+    issuer: ""      # Required — maps to OIDC_ISSUER env var
+    clientId: ""    # Required — maps to OIDC_CLIENT_ID env var
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+dashboardFrontend:
+  enabled: false
+  image:
+    repository: noviqtech/agentwall-dashboard-frontend
+    tag: ""   # defaults to Chart.appVersion
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 80
+  service:
+    type: ClusterIP
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101     # nginx user in nginx:alpine
+    fsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+dashboardDb:
+  enabled: false
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  port: 5432
+  storage: 10Gi
+  storageClass: ""   # "" = cluster default StorageClass
+
+  resources:
+    limits:
+      cpu: "1"
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999     # postgres user in official image
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false   # Postgres needs writable PGDATA
+    capabilities:
+      drop: ["ALL"]
+
 # ─── Sample AgentWallPolicy CR ─────────────────────────────────────────────
 # Optional convenience: create an AgentWallPolicy CR as part of the chart
 # install. Handy for demos; disable in production and manage CRs separately.

@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: agentwall
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: agentwall
+    ports:
+      - "5432:5432"
+    volumes:
+      - agentwall_pg_data:/var/lib/postgresql/data
+      - ./db/migrations/000001_init_schema.up.sql:/docker-entrypoint-initdb.d/000001_init_schema.up.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentwall -d agentwall"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  dashboard-api:
+    build:
+      context: ./api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://agentwall:devpassword@postgres:5432/agentwall?sslmode=disable
+      DASHBOARD_PORT: "8400"
+      DEV_MODE: "true"
+      ALLOW_DEV_MODE: "true"
+      GATEWAY_SECRET: local-dev-shared-secret-change-me
+    ports:
+      - "8400:8400"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8400/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      dashboard-api:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+
+volumes:
+  agentwall_pg_data:

@@ -509,7 +509,6 @@ async fn handle_request(
                 return Ok(prometheus_metrics_response(&state));
             }
             "/api/self-healing/status" => {
-                // Return dummy status for now based on recent events to satisfy dashboard
                 match state.db_manager.get_events(500).await {
                     Ok(events) => {
                         let mut scorer = crate::self_healing::AnomalyScorer::new();
@@ -860,7 +859,7 @@ async fn handle_request(
             method: Some("tools/call".to_string()),
             target_host: state.upstream_url.clone(),
             target_port: None,
-            url_path: Some(tool_name),
+            url_path: Some(tool_name.clone()),
             request_headers: None,
             request_body: Some(parameters),
             request_body_hash: None,
@@ -885,6 +884,42 @@ async fn handle_request(
             let _ = db.insert(event).await;
             db.prune();
         });
+
+        if let Some(ref dc) = state.dashboard_client {
+            let decision = if should_kill || response.get("error").is_some() {
+                dashboard_proto::redact::RawDecision::Denied
+            } else {
+                dashboard_proto::redact::RawDecision::Allowed
+            };
+
+            let agent_id = session
+                .identity_sub
+                .as_deref()
+                .unwrap_or("anonymous");
+
+            let tool_on_allowlist = {
+                let guard = state.policy.read().unwrap_or_else(|e| e.into_inner());
+                guard
+                    .as_ref()
+                    .map(|p| p.tools.iter().any(|t| t.name == tool_name))
+                    .unwrap_or(false)
+            };
+
+            let raw = dashboard_proto::redact::RawEventForRedaction {
+                session_id: &session.session_id,
+                agent_id,
+                tool_name: &tool_name,
+                tool_name_is_allowlisted: tool_on_allowlist,
+                decision,
+                timestamp_ms: chrono::Utc::now().timestamp_millis(),
+                dlp_findings: &[],
+                injection_findings: &[],
+                semantic_findings: &[],
+            };
+
+            let redacted = dashboard_proto::redact::redact_event(&raw);
+            dc.send_event(redacted);
+        }
     }
 
     // Send response first (before kill)
@@ -1341,3 +1376,4 @@ async fn scan_and_process_response(
         }
     }
 }
+

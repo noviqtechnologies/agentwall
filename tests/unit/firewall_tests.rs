@@ -88,6 +88,7 @@ fn test_tool_history_memory_bounding() {
         credential_scope_validator: Arc::new(agentwall::policy::credential_scope::CredentialScopeValidator::new(false)),
         gateway_start_time: std::time::Instant::now(),
         policy_path: None,
+        dashboard_client: None,
     };
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -182,6 +183,7 @@ fn test_cycle_detection_blocking() {
         credential_scope_validator: Arc::new(agentwall::policy::credential_scope::CredentialScopeValidator::new(false)),
         gateway_start_time: std::time::Instant::now(),
         policy_path: None,
+        dashboard_client: None,
     };
 
     let req = json!({
@@ -290,6 +292,7 @@ fn test_pause_interactive_fallback_in_non_tty() {
         credential_scope_validator: Arc::new(agentwall::policy::credential_scope::CredentialScopeValidator::new(false)),
         gateway_start_time: std::time::Instant::now(),
         policy_path: None,
+        dashboard_client: None,
     };
 
     let req = json!({

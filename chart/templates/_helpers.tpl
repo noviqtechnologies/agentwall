@@ -108,3 +108,53 @@ Resolve the TLS Secret name — either user-provided or chart-generated.
 {{- printf "%s-gateway-tls" (include "agentwall.fullname" .) -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+FR-23: Dashboard API selector labels.
+*/}}
+{{- define "agentwall.dashboardApiSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "agentwall.name" . }}-dashboard-api
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: dashboard-api
+{{- end }}
+
+{{/*
+FR-23: Dashboard Frontend selector labels.
+*/}}
+{{- define "agentwall.dashboardFrontendSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "agentwall.name" . }}-dashboard-frontend
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: dashboard-frontend
+{{- end }}
+
+{{/*
+FR-23: Dashboard DB selector labels.
+*/}}
+{{- define "agentwall.dashboardDbSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "agentwall.name" . }}-dashboard-db
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: dashboard-db
+{{- end }}
+
+{{/*
+FR-23: Dashboard API image reference.
+*/}}
+{{- define "agentwall.dashboardApiImage" -}}
+{{- $tag := .Values.dashboardApi.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s:%s" .Values.dashboardApi.image.repository $tag -}}
+{{- end }}
+
+{{/*
+FR-23: Dashboard Frontend image reference.
+*/}}
+{{- define "agentwall.dashboardFrontendImage" -}}
+{{- $tag := .Values.dashboardFrontend.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s:%s" .Values.dashboardFrontend.image.repository $tag -}}
+{{- end }}
+
+{{/*
+FR-23: Dashboard DB image reference.
+*/}}
+{{- define "agentwall.dashboardDbImage" -}}
+{{- printf "%s:%s" .Values.dashboardDb.image.repository .Values.dashboardDb.image.tag -}}
+{{- end }}
