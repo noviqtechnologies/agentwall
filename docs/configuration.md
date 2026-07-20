@@ -71,6 +71,12 @@ It supports 21 built-in regex patterns, detecting:
 - Credit Card Numbers, US SSNs
 - `.env` variable references
 
+## Safe Mode (FR-303a)
+
+Safe Mode is an always-on enforcement layer that blocks dangerous tool calls without any policy configuration. It applies 15 tool-aware rules covering sensitive file access (SSH keys, `.env`, AWS credentials, kubeconfig, `/etc/shadow`, Docker config/socket), shell exfiltration (pipe-to-shell, netcat listeners, `rm -rf /`), and cloud metadata SSRF.
+
+Safe Mode runs before the policy engine and is not configurable — it cannot be disabled. It protects agents even in shadow mode (`agentwall dev`) where no policy file is loaded. For the full rule set, see `src/policy/safe_mode.rs`.
+
 ## Agent Identity & Credential Governance
 
 AgentWall introduces per-agent credential governance. Instead of hardcoding long-lived secrets into your AI Agents, you can provision short-lived, scoped credentials at runtime.

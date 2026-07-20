@@ -107,3 +107,34 @@ docker run -d \
   ghcr.io/noviqtechnologies/agentwall:latest \
   start --policy /etc/agentwall/policy.yaml --listen 0.0.0.0:8080
 ```
+
+---
+
+## ☸️ Kubernetes / Helm Deployment
+
+AgentWall includes a Helm chart with a Kubernetes operator that deploys the gateway, RBAC, CRDs, and optional NetworkPolicy enforcement.
+
+```bash
+helm install agentwall ./chart \
+  --namespace agentwall-system \
+  --create-namespace \
+  --set gateway.tls.enabled=true \
+  --set gateway.tls.secretName=my-gateway-tls
+```
+
+To also deploy the SaaS Dashboard components alongside the gateway:
+
+```bash
+helm install agentwall ./chart \
+  --namespace agentwall-system \
+  --create-namespace \
+  --set gateway.tls.enabled=true \
+  --set gateway.tls.secretName=my-gateway-tls \
+  --set dashboardApi.enabled=true \
+  --set dashboardDb.enabled=true \
+  --set dashboardFrontend.enabled=true \
+  --set dashboardApi.oidc.issuer=https://your-idp.example.com \
+  --set dashboardApi.oidc.clientId=agentwall-dashboard
+```
+
+See `chart/values.yaml` for the full reference of configurable values.

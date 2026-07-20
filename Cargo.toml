@@ -3,7 +3,7 @@ members = [".", "dashboard/proto"]
 
 [package]
 name = "agentwall"
-version = "1.0.13"
+version = "1.0.14"
 edition = "2021"
 description = "VEXA AgentWall — centralized enterprise security gateway enforcing deterministic policies for AI agent tool calls over MCP"
 license = "Apache-2.0"
